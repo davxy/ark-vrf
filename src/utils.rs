@@ -27,20 +27,22 @@ macro_rules! suite_types {
     };
 }
 
-// Generic hashing wrapper.
+// Generic hash wrapper.
+#[inline(always)]
 pub(crate) fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
-    let mut hasher = H::new();
-    hasher.update(data);
-    hasher.finalize()
+    H::new().chain_update(data).finalize()
 }
 
-/// HMAC generic over hasher.
+/// Generic HMAC wrapper.
+#[inline(always)]
 pub(crate) fn hmac<H: Digest + BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::{Mac, SimpleHmac};
-    let mut mac = SimpleHmac::<H>::new_from_slice(sk).expect("HMAC can take key of any size");
-    mac.update(data);
-    let result = mac.finalize();
-    result.into_bytes().to_vec()
+    SimpleHmac::<H>::new_from_slice(sk)
+        .expect("HMAC can take key of any size")
+        .chain_update(data)
+        .finalize()
+        .into_bytes()
+        .to_vec()
 }
 
 /// Try-And-Increment (TAI) method as defined by RFC9381 section 5.4.1.1.
