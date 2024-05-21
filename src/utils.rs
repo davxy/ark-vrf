@@ -1,4 +1,4 @@
-use crate::{AffinePoint, ScalarField, Suite};
+use crate::{AffinePoint, HashOutput, ScalarField, Suite};
 
 use ark_ff::PrimeField;
 use digest::Digest;
@@ -59,7 +59,10 @@ pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data:
 /// find a valid curve point after approximately two attempts on average.
 ///
 /// The input `data` is defined to be `salt || alpha` according to the spec.
-pub fn hash_to_curve_tai<S: Suite>(data: &[u8], point_be_encoding: bool) -> Option<AffinePoint<S>> {
+pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
+    data: &[u8],
+    point_be_encoding: bool,
+) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
     use ark_ff::Field;
     use ark_serialize::CanonicalDeserialize;
@@ -75,14 +78,10 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8], point_be_encoding: bool) -> Opti
     let mut buf = [&[S::SUITE_ID, DOM_SEP_FRONT], data, &[0x00, DOM_SEP_BACK]].concat();
     let ctr_pos = buf.len() - 2;
 
-    for ctr in 0..256 {
-        // Modify ctr value
-        buf[ctr_pos] = ctr as u8;
-        let hash = &hash::<S::Hasher>(&buf)[..];
-        if hash.len() < mod_size {
-            return None;
-        }
-        let mut hash = hash.to_vec();
+    for ctr in 0..=255 {
+        // Modify the `ctr` value
+        buf[ctr_pos] = ctr;
+        let mut hash = hash::<S::Hasher>(&buf).to_vec();
         if point_be_encoding {
             hash.reverse();
         }
@@ -96,6 +95,30 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8], point_be_encoding: bool) -> Opti
         }
     }
     None
+}
+
+/// Challenge generation according to RFC 9381 section 5.4.3.
+pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
+    const DOM_SEP_START: u8 = 0x02;
+    const DOM_SEP_END: u8 = 0x00;
+    let mut buf = vec![S::SUITE_ID, DOM_SEP_START];
+    pts.iter().for_each(|p| {
+        S::point_encode(p, &mut buf);
+    });
+    buf.extend_from_slice(ad);
+    buf.push(DOM_SEP_END);
+    let hash = &hash::<S::Hasher>(&buf)[..S::CHALLENGE_LEN];
+    ScalarField::<S>::from_be_bytes_mod_order(hash)
+}
+
+/// Point to a hash according to RFC 9381 section <TODO>.
+pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
+    const DOM_SEP_START: u8 = 0x03;
+    const DOM_SEP_END: u8 = 0x00;
+    let mut buf = vec![S::SUITE_ID, DOM_SEP_START];
+    S::point_encode(pt, &mut buf);
+    buf.push(DOM_SEP_END);
+    hash::<S::Hasher>(&buf)
 }
 
 /// Nonce generation according to RFC 9381 section 5.4.2.2.
@@ -219,7 +242,7 @@ mod tests {
 
     #[test]
     fn hash_to_curve_tai_works() {
-        let pt = hash_to_curve_tai::<TestSuite>(b"hello world", false).unwrap();
+        let pt = hash_to_curve_tai_rfc_9381::<TestSuite>(b"hello world", false).unwrap();
         // Check that `pt` is in the prime subgroup
         assert!(pt.is_on_curve());
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())
