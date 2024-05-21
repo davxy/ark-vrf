@@ -79,22 +79,6 @@ pub trait Suite: Copy + Clone {
     /// Used wherever an hash is required: nonce, challenge, MAC, etc.
     type Hasher: Digest;
 
-    /// VRF public key construction.
-    ///
-    /// The default implementation computes it by multiplying the `sk` by the group generator.
-    #[inline(always)]
-    fn public(sk: &ScalarField<Self>) -> Public<Self> {
-        Public((Self::Affine::generator() * sk).into_affine())
-    }
-
-    /// VRF output construction.
-    ///
-    /// The default implementation computes it my multiplying the `input` by the secret scalar `sk`.
-    #[inline(always)]
-    fn output(sk: &ScalarField<Self>, input: Input<Self>) -> Output<Self> {
-        Output((input.0 * sk).into_affine())
-    }
-
     /// Nonce generation as described by RFC-9381 section 5.4.2.
     ///
     /// The default implementation provides the variant described
@@ -209,10 +193,9 @@ impl<S: Suite> ark_serialize::Valid for Secret<S> {
 impl<S: Suite> Secret<S> {
     /// Construct a `Secret` from the given scalar.
     pub fn from_scalar(scalar: ScalarField<S>) -> Self {
-        Self {
-            scalar,
-            public: S::public(&scalar),
-        }
+        let public = S::Affine::generator() * scalar;
+        let public = Public(public.into_affine());
+        Self { scalar, public }
     }
 
     /// Construct a `Secret` from the given seed.
@@ -238,9 +221,10 @@ impl<S: Suite> Secret<S> {
         self.public
     }
 
-    /// Get the VRF `output` point relative to `input`.
+    /// Get the VRF output point relative to input.
+    #[inline(always)]
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        S::output(&self.scalar, input)
+        Output((input.0 * self.scalar).into_affine())
     }
 
     /// Get the VRF `nonce`
