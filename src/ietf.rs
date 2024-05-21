@@ -36,7 +36,7 @@ impl<S: IetfSuite + Sync> CanonicalSerialize for Signature<S> {
         Ok(())
     }
 
-    fn serialized_size(&self, _compress: ark_serialize::Compress) -> usize {
+    fn serialized_size(&self, _compress_always: ark_serialize::Compress) -> usize {
         S::CHALLENGE_LEN + self.s.compressed_size()
     }
 }
