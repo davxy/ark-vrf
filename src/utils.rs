@@ -4,7 +4,7 @@ use ark_ff::PrimeField;
 use digest::Digest;
 
 #[cfg(not(feature = "std"))]
-use ark_std::vec::Vec;
+use ark_std::{vec, vec::Vec};
 
 #[macro_export]
 macro_rules! suite_types {
