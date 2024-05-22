@@ -97,7 +97,7 @@ impl<S: PedersenSuite> PedersenVerifier<S> for Public<S> {
         } = signature;
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_blind, &input.0, &output.0, &r, &ok], ad.as_ref());
+        let c = S::challenge(&[pk_blind, &input.0, &output.0, r, ok], ad.as_ref());
 
         // z1 = Ok + c*O - s*I
         if output.0 * c + ok != input.0 * s {
