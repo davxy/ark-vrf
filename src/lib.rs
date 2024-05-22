@@ -94,7 +94,6 @@ pub trait Suite: Copy + Clone {
     /// # Panics
     ///
     /// This function panics if `Hasher` output is less than 32 bytes.
-    #[inline(always)]
     fn nonce(sk: &ScalarField<Self>, pt: Input<Self>) -> ScalarField<Self> {
         utils::nonce_rfc_8032::<Self>(sk, &pt.0)
     }
@@ -105,7 +104,6 @@ pub trait Suite: Copy + Clone {
     ///
     /// This implementation extends the RFC procedure to allow adding
     /// some optional additional data too the hashing procedure.
-    #[inline(always)]
     fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
         utils::challenge_rfc_9381::<Self>(pts, ad)
     }
@@ -113,7 +111,6 @@ pub trait Suite: Copy + Clone {
     /// Hash data to a curve point.
     ///
     /// By default uses "try and increment" method described by RFC 9381.
-    #[inline(always)]
     fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
         utils::hash_to_curve_tai_rfc_9381::<Self>(data, false)
     }
@@ -121,22 +118,18 @@ pub trait Suite: Copy + Clone {
     /// Map the point to a hash value using `Self::Hasher`.
     ///
     /// By default uses the algorithm described by RFC 9381.
-    #[inline(always)]
     fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self> {
         utils::point_to_hash_rfc_9381::<Self>(pt)
     }
 
-    #[inline(always)]
     fn point_encode(pt: &AffinePoint<Self>, buf: &mut Vec<u8>) {
         pt.serialize_compressed(buf).unwrap();
     }
 
-    #[inline(always)]
     fn scalar_encode(sc: &ScalarField<Self>, buf: &mut Vec<u8>) {
         sc.serialize_compressed(buf).unwrap();
     }
 
-    #[inline(always)]
     fn scalar_decode(buf: &[u8]) -> ScalarField<Self> {
         <ScalarField<Self>>::from_le_bytes_mod_order(buf)
     }
@@ -222,7 +215,6 @@ impl<S: Suite> Secret<S> {
     }
 
     /// Get the VRF output point relative to input.
-    #[inline(always)]
     pub fn output(&self, input: Input<S>) -> Output<S> {
         Output((input.0 * self.scalar).into_affine())
     }

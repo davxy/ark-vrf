@@ -29,14 +29,12 @@ macro_rules! suite_types {
 }
 
 // Generic hash wrapper.
-#[inline(always)]
 pub(crate) fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
     H::new().chain_update(data).finalize()
 }
 
 /// Generic HMAC wrapper.
 #[cfg(feature = "rfc-6979")]
-#[inline(always)]
 pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::{Mac, SimpleHmac};
     SimpleHmac::<H>::new_from_slice(sk)
@@ -218,7 +216,6 @@ pub(crate) mod testing {
 
     suite_types!(TestSuite);
 
-    #[inline(always)]
     #[allow(unused)]
     pub fn random_vec<T: UniformRand>(n: usize, rng: Option<&mut dyn RngCore>) -> Vec<T> {
         let mut local_rng = ark_std::test_rng();
@@ -226,7 +223,6 @@ pub(crate) mod testing {
         (0..n).map(|_| T::rand(rng)).collect()
     }
 
-    #[inline(always)]
     #[allow(unused)]
     pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
         let mut local_rng = ark_std::test_rng();
