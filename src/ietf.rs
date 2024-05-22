@@ -69,12 +69,12 @@ impl<S: IetfSuite + Sync> ark_serialize::Valid for Proof<S> {
     }
 }
 
-pub trait IetfProver<S: Suite> {
+pub trait IetfProver<S: IetfSuite> {
     /// Generate a proof for the given input/output and user additional data.
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-pub trait IetfVerifier<S: Suite> {
+pub trait IetfVerifier<S: IetfSuite> {
     /// Verify a proof for the given input/output and user additional data.
     fn verify(
         &self,
@@ -101,7 +101,7 @@ impl<S: IetfSuite> IetfProver<S> for Secret<S> {
     }
 }
 
-impl<S: Suite> IetfVerifier<S> for Public<S> {
+impl<S: IetfSuite> IetfVerifier<S> for Public<S> {
     fn verify(
         &self,
         input: Input<S>,
@@ -128,8 +128,7 @@ impl<S: Suite> IetfVerifier<S> for Public<S> {
 
 #[cfg(test)]
 pub mod testing {
-    use crate::*;
-    use ietf::IetfProver;
+    use super::*;
 
     pub const TEST_FLAG_SKIP_PROOF_CHECK: u8 = 1 << 0;
 
@@ -145,7 +144,7 @@ pub mod testing {
         pub s: &'static str,
     }
 
-    pub fn run_test_vector<S: Suite>(v: &TestVector) {
+    pub fn run_test_vector<S: IetfSuite>(v: &TestVector) {
         let sk_bytes = hex::decode(v.sk).unwrap();
         let s = S::scalar_decode(&sk_bytes);
         let sk = Secret::<S>::from_scalar(s);
