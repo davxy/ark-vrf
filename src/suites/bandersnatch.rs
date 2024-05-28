@@ -51,7 +51,7 @@
 //     GENERATOR_X = 18886178867200960497001835917649091219057080094937609519140440539760939937304
 //     GENERATOR_Y = 19188667384257783945677642223292697773471335439753913231509108946878080696678
 
-use crate::{pedersen::PedersenSuite, utils::arkworks_pending::*, *};
+use crate::{pedersen::PedersenSuite, utils::ark_next::*, *};
 use ark_ff::MontFp;
 
 pub mod weierstrass {
@@ -149,36 +149,16 @@ pub mod weierstrass {
 
         #[test]
         fn sw_to_te_roundtrip() {
-            use ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig;
+            use crate::{testing, utils::ark_next};
+            use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
-            let org_point = <BandersnatchSha512 as PedersenSuite>::BLINDING_BASE;
+            let org_point = testing::random_val::<SWAffine>(None);
 
-            let te_point = map_sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
-            // assert!(te_point.is_on_curve());
+            let te_point = ark_next::map_sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
+            assert!(te_point.is_on_curve());
 
-            let sw_point = map_te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
-            // assert!(sw_point.is_on_curve());
-
-            println!("{:?}", org_point);
-            println!("{:?}", te_point);
-            println!("{:?}", sw_point);
-        }
-
-        #[test]
-        fn sw_to_te_roundtrip() {
-            use ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig;
-
-            let org_point = <BandersnatchSha512 as PedersenSuite>::BLINDING_BASE;
-
-            let te_point = map_sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
-            // assert!(te_point.is_on_curve());
-
-            let sw_point = map_te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
-            // assert!(sw_point.is_on_curve());
-
-            println!("{:?}", org_point);
-            println!("{:?}", te_point);
-            println!("{:?}", sw_point);
+            let sw_point = ark_next::map_te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
+            assert!(sw_point.is_on_curve());
         }
     }
 }

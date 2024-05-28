@@ -200,8 +200,8 @@ pub fn encode_scalar<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
     buf
 }
 
-// Pending Arkworks features.
-pub(crate) mod arkworks_pending {
+// Upcoming Arkworks features.
+pub(crate) mod ark_next {
     use ark_ec::{
         short_weierstrass::{Affine as WeierstrassAffine, SWCurveConfig},
         twisted_edwards::{Affine as EdwardsAffine, MontCurveConfig, TECurveConfig},
@@ -237,7 +237,7 @@ pub(crate) mod arkworks_pending {
     #[allow(unused)]
     pub fn map_te_to_sw<C: MapConfig>(point: &EdwardsAffine<C>) -> Option<WeierstrassAffine<C>> {
         // Map from TE to Montgomery: (1+y)/(1-y), (1+y)/(x(1-y))
-        let v_denom = <<C as CurveConfig>::BaseField as One>::one();
+        let v_denom = <<C as CurveConfig>::BaseField as One>::one() - point.y;
         let w_denom = point.x - point.x * point.y;
         let v_denom_inv = v_denom.inverse()?;
         let w_denom_inv = w_denom.inverse()?;
