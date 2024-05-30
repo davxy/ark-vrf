@@ -36,8 +36,8 @@ pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
     T::rand(rng)
 }
 
-pub fn ietf_prove_verify<S: crate::ietf::IetfSuite>() {
-    use crate::ietf::{IetfProver, IetfVerifier};
+pub fn ietf_prove_verify<S: ietf::IetfSuite>() {
+    use ietf::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed(TEST_SEED);
     let public = secret.public();
@@ -49,8 +49,8 @@ pub fn ietf_prove_verify<S: crate::ietf::IetfSuite>() {
     assert!(result.is_ok());
 }
 
-pub fn pedersen_prove_verify<S: crate::pedersen::PedersenSuite>() {
-    use crate::pedersen::{PedersenProver, PedersenVerifier};
+pub fn pedersen_prove_verify<S: pedersen::PedersenSuite>() {
+    use pedersen::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed(TEST_SEED);
     let input = Input::from(random_val(None));
@@ -67,13 +67,13 @@ pub fn pedersen_prove_verify<S: crate::pedersen::PedersenSuite>() {
 }
 
 #[cfg(feature = "ring")]
-pub fn ring_prove_verify<S: crate::ring::RingSuite>()
+pub fn ring_prove_verify<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
-    crate::ring::Curve<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: crate::ring::SwMap<crate::ring::Curve<S>>,
+    CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
+    AffinePoint<S>: ring::SwMap<CurveConfig<S>>,
 {
-    use crate::ring::{RingContext, RingProver, RingVerifier};
+    use ring::{Prover, RingContext, Verifier};
 
     let rng = &mut ark_std::test_rng();
     let domain_size = 1024;

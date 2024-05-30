@@ -62,9 +62,6 @@ pub mod weierstrass {
 
     suite_types!(BandersnatchSha512);
 
-    #[cfg(test)]
-    suite_tests!(BandersnatchSha512, true);
-
     impl Suite for BandersnatchSha512 {
         const SUITE_ID: u8 = CUSTOM_SUITE_ID_FLAG | 0x03;
         const CHALLENGE_LEN: usize = 32;
@@ -86,14 +83,14 @@ pub mod weierstrass {
     }
 
     #[cfg(feature = "ring")]
-    pub mod ring {
+    mod ring_defs {
         use super::*;
         use crate::ring as ring_suite;
 
         pub type RingContext = ring_suite::RingContext<BandersnatchSha512>;
         pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512>;
-        pub type Prover = ring_suite::Prover<BandersnatchSha512>;
-        pub type Verifier = ring_suite::Verifier<BandersnatchSha512>;
+        pub type RingProver = ring_suite::RingProver<BandersnatchSha512>;
+        pub type RingVerifier = ring_suite::RingVerifier<BandersnatchSha512>;
         pub type Proof = ring_suite::Proof<BandersnatchSha512>;
 
         impl ring_suite::RingSuite for BandersnatchSha512 {
@@ -111,6 +108,11 @@ pub mod weierstrass {
             };
         }
     }
+    #[cfg(feature = "ring")]
+    pub use ring_defs::*;
+
+    #[cfg(test)]
+    suite_tests!(BandersnatchSha512, true);
 }
 
 pub mod edwards {
@@ -120,9 +122,6 @@ pub mod edwards {
     pub struct BandersnatchSha512Edwards;
 
     suite_types!(BandersnatchSha512Edwards);
-
-    #[cfg(test)]
-    suite_tests!(BandersnatchSha512Edwards, true);
 
     impl Suite for BandersnatchSha512Edwards {
         const SUITE_ID: u8 = CUSTOM_SUITE_ID_FLAG | 0x04;
@@ -146,14 +145,14 @@ pub mod edwards {
     }
 
     #[cfg(feature = "ring")]
-    pub mod ring {
+    mod ring_defs {
         use super::*;
         use crate::ring as ring_suite;
 
         pub type RingContext = ring_suite::RingContext<BandersnatchSha512Edwards>;
         pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512Edwards>;
-        pub type Prover = ring_suite::Prover<BandersnatchSha512Edwards>;
-        pub type Verifier = ring_suite::Verifier<BandersnatchSha512Edwards>;
+        pub type RingProver = ring_suite::RingProver<BandersnatchSha512Edwards>;
+        pub type RingVerifier = ring_suite::RingVerifier<BandersnatchSha512Edwards>;
         pub type Proof = ring_suite::Proof<BandersnatchSha512Edwards>;
 
         impl ring_suite::RingSuite for BandersnatchSha512Edwards {
@@ -173,6 +172,11 @@ pub mod edwards {
             };
         }
     }
+    #[cfg(feature = "ring")]
+    pub use ring_defs::*;
+
+    #[cfg(test)]
+    suite_tests!(BandersnatchSha512Edwards, true);
 }
 
 // sage: q = 52435875175126190479447740508185965837690552500527637822603658699938581184513
