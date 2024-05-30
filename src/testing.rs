@@ -71,7 +71,7 @@ pub fn ring_prove_verify<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: ring::SwMap<CurveConfig<S>>,
+    AffinePoint<S>: ring::IntoSW<CurveConfig<S>>,
 {
     use ring::{Prover, RingContext, Verifier};
 

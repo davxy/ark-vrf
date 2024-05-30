@@ -102,7 +102,7 @@ impl<S: RingSuite> Verifier<S> for Public<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig,
-    AffinePoint<S>: SwMap<CurveConfig<S>>,
+    AffinePoint<S>: IntoSW<CurveConfig<S>>,
 {
     fn verify(
         input: Input<S>,
@@ -113,7 +113,7 @@ where
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = sig.pedersen_proof.key_commitment().to_sw();
+        let key_commitment = sig.pedersen_proof.key_commitment().into_sw();
         if !verifier.verify_ring_proof(sig.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -136,7 +136,7 @@ impl<S: RingSuite> RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SwMap<CurveConfig<S>>,
+    AffinePoint<S>: IntoSW<CurveConfig<S>>,
 {
     pub fn from_seed(domain_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
@@ -156,13 +156,21 @@ where
         }
     }
 
+    pub fn domain_size(&self) -> usize {
+        self.domain_size
+    }
+
+    pub fn keyset_max_size(&self) -> usize {
+        self.piop_params.keyset_part_size
+    }
+
     pub fn prover_key(&self, pks: Vec<AffinePoint<S>>) -> ProverKey<S> {
-        let pks: Vec<_> = pks.into_iter().map(|p| p.to_sw()).collect();
+        let pks = pks.iter().map(|p| p.into_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).0
     }
 
     pub fn verifier_key(&self, pks: Vec<AffinePoint<S>>) -> VerifierKey<S> {
-        let pks: Vec<_> = pks.into_iter().map(|p| p.to_sw()).collect();
+        let pks: Vec<_> = pks.iter().map(|p| p.into_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).1
     }
 
@@ -184,22 +192,21 @@ where
     }
 }
 
-pub trait SwMap<C: SWCurveConfig> {
-    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
+pub trait IntoSW<C: SWCurveConfig> {
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
 }
 
-impl<C: SWCurveConfig> SwMap<C> for ark_ec::short_weierstrass::Affine<C> {
-    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+impl<C: SWCurveConfig> IntoSW<C> for ark_ec::short_weierstrass::Affine<C> {
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
         self
     }
 }
 
-impl<C: utils::ark_next::MapConfig> SwMap<C> for ark_ec::twisted_edwards::Affine<C> {
-    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
-        // println!("{:?}", self);
-        let res = utils::ark_next::map_te_to_sw(&self).unwrap();
-        // println!("{:?}", res);
-        res
+impl<C: utils::ark_next::MapConfig> IntoSW<C> for ark_ec::twisted_edwards::Affine<C> {
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+        const ERR_MSG: &str =
+            "'IntoSW' is expected to be implemented only for curves supporting the mapping";
+        utils::ark_next::map_te_to_sw(&self).expect(ERR_MSG)
     }
 }
 
@@ -207,12 +214,12 @@ fn make_piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig,
-    AffinePoint<S>: SwMap<CurveConfig<S>>,
+    AffinePoint<S>: IntoSW<CurveConfig<S>>,
 {
     let domain = ring_proof::Domain::new(domain_size, true);
     PiopParams::<S>::setup(
         domain,
-        S::BLINDING_BASE.to_sw(),
-        S::COMPLEMENT_POINT.to_sw(),
+        S::BLINDING_BASE.into_sw(),
+        S::COMPLEMENT_POINT.into_sw(),
     )
 }
