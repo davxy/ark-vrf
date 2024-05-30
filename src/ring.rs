@@ -164,12 +164,12 @@ where
         self.piop_params.keyset_part_size
     }
 
-    pub fn prover_key(&self, pks: Vec<AffinePoint<S>>) -> ProverKey<S> {
+    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
         let pks = pks.iter().map(|p| p.into_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).0
     }
 
-    pub fn verifier_key(&self, pks: Vec<AffinePoint<S>>) -> VerifierKey<S> {
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
         let pks: Vec<_> = pks.iter().map(|p| p.into_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).1
     }
