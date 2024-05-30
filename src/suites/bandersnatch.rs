@@ -88,12 +88,15 @@ pub mod weierstrass {
     #[cfg(feature = "ring")]
     pub mod ring {
         use super::*;
-        use crate::ring;
+        use crate::ring as ring_suite;
 
-        impl ring::Pairing<BandersnatchSha512> for ark_bls12_381::Bls12_381 {}
+        pub type RingContext = ring_suite::RingContext<BandersnatchSha512>;
+        pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512>;
+        pub type Prover = ring_suite::Prover<BandersnatchSha512>;
+        pub type Verifier = ring_suite::Verifier<BandersnatchSha512>;
+        pub type Proof = ring_suite::Proof<BandersnatchSha512>;
 
-        impl ring::RingSuite for BandersnatchSha512 {
-            type Config = ark_ed_on_bls12_381_bandersnatch::SWConfig;
+        impl ring_suite::RingSuite for BandersnatchSha512 {
             type Pairing = ark_bls12_381::Bls12_381;
 
             /// A point on the curve not belonging to the prime order subgroup.
@@ -106,66 +109,6 @@ pub mod weierstrass {
                 );
                 AffinePoint::new_unchecked(X, Y)
             };
-        }
-
-        pub type RingContext = ring::RingContext<BandersnatchSha512>;
-        pub type VerifierKey = ring::VerifierKey<BandersnatchSha512>;
-        pub type Prover = ring::Prover<BandersnatchSha512>;
-        pub type Verifier = ring::Verifier<BandersnatchSha512>;
-        pub type Proof = ring::Proof<BandersnatchSha512>;
-
-        impl ring2::RingSuite2 for BandersnatchSha512 {
-            type Pairing = ark_bls12_381::Bls12_381;
-
-            /// A point on the curve not belonging to the prime order subgroup.
-            ///
-            /// Found using `ring_proof::find_complement_point::<Self::Config>()` function.
-            const COMPLEMENT_POINT: AffinePoint = {
-                const X: BaseField = MontFp!("0");
-                const Y: BaseField = MontFp!(
-                    "11982629110561008531870698410380659621661946968466267969586599013782997959645"
-                );
-                AffinePoint::new_unchecked(X, Y)
-            };
-        }
-
-        #[cfg(test)]
-        mod tests {
-            use super::*;
-
-            #[test]
-            fn smoke() {
-                type S = BandersnatchSha512;
-                use ring2::{RingContext, RingProver, RingVerifier};
-                use testing::{random_val, random_vec, TEST_SEED};
-
-                let rng = &mut ark_std::test_rng();
-                let domain_size = 1024;
-                let ring_ctx = RingContext::<S>::new_random(domain_size, rng);
-
-                let secret = Secret::from_seed(TEST_SEED);
-                let public = secret.public();
-                let input = Input::from(random_val(Some(rng)));
-                let output = secret.output(input);
-
-                let keyset_size = ring_ctx.piop_params.keyset_part_size;
-
-                let prover_idx = 3;
-                let mut pks = random_vec::<AffinePoint>(keyset_size, Some(rng));
-                pks[prover_idx] = public.0;
-
-                let prover_key = ring_ctx.prover_key(pks.clone());
-                let prover = ring_ctx.prover(prover_key, prover_idx);
-                let proof = secret.prove(input, output, b"foo", &prover);
-                let mut buf = Vec::new();
-                proof.serialize_compressed(&mut buf).unwrap();
-                println!("RING PROOF LEN: {}", buf.len());
-
-                let verifier_key = ring_ctx.verifier_key(pks);
-                let verifier = ring_ctx.verifier(verifier_key);
-                let result = Public::verify(input, output, b"foo", &proof, &verifier);
-                assert!(result.is_ok());
-            }
         }
     }
 }
@@ -179,7 +122,7 @@ pub mod edwards {
     suite_types!(BandersnatchSha512Edwards);
 
     #[cfg(test)]
-    suite_tests!(BandersnatchSha512Edwards);
+    suite_tests!(BandersnatchSha512Edwards, true);
 
     impl Suite for BandersnatchSha512Edwards {
         const SUITE_ID: u8 = CUSTOM_SUITE_ID_FLAG | 0x04;
@@ -205,9 +148,15 @@ pub mod edwards {
     #[cfg(feature = "ring")]
     pub mod ring {
         use super::*;
-        use crate::ring2::RingSuite2;
+        use crate::ring as ring_suite;
 
-        impl RingSuite2 for BandersnatchSha512Edwards {
+        pub type RingContext = ring_suite::RingContext<BandersnatchSha512Edwards>;
+        pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512Edwards>;
+        pub type Prover = ring_suite::Prover<BandersnatchSha512Edwards>;
+        pub type Verifier = ring_suite::Verifier<BandersnatchSha512Edwards>;
+        pub type Proof = ring_suite::Proof<BandersnatchSha512Edwards>;
+
+        impl ring_suite::RingSuite for BandersnatchSha512Edwards {
             type Pairing = ark_bls12_381::Bls12_381;
 
             /// A point on the curve not belonging to the prime order subgroup.
@@ -222,45 +171,6 @@ pub mod edwards {
                 );
                 AffinePoint::new_unchecked(X, Y)
             };
-        }
-
-        #[cfg(test)]
-        mod tests {
-            use super::*;
-
-            #[test]
-            fn smoke() {
-                type S = BandersnatchSha512Edwards;
-                use ring2::{RingContext, RingProver, RingVerifier};
-                use testing::{random_val, random_vec, TEST_SEED};
-
-                let rng = &mut ark_std::test_rng();
-                let domain_size = 1024;
-                let ring_ctx = RingContext::<S>::new_random(domain_size, rng);
-
-                let secret = Secret::from_seed(TEST_SEED);
-                let public = secret.public();
-                let input = Input::from(random_val(Some(rng)));
-                let output = secret.output(input);
-
-                let keyset_size = ring_ctx.piop_params.keyset_part_size;
-
-                let prover_idx = 3;
-                let mut pks = random_vec::<AffinePoint>(keyset_size, Some(rng));
-                pks[prover_idx] = public.0;
-
-                let prover_key = ring_ctx.prover_key(pks.clone());
-                let prover = ring_ctx.prover(prover_key, prover_idx);
-                let proof = secret.prove(input, output, b"foo", &prover);
-                let mut buf = Vec::new();
-                proof.serialize_compressed(&mut buf).unwrap();
-                println!("RING PROOF LEN: {}", buf.len());
-
-                let verifier_key = ring_ctx.verifier_key(pks);
-                let verifier = ring_ctx.verifier(verifier_key);
-                let result = Public::verify(input, output, b"foo", &proof, &verifier);
-                assert!(result.is_ok());
-            }
         }
     }
 }

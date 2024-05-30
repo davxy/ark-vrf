@@ -69,8 +69,9 @@ pub fn pedersen_prove_verify<S: crate::pedersen::PedersenSuite>() {
 #[cfg(feature = "ring")]
 pub fn ring_prove_verify<S: crate::ring::RingSuite>()
 where
-    S::Config: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    <S::Config as ark_ec::CurveConfig>::BaseField: ark_ff::PrimeField,
+    BaseField<S>: ark_ff::PrimeField,
+    crate::ring::Curve<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
+    AffinePoint<S>: crate::ring::SwMap<crate::ring::Curve<S>>,
 {
     use crate::ring::{RingContext, RingProver, RingVerifier};
 
@@ -106,7 +107,7 @@ where
 macro_rules! suite_tests {
     ($suite:ident, $build_ring:ident) => {
         suite_tests!($suite);
-        ring_suite_tests!($build_ring);
+        ring_suite_tests!($suite, $build_ring);
     };
     ($suite:ident) => {
         #[test]
@@ -123,12 +124,12 @@ macro_rules! suite_tests {
 
 #[macro_export]
 macro_rules! ring_suite_tests {
-    (true) => {
+    ($suite:ident, true) => {
         #[cfg(feature = "ring")]
         #[test]
         fn ring_prove_verify() {
-            $crate::testing::ring_prove_verify::<BandersnatchSha512>()
+            $crate::testing::ring_prove_verify::<$suite>()
         }
     };
-    (false) => {};
+    ($suite:ident, false) => {};
 }

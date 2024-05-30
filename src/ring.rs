@@ -1,21 +1,14 @@
 use crate::*;
-use ark_ec::{short_weierstrass::SWCurveConfig, CurveConfig};
-use ark_serialize::{Compress, Read, SerializationError, Valid, Validate, Write};
+use ark_ec::{short_weierstrass::SWCurveConfig, AffineRepr};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 
-// Ring proof assumes:
-// 1. Points over the whole curve group (not just the prime subgroup).
-// 2. Short weierstrass form.
-pub trait RingSuite:
-    PedersenSuite<Affine = ark_ec::short_weierstrass::Affine<Self::Config>>
-{
-    type Config: SWCurveConfig;
+pub trait RingSuite: PedersenSuite {
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
     const COMPLEMENT_POINT: AffinePoint<Self>;
 }
 
-type Curve<S> = <S as RingSuite>::Config;
+pub type Curve<S> = <<S as Suite>::Affine as AffineRepr>::Config;
 
 /// KZG Polynomial Commitment Scheme.
 type Pcs<S> = fflonk::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
@@ -27,7 +20,12 @@ type PcsParams<S> = fflonk::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 
 type PairingScalarField<S> = <<S as RingSuite>::Pairing as ark_ec::pairing::Pairing>::ScalarField;
 
-pub type ProverKey<S> = ring_proof::ProverKey<PairingScalarField<S>, Pcs<S>, AffinePoint<S>>;
+// pub type ProverKey<S> = ring_proof::ProverKey<PairingScalarField<S>, Pcs<S>, AffinePoint<S>>;
+pub type ProverKey<S> = ring_proof::ProverKey<
+    PairingScalarField<S>,
+    Pcs<S>,
+    ark_ec::short_weierstrass::Affine<Curve<S>>,
+>;
 
 pub type VerifierKey<S> = ring_proof::VerifierKey<PairingScalarField<S>, Pcs<S>>;
 
@@ -45,7 +43,7 @@ pub trait Pairing<S: RingSuite>: ark_ec::pairing::Pairing<ScalarField = BaseFiel
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite>
 where
-    <S::Config as CurveConfig>::BaseField: ark_ff::PrimeField,
+    BaseField<S>: ark_ff::PrimeField,
 {
     pub pedersen_proof: PedersenProof<S>,
     pub ring_proof: RingProof<S>,
@@ -53,8 +51,8 @@ where
 
 pub trait RingProver<S: RingSuite>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
 {
     /// Generate a proof for the given input/output and user additional data.
     fn prove(
@@ -68,8 +66,8 @@ where
 
 pub trait RingVerifier<S: RingSuite>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
 {
     /// Verify a proof for the given input/output and user additional data.
     fn verify(
@@ -83,8 +81,8 @@ where
 
 impl<S: RingSuite> RingProver<S> for Secret<S>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
 {
     fn prove(
         &self,
@@ -106,8 +104,9 @@ where
 
 impl<S: RingSuite> RingVerifier<S> for Public<S>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
+    AffinePoint<S>: SwMap<Curve<S>>,
 {
     fn verify(
         input: Input<S>,
@@ -118,7 +117,7 @@ where
     ) -> Result<(), Error> {
         use crate::pedersen::PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = sig.pedersen_proof.key_commitment();
+        let key_commitment = sig.pedersen_proof.key_commitment().to_sw();
         if !verifier.verify_ring_proof(sig.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -129,8 +128,8 @@ where
 #[derive(Clone)]
 pub struct RingContext<S: RingSuite>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig + Clone,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
 {
     pub pcs_params: PcsParams<S>,
     pub piop_params: PiopParams<S>,
@@ -139,8 +138,9 @@ where
 
 impl<S: RingSuite> RingContext<S>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig + Clone,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
+    AffinePoint<S>: SwMap<Curve<S>>,
 {
     pub fn from_seed(domain_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
@@ -160,19 +160,13 @@ where
         }
     }
 
-    pub fn domain_size(&self) -> usize {
-        self.domain_size
-    }
-
-    pub fn keyset_max_size(&self) -> usize {
-        self.piop_params.keyset_part_size
-    }
-
     pub fn prover_key(&self, pks: Vec<AffinePoint<S>>) -> ProverKey<S> {
+        let pks: Vec<_> = pks.into_iter().map(|p| p.to_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).0
     }
 
     pub fn verifier_key(&self, pks: Vec<AffinePoint<S>>) -> VerifierKey<S> {
+        let pks: Vec<_> = pks.into_iter().map(|p| p.to_sw()).collect();
         ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).1
     }
 
@@ -194,82 +188,35 @@ where
     }
 }
 
-impl<S: RingSuite + Sync> CanonicalSerialize for RingContext<S>
-where
-    Curve<S>: SWCurveConfig + Clone,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
-{
-    fn serialize_with_mode<W: Write>(
-        &self,
-        mut writer: W,
-        compress: Compress,
-    ) -> Result<(), SerializationError> {
-        self.domain_size.serialize_compressed(&mut writer)?;
-        self.pcs_params.serialize_with_mode(&mut writer, compress)?;
-        Ok(())
-    }
+pub trait SwMap<C: SWCurveConfig> {
+    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
+}
 
-    fn serialized_size(&self, compress: Compress) -> usize {
-        self.domain_size.compressed_size() + self.pcs_params.serialized_size(compress)
+impl<C: SWCurveConfig> SwMap<C> for ark_ec::short_weierstrass::Affine<C> {
+    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+        self
     }
 }
 
-impl<S: RingSuite + Sync> CanonicalDeserialize for RingContext<S>
-where
-    Curve<S>: SWCurveConfig + Clone,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
-{
-    fn deserialize_with_mode<R: Read>(
-        mut reader: R,
-        compress: Compress,
-        validate: Validate,
-    ) -> Result<Self, SerializationError> {
-        let domain_size = <usize as CanonicalDeserialize>::deserialize_compressed(&mut reader)?;
-        let piop_params = make_piop_params::<S>(domain_size);
-        let pcs_params = <PcsParams<S> as CanonicalDeserialize>::deserialize_with_mode(
-            &mut reader,
-            compress,
-            validate,
-        )?;
-        Ok(RingContext {
-            piop_params,
-            pcs_params,
-            domain_size,
-        })
+impl<C: utils::ark_next::MapConfig> SwMap<C> for ark_ec::twisted_edwards::Affine<C> {
+    fn to_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+        // println!("{:?}", self);
+        let res = utils::ark_next::map_te_to_sw(&self).unwrap();
+        // println!("{:?}", res);
+        res
     }
 }
 
 fn make_piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
 where
+    BaseField<S>: ark_ff::PrimeField,
     Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
+    AffinePoint<S>: SwMap<Curve<S>>,
 {
     let domain = ring_proof::Domain::new(domain_size, true);
-    PiopParams::<S>::setup(domain, S::BLINDING_BASE, S::COMPLEMENT_POINT)
-}
-
-pub fn make_ring_verifier<S: RingSuite>(
-    verifier_key: VerifierKey<S>,
-    domain_size: usize,
-) -> Verifier<S>
-where
-    Curve<S>: SWCurveConfig,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
-{
-    let piop_params = make_piop_params::<S>(domain_size);
-    <Verifier<S>>::init(
-        verifier_key,
-        piop_params,
-        merlin::Transcript::new(b"ring-vrf"),
+    PiopParams::<S>::setup(
+        domain,
+        S::BLINDING_BASE.to_sw(),
+        S::COMPLEMENT_POINT.to_sw(),
     )
-}
-
-impl<S: RingSuite + Sync> Valid for RingContext<S>
-where
-    Curve<S>: SWCurveConfig + Clone,
-    <Curve<S> as CurveConfig>::BaseField: ark_ff::PrimeField,
-{
-    fn check(&self) -> Result<(), SerializationError> {
-        self.pcs_params.check()
-    }
 }

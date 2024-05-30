@@ -30,8 +30,6 @@ pub mod utils;
 
 #[cfg(feature = "ring")]
 pub mod ring;
-#[cfg(feature = "ring")]
-pub mod ring2;
 
 #[cfg(test)]
 mod testing;
