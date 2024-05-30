@@ -30,6 +30,8 @@ pub mod utils;
 
 #[cfg(feature = "ring")]
 pub mod ring;
+#[cfg(feature = "ring")]
+pub mod ring2;
 
 #[cfg(test)]
 mod testing;
@@ -41,9 +43,10 @@ pub mod prelude {
     pub use ark_std;
 }
 
-pub type ScalarField<S> = <<S as Suite>::Affine as AffineRepr>::ScalarField;
-pub type BaseField<S> = <<S as Suite>::Affine as AffineRepr>::BaseField;
 pub type AffinePoint<S> = <S as Suite>::Affine;
+
+pub type BaseField<S> = <AffinePoint<S> as AffineRepr>::BaseField;
+pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 
 pub type HashOutput<S> = digest::Output<<S as Suite>::Hasher>;
 

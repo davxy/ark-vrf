@@ -113,6 +113,60 @@ pub mod weierstrass {
         pub type Prover = ring::Prover<BandersnatchSha512>;
         pub type Verifier = ring::Verifier<BandersnatchSha512>;
         pub type Proof = ring::Proof<BandersnatchSha512>;
+
+        impl ring2::RingSuite2 for BandersnatchSha512 {
+            type Pairing = ark_bls12_381::Bls12_381;
+
+            /// A point on the curve not belonging to the prime order subgroup.
+            ///
+            /// Found using `ring_proof::find_complement_point::<Self::Config>()` function.
+            const COMPLEMENT_POINT: AffinePoint = {
+                const X: BaseField = MontFp!("0");
+                const Y: BaseField = MontFp!(
+                    "11982629110561008531870698410380659621661946968466267969586599013782997959645"
+                );
+                AffinePoint::new_unchecked(X, Y)
+            };
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn smoke() {
+                type S = BandersnatchSha512;
+                use ring2::{RingContext, RingProver, RingVerifier};
+                use testing::{random_val, random_vec, TEST_SEED};
+
+                let rng = &mut ark_std::test_rng();
+                let domain_size = 1024;
+                let ring_ctx = RingContext::<S>::new_random(domain_size, rng);
+
+                let secret = Secret::from_seed(TEST_SEED);
+                let public = secret.public();
+                let input = Input::from(random_val(Some(rng)));
+                let output = secret.output(input);
+
+                let keyset_size = ring_ctx.piop_params.keyset_part_size;
+
+                let prover_idx = 3;
+                let mut pks = random_vec::<AffinePoint>(keyset_size, Some(rng));
+                pks[prover_idx] = public.0;
+
+                let prover_key = ring_ctx.prover_key(pks.clone());
+                let prover = ring_ctx.prover(prover_key, prover_idx);
+                let proof = secret.prove(input, output, b"foo", &prover);
+                let mut buf = Vec::new();
+                proof.serialize_compressed(&mut buf).unwrap();
+                println!("RING PROOF LEN: {}", buf.len());
+
+                let verifier_key = ring_ctx.verifier_key(pks);
+                let verifier = ring_ctx.verifier(verifier_key);
+                let result = Public::verify(input, output, b"foo", &proof, &verifier);
+                assert!(result.is_ok());
+            }
+        }
     }
 }
 
@@ -136,6 +190,7 @@ pub mod edwards {
     }
 
     impl PedersenSuite for BandersnatchSha512Edwards {
+        /// Found mapping the `BLINDING_BASE` of `weierstrass` module using the `utils::map_sw_to_te`
         const BLINDING_BASE: AffinePoint = {
             const X: BaseField = MontFp!(
                 "14576224270591906826192118712803723445031237947873156025406837473427562701854"
@@ -145,6 +200,68 @@ pub mod edwards {
             );
             AffinePoint::new_unchecked(X, Y)
         };
+    }
+
+    #[cfg(feature = "ring")]
+    pub mod ring {
+        use super::*;
+        use crate::ring2::RingSuite2;
+
+        impl RingSuite2 for BandersnatchSha512Edwards {
+            type Pairing = ark_bls12_381::Bls12_381;
+
+            /// A point on the curve not belonging to the prime order subgroup.
+            ///
+            /// Found mapping the `COMPLEMENT_POINT` of `weierstrass` module using the `utils::map_sw_to_te`
+            const COMPLEMENT_POINT: AffinePoint = {
+                const X: BaseField = MontFp!(
+                    "3955725774225903122339172568337849452553276548604445833196164961773358506589"
+                );
+                const Y: BaseField = MontFp!(
+                    "29870564530691725960104983716673293929719207405660860235233811770612192692323"
+                );
+                AffinePoint::new_unchecked(X, Y)
+            };
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn smoke() {
+                type S = BandersnatchSha512Edwards;
+                use ring2::{RingContext, RingProver, RingVerifier};
+                use testing::{random_val, random_vec, TEST_SEED};
+
+                let rng = &mut ark_std::test_rng();
+                let domain_size = 1024;
+                let ring_ctx = RingContext::<S>::new_random(domain_size, rng);
+
+                let secret = Secret::from_seed(TEST_SEED);
+                let public = secret.public();
+                let input = Input::from(random_val(Some(rng)));
+                let output = secret.output(input);
+
+                let keyset_size = ring_ctx.piop_params.keyset_part_size;
+
+                let prover_idx = 3;
+                let mut pks = random_vec::<AffinePoint>(keyset_size, Some(rng));
+                pks[prover_idx] = public.0;
+
+                let prover_key = ring_ctx.prover_key(pks.clone());
+                let prover = ring_ctx.prover(prover_key, prover_idx);
+                let proof = secret.prove(input, output, b"foo", &prover);
+                let mut buf = Vec::new();
+                proof.serialize_compressed(&mut buf).unwrap();
+                println!("RING PROOF LEN: {}", buf.len());
+
+                let verifier_key = ring_ctx.verifier_key(pks);
+                let verifier = ring_ctx.verifier(verifier_key);
+                let result = Public::verify(input, output, b"foo", &proof, &verifier);
+                assert!(result.is_ok());
+            }
+        }
     }
 }
 
