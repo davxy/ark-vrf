@@ -245,7 +245,7 @@ pub(crate) mod ark_next {
         let v = v_w_num * v_denom_inv;
         let w = v_w_num * w_denom_inv;
 
-        // Mapp Montgamory to SW: ((x+A/3)/B,y/B)
+        // Map Montgamory to SW: ((x+A/3)/B,y/B)
         let x = C::MONT_B_INV * (v + C::MONT_A_OVER_THREE);
         let y = C::MONT_B_INV * w;
 
