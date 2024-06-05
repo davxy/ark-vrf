@@ -146,6 +146,30 @@ pub mod edwards {
         };
     }
 
+    impl arkworks::elligator2::Elligator2Config
+        for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig
+    {
+        const Z: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!("5");
+
+        /// This must be equal to 1/(MontCurveConfig::COEFF_B)^2;
+        const ONE_OVER_COEFF_B_SQUARE: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!(
+            "35484827650731063748396669747216844996598387089274032563585525486049249153249"
+        );
+
+        /// This must be equal to MontCurveConfig::COEFF_A/MontCurveConfig::COEFF_B;
+        const COEFF_A_OVER_COEFF_B: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!(
+            "22511181562295907836254750456843438087744031914659733450388350895537307167857"
+        );
+    }
+
+    use ark_ec::hashing::HashToCurve;
+
+    pub type Elligator2MapToCurve = ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher<
+        ark_ec::twisted_edwards::Projective<ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig>,
+        ark_ff::field_hashers::DefaultFieldHasher<sha2::Sha512, 128>,
+        arkworks::elligator2::Elligator2Map<ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig>,
+    >;
+
     #[cfg(feature = "ring")]
     mod ring_defs {
         use super::*;
@@ -179,6 +203,14 @@ pub mod edwards {
 
     #[cfg(test)]
     suite_tests!(BandersnatchSha512Edwards, true);
+
+    #[test]
+    fn test_elligator2_hash_to_curve() {
+        let hasher = Elligator2MapToCurve::new(b"dom").unwrap();
+        let point = hasher.hash(b"foo").unwrap();
+        assert!(point.is_on_curve());
+        assert!(point.is_in_correct_subgroup_assuming_on_curve());
+    }
 }
 
 // sage: q = 52435875175126190479447740508185965837690552500527637822603658699938581184513
