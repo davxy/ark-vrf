@@ -51,7 +51,7 @@ pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data:
         .to_vec()
 }
 
-/// Try-And-Increment (TAI) method as defined by RFC9381 section 5.4.1.1.
+/// Try-And-Increment (TAI) method as defined by RFC 9381 section 5.4.1.1.
 ///
 /// Implements ECVRF_encode_to_curve in a simple and generic way that works
 /// for any elliptic curve.
@@ -62,7 +62,7 @@ pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data:
 /// ciphersuites specified in Section 5.5, this algorithm is expected to
 /// find a valid curve point after approximately two attempts on average.
 ///
-/// The input `data` is defined to be `salt || alpha` according to the spec.
+/// The input `data` is defined to be `salt || alpha` according to the RFC 9281.
 pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
     data: &[u8],
     point_be_encoding: bool,
@@ -103,7 +103,17 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
     None
 }
 
-pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
+/// Elligator2 method as defined by RFC 9380 and further refined in RFC 9381 section 5.4.1.2.
+///
+/// Implements ECVRF_encode_to_curve using one of the several hash-to-curve options defined
+/// in [RFC9380].  The specific choice of the hash-to-curve option (called the Suite ID in [RFC9380])
+/// is given by the h2c_suite_ID_string parameter.
+///
+/// The input `data` is defined to be `salt || alpha` according to the RFC 9281.
+pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(
+    data: &[u8],
+    h2c_suite_id: &[u8],
+) -> Option<AffinePoint<S>>
 where
     <S as Suite>::Hasher: Default + Clone + FixedOutputReset + 'static,
     crate::CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -114,11 +124,19 @@ where
     use ark_ec::hashing::HashToCurve;
     const SEC_PARAM: usize = 128;
 
+    // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
+    let dst: Vec<_> = b"ECVRF_"
+        .iter()
+        .chain(h2c_suite_id.iter())
+        .chain(S::SUITE_ID)
+        .cloned()
+        .collect();
+
     let hasher = ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
         ark_ff::field_hashers::DefaultFieldHasher<<S as Suite>::Hasher, SEC_PARAM>,
         crate::arkworks::elligator2::Elligator2Map<crate::CurveConfig<S>>,
-    >::new(b"")
+    >::new(&dst)
     .ok()?;
 
     let res = hasher.hash(data).ok()?;

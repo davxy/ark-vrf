@@ -248,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn hash_arbitary_string_to_curve_elligator2() {
+    fn elligator2_works() {
         let hasher = MapToCurveBasedHasher::<
             Projective<TestElligator2MapToCurveConfig>,
             DefaultFieldHasher<Sha256, 128>,
