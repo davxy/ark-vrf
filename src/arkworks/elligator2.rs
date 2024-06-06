@@ -8,8 +8,7 @@ use ark_ec::{
     hashing::{
         // TODO: this looks identical to the one introduced by #659
         curve_maps::swu::parity,
-        map_to_curve_hasher::{MapToCurve, MapToCurveBasedHasher},
-        HashToCurve,
+        map_to_curve_hasher::MapToCurve,
         HashToCurveError,
     },
     twisted_edwards::{Affine, MontCurveConfig, Projective, TECurveConfig},
@@ -148,6 +147,7 @@ impl<P: Elligator2Config> MapToCurve<Projective<P>> for Elligator2Map<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::{field_hashers::DefaultFieldHasher, Fp64, MontBackend, MontFp};
     use sha2::Sha256;
 

@@ -1,7 +1,8 @@
 use crate::{AffinePoint, HashOutput, ScalarField, Suite};
 
+use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
-use digest::Digest;
+use digest::{Digest, FixedOutputReset};
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
@@ -73,7 +74,9 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
     const DOM_SEP_FRONT: u8 = 0x01;
     const DOM_SEP_BACK: u8 = 0x00;
 
-    let mod_size = <<<S::Affine as AffineRepr>::BaseField as Field>::BasePrimeField as PrimeField>::MODULUS_BIT_SIZE as usize / 8;
+    let mod_size = <<crate::BaseField<S> as Field>::BasePrimeField as PrimeField>::MODULUS_BIT_SIZE
+        as usize
+        / 8;
     if S::Hasher::output_size() < mod_size {
         return None;
     }
@@ -98,6 +101,28 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
         }
     }
     None
+}
+
+pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
+where
+    <S as Suite>::Hasher: Default + Clone + FixedOutputReset + 'static,
+    crate::CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
+    crate::CurveConfig<S>: crate::arkworks::elligator2::Elligator2Config,
+    crate::arkworks::elligator2::Elligator2Map<crate::CurveConfig<S>>:
+        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
+{
+    use ark_ec::hashing::HashToCurve;
+    const SEC_PARAM: usize = 128;
+
+    let hasher = ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher::<
+        <AffinePoint<S> as AffineRepr>::Group,
+        ark_ff::field_hashers::DefaultFieldHasher<<S as Suite>::Hasher, SEC_PARAM>,
+        crate::arkworks::elligator2::Elligator2Map<crate::CurveConfig<S>>,
+    >::new(b"")
+    .ok()?;
+
+    let res = hasher.hash(data).ok()?;
+    Some(res)
 }
 
 /// Challenge generation according to RFC 9381 section 5.4.3.

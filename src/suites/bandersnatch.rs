@@ -162,14 +162,6 @@ pub mod edwards {
         );
     }
 
-    use ark_ec::hashing::HashToCurve;
-
-    pub type Elligator2MapToCurve = ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher<
-        ark_ec::twisted_edwards::Projective<ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig>,
-        ark_ff::field_hashers::DefaultFieldHasher<sha2::Sha512, 128>,
-        arkworks::elligator2::Elligator2Map<ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig>,
-    >;
-
     #[cfg(feature = "ring")]
     mod ring_defs {
         use super::*;
@@ -206,10 +198,23 @@ pub mod edwards {
 
     #[test]
     fn test_elligator2_hash_to_curve() {
-        let hasher = Elligator2MapToCurve::new(b"dom").unwrap();
-        let point = hasher.hash(b"foo").unwrap();
+        let point =
+            utils::hash_to_curve_ell2_rfc_9380::<BandersnatchSha512Edwards>(b"foo").unwrap();
         assert!(point.is_on_curve());
         assert!(point.is_in_correct_subgroup_assuming_on_curve());
+
+        {
+            use ietf::{Prover, Verifier};
+
+            let secret = Secret::from_seed(b"asd");
+            let public = secret.public();
+            let input = Input::from(point);
+            let output = secret.output(input);
+
+            let proof = secret.prove(input, output, b"foo");
+            let result = public.verify(input, output, b"foo", &proof);
+            assert!(result.is_ok());
+        }
     }
 }
 
