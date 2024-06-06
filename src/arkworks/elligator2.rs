@@ -43,7 +43,29 @@ pub struct Elligator2Map<P: TECurveConfig>(PhantomData<fn() -> P>);
 impl<P: Elligator2Config> Elligator2Map<P> {
     /// Checks if `P` represents a valid Elligator2 map. Panics otherwise.
     fn check_parameters() -> Result<(), HashToCurveError> {
-        // TODO
+        // We assume that the Montgomery curve is correct and  as such we do
+        // not verify the prerequisite for applicability of Elligator2 map to the TECurveConfing.
+
+        // Verifying that Z is a non-square
+        debug_assert!(
+            !P::Z.legendre().is_qr(),
+            "Z should be a quadratic non-residue for the Elligator2 map"
+        );
+
+        debug_assert_eq!(
+            P::ONE_OVER_COEFF_B_SQUARE,
+            <P as MontCurveConfig>::COEFF_B
+                .square()
+                .inverse()
+                .expect("B coefficient cannot be zero in Montgomery form"),
+            "ONE_OVER_COEFF_B_SQUARE is not equal to 1/COEFF_B^2 in Montgomery form"
+        );
+
+        debug_assert_eq!(
+            P::COEFF_A_OVER_COEFF_B,
+            <P as MontCurveConfig>::COEFF_A / <P as MontCurveConfig>::COEFF_B,
+            "COEFF_A_OVER_COEFF_B is not equal to COEFF_A/COEFF_B in Montgomery form"
+        );
         Ok(())
     }
 }
