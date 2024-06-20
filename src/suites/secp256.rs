@@ -154,6 +154,7 @@ mod test_vectors {
     );
 
     #[test]
+    #[ignore = "test vectors generator"]
     fn test_vectors_generate() {
         testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
     }

@@ -65,7 +65,7 @@ pub mod weierstrass {
     suite_types!(BandersnatchSha512Tai);
 
     impl Suite for BandersnatchSha512Tai {
-        const SUITE_ID: &'static [u8] = b"bandersnatch-sha512-tai-sw";
+        const SUITE_ID: &'static [u8] = b"bandersnatch-sw-sha512-tai";
         const CHALLENGE_LEN: usize = 32;
 
         type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
@@ -126,7 +126,7 @@ pub mod edwards {
     suite_types!(BandersnatchSha512Ell2);
 
     impl Suite for BandersnatchSha512Ell2 {
-        const SUITE_ID: &'static [u8] = b"bandersnatch-sha512-ell2-ed";
+        const SUITE_ID: &'static [u8] = b"bandersnatch-ed-sha512-ell2";
         const CHALLENGE_LEN: usize = 32;
 
         type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
@@ -251,16 +251,17 @@ mod test_vectors_edwards {
 
     const TEST_VECTORS_FILE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/data/bandersnatch_sha512_ell2_vectors.json"
+        "/data/bandersnatch_ed_sha512_ell2_vectors.json"
     );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn test_vectors_generate() {
+        testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
+    }
 
     #[test]
     fn test_vectors_process() {
         testing::test_vectors_process::<S>(TEST_VECTORS_FILE);
-    }
-
-    #[test]
-    fn test_vectors_generate() {
-        testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
     }
 }
