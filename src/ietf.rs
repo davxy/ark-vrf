@@ -266,7 +266,7 @@ pub mod testing {
                 ("beta", hex::encode(&v.beta)),
                 ("proof_c", hex::encode(utils::encode_scalar::<S>(&v.c))),
                 ("proof_s", hex::encode(utils::encode_scalar::<S>(&v.s))),
-                ("flags", hex::encode(&[v.flags])),
+                ("flags", hex::encode([v.flags])),
             ];
             let map: indexmap::IndexMap<String, String> =
                 items.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
