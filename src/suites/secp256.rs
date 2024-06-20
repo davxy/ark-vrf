@@ -136,6 +136,7 @@ mod test_vectors {
             // Skip these checks as test vector looks like is not correct
             c: "",
             s: "",
+            ad: "",
         };
 
         run_test_vector::<P256Sha256Tai>(&v);
@@ -153,6 +154,7 @@ mod test_vectors {
             gamma: "034dac60aba508ba0c01aa9be80377ebd7562c4a52d74722e0abae7dc3080ddb56",
             c: "00000000000000000000000000000000c19e067b15a8a8174905b13617804534",
             s: "214f935b94c2287f797e393eb0816969d864f37625b443f30f1a5a33f2b3c854",
+            ad: "",
         };
 
         run_test_vector::<P256Sha256Tai>(&v);
@@ -170,6 +172,7 @@ mod test_vectors {
             gamma: "03d03398bf53aa23831d7d1b2937e005fb0062cbefa06796579f2a1fc7e7b8c667",
             c: "00000000000000000000000000000000d091c00b0f5c3619d10ecea44363b5a5",
             s: "99cadc5b2957e223fec62e81f7b4825fc799a771a3d7334b9186bdbee87316b1",
+            ad: "",
         };
 
         run_test_vector::<P256Sha256Tai>(&v);

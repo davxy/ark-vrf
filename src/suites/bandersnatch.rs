@@ -241,3 +241,60 @@ mod tests {
         assert!(sw_point.is_on_curve());
     }
 }
+
+#[cfg(test)]
+mod test_vectors_edwards {
+    use super::edwards::*;
+    use crate::ietf::testing::*;
+
+    type S = BandersnatchSha512Ell2;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_vectors.json"
+    );
+
+    #[test]
+    fn test_vectors_process() {
+        use std::{fs::File, io::BufReader};
+
+        let file = File::open(TEST_VECTORS_FILE).unwrap();
+        let reader = BufReader::new(file);
+
+        let vector_maps: Vec<TestVectorMap> = serde_json::from_reader(reader).unwrap();
+
+        for vector_map in vector_maps {
+            let vector = TestVector2::<S>::from(vector_map);
+            vector.run();
+        }
+    }
+
+    #[test]
+    fn test_vectors_generate() {
+        use std::{fs::File, io::Write};
+        // ("alpha", "ad"))
+        let var_data: Vec<(&[u8], &[u8])> = vec![
+            (b"", b""),
+            (b"0a", b""),
+            (b"", b"0b8c"),
+            (b"73616D706C65", b""),
+            (b"42616E646572736E6174636820766563746F72", b""),
+            (b"42616E646572736E6174636820766563746F72", b"73616D706C65"),
+        ];
+
+        let mut vector_maps = Vec::with_capacity(var_data.len());
+
+        for (i, var_data) in var_data.iter().enumerate() {
+            let alpha = hex::decode(var_data.0).unwrap();
+            let ad = hex::decode(var_data.1).unwrap();
+            let vector = TestVector2::<S>::new(&[i as u8], &alpha, None, &ad, 0);
+            println!("{:#?}", vector);
+            vector.run();
+            vector_maps.push(TestVectorMap::from(vector));
+        }
+
+        let mut file = File::create(TEST_VECTORS_FILE).unwrap();
+        let json = serde_json::to_string_pretty(&vector_maps).unwrap();
+        file.write_all(json.as_bytes()).unwrap();
+    }
+}

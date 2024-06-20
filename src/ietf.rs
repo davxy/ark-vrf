@@ -132,52 +132,233 @@ pub mod testing {
 
     pub const TEST_FLAG_SKIP_PROOF_CHECK: u8 = 1 << 0;
 
+    pub struct TestVector2<S: Suite> {
+        pub sk: ScalarField<S>,
+        pub pk: AffinePoint<S>,
+        pub alpha: Vec<u8>,
+        pub ad: Vec<u8>,
+        pub h: AffinePoint<S>,
+        pub gamma: AffinePoint<S>,
+        pub beta: Vec<u8>,
+        pub c: ScalarField<S>,
+        pub s: ScalarField<S>,
+        pub flags: u8,
+    }
+
+    impl<S: IetfSuite + std::fmt::Debug> TestVector2<S> {
+        pub fn new(seed: &[u8], alpha: &[u8], salt: Option<&[u8]>, ad: &[u8], flags: u8) -> Self {
+            let sk = Secret::<S>::from_seed(seed);
+            let pk = sk.public().0;
+
+            let salt = salt
+                .map(|v| v.to_vec())
+                .unwrap_or_else(|| utils::encode_point::<S>(&pk));
+
+            let h2c_data = [&salt[..], alpha].concat();
+            let h = <S as Suite>::data_to_point(&h2c_data).unwrap();
+            let input = Input::from(h);
+
+            let alpha = alpha.to_vec();
+            let output = sk.output(input);
+            let gamma = output.0;
+            let beta = output.hash().to_vec();
+
+            let proof = sk.prove(input, output, ad);
+
+            TestVector2 {
+                sk: sk.scalar,
+                pk,
+                alpha,
+                ad: ad.to_vec(),
+                h,
+                gamma,
+                beta,
+                c: proof.c,
+                s: proof.s,
+                flags,
+            }
+        }
+
+        pub fn run(&self) {
+            let sk = Secret::<S>::from_scalar(self.sk);
+
+            let pk = sk.public();
+            assert_eq!(self.pk, pk.0, "public key ('pk') mismatch");
+
+            // Prepare hash_to_curve data = salt || alpha
+            // Salt is defined to be pk (adjust it to make the encoding to match)
+            let pk_bytes = utils::encode_point::<S>(&pk.0);
+            let h2c_data = [&pk_bytes[..], &self.alpha[..]].concat();
+
+            let h = S::data_to_point(&h2c_data).unwrap();
+            assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
+            let input = Input::<S>::from(h);
+
+            let output = sk.output(input);
+            assert_eq!(self.gamma, output.0, "VRF pre-output ('gamma') mismatch");
+
+            let beta = output.hash().to_vec();
+            assert_eq!(self.beta, beta, "VRF output ('beta') mismatch");
+
+            if self.flags & TEST_FLAG_SKIP_PROOF_CHECK != 0 {
+                return;
+            }
+
+            let proof = sk.prove(input, output, &self.ad);
+            assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
+            assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
+
+            assert!(pk.verify(input, output, &self.ad, &proof).is_ok());
+        }
+    }
+
+    impl<S: IetfSuite> core::fmt::Debug for TestVector2<S> {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            let sk = hex::encode(utils::encode_scalar::<S>(&self.sk));
+            let pk = hex::encode(utils::encode_point::<S>(&self.pk));
+            let alpha = hex::encode(&self.alpha);
+            let ad = hex::encode(&self.ad);
+            let h = hex::encode(utils::encode_point::<S>(&self.h));
+            let gamma = hex::encode(utils::encode_point::<S>(&self.gamma));
+            let beta = hex::encode(&self.beta);
+            let c = hex::encode(utils::encode_scalar::<S>(&self.c));
+            let s = hex::encode(utils::encode_scalar::<S>(&self.s));
+            f.debug_struct("TestVector")
+                .field("sk", &sk)
+                .field("pk", &pk)
+                .field("alpha", &alpha)
+                .field("ad", &ad)
+                .field("h", &h)
+                .field("gamma", &gamma)
+                .field("beta", &beta)
+                .field("proof_c", &c)
+                .field("proof_s", &s)
+                .field("flags", &self.flags)
+                .finish()
+        }
+    }
+
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
+    pub struct TestVectorMap(std::collections::BTreeMap<String, String>);
+
+    impl<S: IetfSuite> From<TestVector2<S>> for TestVectorMap {
+        fn from(v: TestVector2<S>) -> Self {
+            let items = [
+                ("sk", hex::encode(utils::encode_scalar::<S>(&v.sk))),
+                ("pk", hex::encode(utils::encode_point::<S>(&v.pk))),
+                ("alpha", hex::encode(&v.alpha)),
+                ("ad", hex::encode(&v.ad)),
+                ("h", hex::encode(utils::encode_point::<S>(&v.h))),
+                ("gamma", hex::encode(utils::encode_point::<S>(&v.gamma))),
+                ("beta", hex::encode(&v.beta)),
+                ("proof_c", hex::encode(utils::encode_scalar::<S>(&v.c))),
+                ("proof_s", hex::encode(utils::encode_scalar::<S>(&v.s))),
+                ("flags", hex::encode(&[v.flags])),
+            ];
+            let map: std::collections::BTreeMap<String, String> =
+                items.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            Self(map)
+        }
+    }
+
+    impl<S: IetfSuite> From<TestVectorMap> for TestVector2<S> {
+        fn from(map: TestVectorMap) -> Self {
+            let item_bytes = |field| hex::decode(map.0.get(field).unwrap()).unwrap();
+            let sk = utils::decode_scalar::<S>(&item_bytes("sk"));
+            let pk = utils::decode_point::<S>(&item_bytes("pk"));
+            let alpha = item_bytes("alpha");
+            let ad = item_bytes("ad");
+            let h = utils::decode_point::<S>(&item_bytes("h"));
+            let gamma = utils::decode_point::<S>(&item_bytes("gamma"));
+            let beta = item_bytes("beta");
+            let c = utils::decode_scalar::<S>(&item_bytes("proof_c"));
+            let s = utils::decode_scalar::<S>(&item_bytes("proof_s"));
+            let flags = item_bytes("flags")[0];
+
+            Self {
+                sk,
+                pk,
+                alpha,
+                ad,
+                h,
+                gamma,
+                beta,
+                c,
+                s,
+                flags,
+            }
+        }
+    }
+
     pub struct TestVector {
         pub flags: u8,
+        /// Secret key
         pub sk: &'static str,
+        /// Public key
         pub pk: &'static str,
+        /// VRF input string
         pub alpha: &'static [u8],
+        /// VRF output hash
         pub beta: &'static str,
+        /// Hash to curve (salt||alpha), salt=encode(pk)
         pub h: &'static str,
         pub gamma: &'static str,
         pub c: &'static str,
         pub s: &'static str,
+        pub ad: &'static str,
     }
 
     pub fn run_test_vector<S: IetfSuite>(v: &TestVector) {
+        let ad = hex::decode(v.ad).unwrap();
+
         let sk_bytes = hex::decode(v.sk).unwrap();
         let s = S::scalar_decode(&sk_bytes);
         let sk = Secret::<S>::from_scalar(s);
 
-        let pk_bytes = utils::encode_point::<S>(&sk.public.0);
-        assert_eq!(v.pk, hex::encode(&pk_bytes));
+        let pk = sk.public();
+        let pk_bytes = utils::encode_point::<S>(&pk.0);
+        assert_eq!(v.pk, hex::encode(&pk_bytes), "public key ('pk') mismatch");
 
         // Prepare hash_to_curve data = salt || alpha
         // Salt is defined to be pk (adjust it to make the encoding to match)
         let h2c_data = [&pk_bytes[..], v.alpha].concat();
         let h = S::data_to_point(&h2c_data).unwrap();
         let h_bytes = utils::encode_point::<S>(&h);
-        assert_eq!(v.h, hex::encode(h_bytes));
+        assert_eq!(v.h, hex::encode(h_bytes), "hash-to-curve ('h') mismatch");
 
         let input = Input::from(h);
         let output = sk.output(input);
-        let proof = sk.prove(input, output, []);
+        let proof = sk.prove(input, output, &ad);
 
         let gamma_bytes = utils::encode_point::<S>(&output.0);
-        assert_eq!(v.gamma, hex::encode(gamma_bytes));
+        assert_eq!(
+            v.gamma,
+            hex::encode(gamma_bytes),
+            "VRF pre-output ('gamma') mismatch"
+        );
+
+        let beta = output.hash();
+        assert_eq!(v.beta, hex::encode(beta), "VRF output ('beta') mismatch");
 
         if v.flags & TEST_FLAG_SKIP_PROOF_CHECK != 0 {
             return;
         }
 
         let c_bytes = utils::encode_scalar::<S>(&proof.c);
-        assert_eq!(v.c, hex::encode(c_bytes));
+        assert_eq!(
+            v.c,
+            hex::encode(c_bytes),
+            "VRF proof challenge ('c') mismatch"
+        );
 
         let s_bytes = utils::encode_scalar::<S>(&proof.s);
-        assert_eq!(v.s, hex::encode(s_bytes));
+        assert_eq!(
+            v.s,
+            hex::encode(s_bytes),
+            "VRF proof response ('s') mismatch"
+        );
 
-        let beta = output.hash();
-        assert_eq!(v.beta, hex::encode(beta));
+        assert!(pk.verify(input, output, &ad, &proof).is_ok());
     }
 }
 
