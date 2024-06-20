@@ -243,7 +243,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod test_vectors_edwards {
+mod test_vectors_ed {
     use super::edwards::*;
     use crate::testing;
 
@@ -252,6 +252,30 @@ mod test_vectors_edwards {
     const TEST_VECTORS_FILE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/data/bandersnatch_ed_sha512_ell2_vectors.json"
+    );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn test_vectors_generate() {
+        testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
+    }
+
+    #[test]
+    fn test_vectors_process() {
+        testing::test_vectors_process::<S>(TEST_VECTORS_FILE);
+    }
+}
+
+#[cfg(test)]
+mod test_vectors_sw {
+    use super::weierstrass::*;
+    use crate::testing;
+
+    type S = BandersnatchSha512Tai;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_sw_sha512_tai_vectors.json"
     );
 
     #[test]
