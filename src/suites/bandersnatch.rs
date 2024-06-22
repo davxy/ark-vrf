@@ -126,7 +126,7 @@ pub mod edwards {
     suite_types!(BandersnatchSha512Ell2);
 
     impl Suite for BandersnatchSha512Ell2 {
-        const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512-ELL2";
+        const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512_ELL2";
         const CHALLENGE_LEN: usize = 32;
 
         type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
@@ -244,11 +244,12 @@ mod tests {
 }
 
 #[cfg(test)]
-mod test_vectors_ed {
+mod test_vectors_ietf_ed {
     use super::edwards::*;
     use crate::testing;
 
     type S = BandersnatchSha512Ell2;
+    type V = crate::ietf::testing::TestVector<S>;
 
     const TEST_VECTORS_FILE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -257,22 +258,22 @@ mod test_vectors_ed {
 
     #[test]
     #[ignore = "test vectors generator"]
-    fn test_vectors_generate() {
-        testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_ELL2");
     }
 
     #[test]
-    fn test_vectors_process() {
-        testing::test_vectors_process::<S>(TEST_VECTORS_FILE);
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
     }
 }
 
 #[cfg(test)]
-mod test_vectors_sw {
+mod test_vectors_ietf_sw {
     use super::weierstrass::*;
     use crate::testing;
 
-    type S = BandersnatchSha512Tai;
+    type V = crate::ietf::testing::TestVector<BandersnatchSha512Tai>;
 
     const TEST_VECTORS_FILE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -281,12 +282,12 @@ mod test_vectors_sw {
 
     #[test]
     #[ignore = "test vectors generator"]
-    fn test_vectors_generate() {
-        testing::test_vectors_generate::<S>(TEST_VECTORS_FILE);
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_ELL2");
     }
 
     #[test]
-    fn test_vectors_process() {
-        testing::test_vectors_process::<S>(TEST_VECTORS_FILE);
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
     }
 }
