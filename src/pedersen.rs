@@ -160,21 +160,20 @@ pub mod testing {
 
     pub struct TestVector<S: PedersenSuite> {
         pub base: common::TestVector<S>,
-        pub pk_blind: AffinePoint<S>,
-        // pub r: AffinePoint<S>,
-        // pub ok: AffinePoint<S>,
-        // pub s: ScalarField<S>,
-        // pub sb: ScalarField<S>,
+        pub blind: ScalarField<S>,
+        pub proof: Proof<S>,
     }
 
     impl<S: PedersenSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            // let c = hex::encode(utils::encode_scalar::<S>(&self.c));
-            // let s = hex::encode(utils::encode_scalar::<S>(&self.s));
             f.debug_struct("TestVector")
                 .field("base", &self.base)
-                // .field("proof_c", &c)
-                // .field("proof_s", &s)
+                .field("blinding", &self.blind)
+                .field("proof_pkb", &self.proof.pk_blind)
+                .field("proof_r", &self.proof.r)
+                .field("proof_ok", &self.proof.ok)
+                .field("proof_s", &self.proof.s)
+                .field("proof_sb", &self.proof.sb)
                 .finish()
         }
     }
@@ -190,29 +189,58 @@ pub mod testing {
         ) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad, flags);
-            // TODO: store constructed types in the vectors
             let input = Input::<S>::from(base.h);
             let output = Output::from(base.gamma);
             let sk = Secret::from_scalar(base.sk);
-            let (proof, _blinding) = sk.prove(input, output, ad);
-
-            Self {
-                base,
-                pk_blind: proof.pk_blind,
-            }
+            let (proof, blind) = sk.prove(input, output, ad);
+            Self { base, blind, proof }
         }
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let pk_blind = utils::decode_point::<S>(&map.item_bytes("pk_blind"));
-            Self { base, pk_blind }
+            let blind = utils::decode_scalar::<S>(&map.item_bytes("blinding"));
+            let pk_blind = utils::decode_point::<S>(&map.item_bytes("proof_pkb"));
+            let r = utils::decode_point::<S>(&map.item_bytes("proof_r"));
+            let ok = utils::decode_point::<S>(&map.item_bytes("proof_ok"));
+            let s = utils::decode_scalar::<S>(&map.item_bytes("proof_s"));
+            let sb = utils::decode_scalar::<S>(&map.item_bytes("proof_sb"));
+            let proof = Proof {
+                pk_blind,
+                r,
+                ok,
+                s,
+                sb,
+            };
+            Self { base, blind, proof }
         }
 
         fn to_map(&self) -> common::TestVectorMap {
-            let items = [(
-                "pk_blind",
-                hex::encode(utils::encode_point::<S>(&self.pk_blind)),
-            )];
+            let items = [
+                (
+                    "blinding",
+                    hex::encode(utils::encode_scalar::<S>(&self.blind)),
+                ),
+                (
+                    "proof_pkb",
+                    hex::encode(utils::encode_point::<S>(&self.proof.pk_blind)),
+                ),
+                (
+                    "proof_r",
+                    hex::encode(utils::encode_point::<S>(&self.proof.r)),
+                ),
+                (
+                    "proof_ok",
+                    hex::encode(utils::encode_point::<S>(&self.proof.ok)),
+                ),
+                (
+                    "proof_s",
+                    hex::encode(utils::encode_scalar::<S>(&self.proof.s)),
+                ),
+                (
+                    "proof_sb",
+                    hex::encode(utils::encode_scalar::<S>(&self.proof.sb)),
+                ),
+            ];
             let mut map = self.base.to_map();
             items.into_iter().for_each(|(name, value)| {
                 map.0.insert(name.to_string(), value);
@@ -228,8 +256,13 @@ pub mod testing {
             let input = Input::<S>::from(self.base.h);
             let output = Output::from(self.base.gamma);
             let sk = Secret::from_scalar(self.base.sk);
-            let (proof, _blinding) = sk.prove(input, output, &self.base.ad);
-            assert_eq!(self.pk_blind, proof.pk_blind, "VRF pk-blind mismatch");
+            let (proof, blind) = sk.prove(input, output, &self.base.ad);
+            assert_eq!(self.blind, blind, "Blinding factor mismatch");
+            assert_eq!(self.proof.pk_blind, proof.pk_blind, "Proof pkb mismatch");
+            assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
+            assert_eq!(self.proof.ok, proof.ok, "Proof ok mismatch");
+            assert_eq!(self.proof.s, proof.s, "Proof s mismatch");
+            assert_eq!(self.proof.sb, proof.sb, "Proof sb mismatch");
 
             assert!(Public::verify(input, output, &self.base.ad, &proof).is_ok());
         }
