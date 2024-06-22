@@ -1,9 +1,9 @@
-//! `ECVRF-BANDERSNATCH-SHA512-ELL2` suite.
+//! `ECVRF Bandersnatch SHA-512 Elligator2` suite.
 //!
 //! Configuration:
 //!
-//! *  `suite_string` = b"Bandersnatch-sha512-tai-sw for Short Weierstrass form.
-//! *  `suite_string` = b"Bandersnatch-sha512-tai-ed for Twisted Edwards form.
+//! *  `suite_string` = b"Bandersnatch_SHA-512_ELL2" for Twisted Edwards form.
+//! *  `suite_string` = b"Bandersnatch_SW_SHA-512_TAI" for Short Weierstrass form.
 //!
 //! *  The EC group G is the Bandersnatch elliptic curve, in Short Weierstrass or
 //!    Twisted Edwards form, with the finite field and curve parameters as specified
@@ -248,12 +248,35 @@ mod test_vectors_ietf_ed {
     use super::edwards::*;
     use crate::testing;
 
-    type S = BandersnatchSha512Ell2;
-    type V = crate::ietf::testing::TestVector<S>;
+    type V = crate::ietf::testing::TestVector<BandersnatchSha512Ell2>;
 
     const TEST_VECTORS_FILE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/data/bandersnatch_ed_sha512_ell2_ietf_vectors.json"
+    );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_ELL2");
+    }
+
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
+}
+
+#[cfg(test)]
+mod test_vectors_pedersen_ed {
+    use super::edwards::*;
+    use crate::testing;
+
+    type V = crate::pedersen::testing::TestVector<BandersnatchSha512Ell2>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_ed_sha512_ell2_pedersen_vectors.json"
     );
 
     #[test]
@@ -283,7 +306,31 @@ mod test_vectors_ietf_sw {
     #[test]
     #[ignore = "test vectors generator"]
     fn generate() {
-        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_ELL2");
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_TAI");
+    }
+
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
+}
+
+#[cfg(test)]
+mod test_vectors_pedersen_sw {
+    use super::weierstrass::*;
+    use crate::testing;
+
+    type V = crate::pedersen::testing::TestVector<BandersnatchSha512Tai>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_sw_sha512_tai_pedersen_vectors.json"
+    );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_TAI");
     }
 
     #[test]

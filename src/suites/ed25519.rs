@@ -113,7 +113,7 @@ mod test_vectors_pedersen {
     );
 
     #[test]
-    // #[ignore = "test vectors generator"]
+    #[ignore = "test vectors generator"]
     fn generate() {
         testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Ed25519_SHA-512_TAI");
     }

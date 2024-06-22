@@ -170,3 +170,26 @@ mod test_vectors_ietf {
         testing::test_vectors_process::<V>(TEST_VECTORS_FILE_RFC_9381);
     }
 }
+
+#[cfg(test)]
+mod test_vectors_pedersen {
+    use super::*;
+
+    type V = crate::pedersen::testing::TestVector<P256Sha256Tai>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/secp256r1_sha256_tai_pedersen_vectors.json"
+    );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "secp256r1_SHA-256_TAI");
+    }
+
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
+}
