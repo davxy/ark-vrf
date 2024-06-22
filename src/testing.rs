@@ -194,7 +194,7 @@ pub trait TestVectorTrait {
 
     fn from_map(map: &TestVectorMap) -> Self;
 
-    fn into_map(&self) -> TestVectorMap;
+    fn to_map(&self) -> TestVectorMap;
 
     fn run(&self);
 }
@@ -275,7 +275,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         }
     }
 
-    fn into_map(&self) -> TestVectorMap {
+    fn to_map(&self) -> TestVectorMap {
         let items = [
             ("comment", self.comment.clone()),
             ("flags", hex::encode([self.flags])),
@@ -343,7 +343,7 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(file: &str, i
         let comment = format!("{} - vector-{}", identifier, i + 1);
         let vector = V::new(&comment, &[i as u8], &alpha, None, &ad, 0);
         vector.run();
-        vector_maps.push(vector.into_map());
+        vector_maps.push(vector.to_map());
     }
 
     let mut file = File::create(file).unwrap();

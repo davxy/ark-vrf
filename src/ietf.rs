@@ -164,7 +164,7 @@ pub mod testing {
             let input = Input::from(base.h);
             let output = Output::from(base.gamma);
             let sk = Secret::from_scalar(base.sk);
-            let proof: Proof<S> = sk.prove(input, output, &ad);
+            let proof: Proof<S> = sk.prove(input, output, ad);
             Self {
                 base,
                 c: proof.c,
@@ -179,12 +179,12 @@ pub mod testing {
             Self { base, c, s }
         }
 
-        fn into_map(&self) -> common::TestVectorMap {
+        fn to_map(&self) -> common::TestVectorMap {
             let items = [
                 ("proof_c", hex::encode(utils::encode_scalar::<S>(&self.c))),
                 ("proof_s", hex::encode(utils::encode_scalar::<S>(&self.s))),
             ];
-            let mut map = self.base.into_map();
+            let mut map = self.base.to_map();
             items.into_iter().for_each(|(name, value)| {
                 map.0.insert(name.to_string(), value);
             });

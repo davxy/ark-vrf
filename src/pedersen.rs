@@ -194,7 +194,7 @@ pub mod testing {
             let input = Input::<S>::from(base.h);
             let output = Output::from(base.gamma);
             let sk = Secret::from_scalar(base.sk);
-            let (proof, _blinding) = sk.prove(input, output, &ad);
+            let (proof, _blinding) = sk.prove(input, output, ad);
 
             Self {
                 base,
@@ -208,12 +208,12 @@ pub mod testing {
             Self { base, pk_blind }
         }
 
-        fn into_map(&self) -> common::TestVectorMap {
+        fn to_map(&self) -> common::TestVectorMap {
             let items = [(
                 "pk_blind",
                 hex::encode(utils::encode_point::<S>(&self.pk_blind)),
             )];
-            let mut map = self.base.into_map();
+            let mut map = self.base.to_map();
             items.into_iter().for_each(|(name, value)| {
                 map.0.insert(name.to_string(), value);
             });
