@@ -100,3 +100,26 @@ mod test_vectors_ietf {
         testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
     }
 }
+
+#[cfg(test)]
+mod test_vectors_pedersen {
+    use super::*;
+
+    type V = crate::pedersen::testing::TestVector<Ed25519Sha512Tai>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/ed25519_sha512_tai_pedersen_vectors.json"
+    );
+
+    #[test]
+    // #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Ed25519_SHA-512_TAI");
+    }
+
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
+}
