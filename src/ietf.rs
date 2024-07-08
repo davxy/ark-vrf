@@ -52,7 +52,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         _compress_always: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let mut c_buf = vec![0; S::CHALLENGE_LEN];
+        let mut c_buf = ark_std::vec![0; S::CHALLENGE_LEN];
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
@@ -193,7 +193,7 @@ pub mod testing {
                 &buf[..S::CHALLENGE_LEN]
             };
             let items = [
-                ("proof_c", hex::encode(&proof_c)),
+                ("proof_c", hex::encode(proof_c)),
                 ("proof_s", hex::encode(utils::scalar_encode::<S>(&self.s))),
             ];
             let mut map = self.base.to_map();
