@@ -2,21 +2,26 @@ use ark_ec::short_weierstrass::SWCurveConfig;
 
 use super::*;
 
+/// Defines points and scalars encoding format.
 pub trait Codec<S: Suite> {
     const BIG_ENDIAN: bool;
 
+    /// Point encode.
     fn point_encode(pt: &AffinePoint<S>, buf: &mut Vec<u8>);
 
+    /// Point decode.
     fn point_decode(buf: &[u8]) -> AffinePoint<S>;
 
+    /// Scalar encode
     fn scalar_encode(sc: &ScalarField<S>, buf: &mut Vec<u8>);
 
+    /// Scalar decode.
     fn scalar_decode(buf: &[u8]) -> ScalarField<S>;
 }
 
 /// Arkworks codec.
 ///
-/// Little endian, points flags in MSB.
+/// Little endian. Points flags in MSB. Compression enabled.
 pub struct ArkworksCodec;
 
 impl<S: Suite> Codec<S> for ArkworksCodec {
@@ -39,10 +44,9 @@ impl<S: Suite> Codec<S> for ArkworksCodec {
     }
 }
 
-/// SEC 1 codec.
+/// SEC 1 codec (https://www.secg.org/sec1-v2.pdf)
 ///
-/// Big endian.
-/// Encode point according to Section 2.3.3 "SEC 1: Elliptic Curve Cryptography",
+/// Big endian. Points flags in LSB. Compression enabled.
 pub struct Sec1Codec;
 
 impl<S: Suite> Codec<S> for Sec1Codec
@@ -53,8 +57,6 @@ where
 {
     const BIG_ENDIAN: bool = true;
 
-    /// Encode point according to Section 2.3.3 "SEC 1: Elliptic Curve Cryptography",
-    /// (https://www.secg.org/sec1-v2.pdf) with point compression on.
     fn point_encode(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         use ark_ff::biginteger::BigInteger;
         use utils::SWMapping;
@@ -74,8 +76,6 @@ where
         buf.extend_from_slice(&tmp[..]);
     }
 
-    /// Encode point according to Section 2.3.3 "SEC 1: Elliptic Curve Cryptography",
-    /// (https://www.secg.org/sec1-v2.pdf) with point compression on.
     fn point_decode(buf: &[u8]) -> AffinePoint<S> {
         use ark_ff::biginteger::BigInteger;
         use utils::SWMapping;

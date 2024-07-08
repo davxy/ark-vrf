@@ -181,7 +181,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
 ///
 /// This function panics if `Hash` is less than 32 bytes.
 pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S> {
-    let raw = encode_scalar::<S>(sk);
+    let raw = scalar_encode::<S>(sk);
     let sk_hash = &hash::<S::Hasher>(&raw)[32..];
 
     let raw = encode_point::<S>(input);
@@ -210,7 +210,7 @@ where
     let k = [0; 32];
 
     // K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
-    let x = encode_scalar::<S>(sk);
+    let x = scalar_encode::<S>(sk);
     let raw = [&v[..], &[0x00], &x[..], &h1[..]].concat();
     let k = hmac::<S::Hasher>(&k, &raw);
 
@@ -230,23 +230,27 @@ where
     S::Codec::scalar_decode(&v)
 }
 
+/// Point encoder wrapper using `Suite::Codec`.
 pub fn encode_point<S: Suite>(pt: &AffinePoint<S>) -> Vec<u8> {
     let mut buf = Vec::new();
     S::Codec::point_encode(pt, &mut buf);
     buf
 }
 
+/// Point decoder wrapper using `Suite::Codec`.
 pub fn decode_point<S: Suite>(buf: &[u8]) -> AffinePoint<S> {
     S::Codec::point_decode(buf)
 }
 
-pub fn encode_scalar<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
+/// Scalar encoder wrapper using `Suite::Codec`.
+pub fn scalar_encode<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
     let mut buf = Vec::new();
     S::Codec::scalar_encode(sc, &mut buf);
     buf
 }
 
-pub fn decode_scalar<S: Suite>(buf: &[u8]) -> ScalarField<S> {
+/// Scalar decoder wrapper using `Suite::Codec`.
+pub fn scalar_decode<S: Suite>(buf: &[u8]) -> ScalarField<S> {
     S::Codec::scalar_decode(buf)
 }
 
