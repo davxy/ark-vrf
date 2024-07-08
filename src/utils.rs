@@ -1,4 +1,4 @@
-use crate::{AffinePoint, HashOutput, ScalarField, Suite};
+use crate::{AffinePoint, Codec, HashOutput, ScalarField, Suite};
 
 use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
@@ -149,7 +149,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     const DOM_SEP_END: u8 = 0x00;
     let mut buf = [S::SUITE_ID, &[DOM_SEP_START]].concat();
     pts.iter().for_each(|p| {
-        S::point_encode(p, &mut buf);
+        S::Codec::point_encode(p, &mut buf);
     });
     buf.extend_from_slice(ad);
     buf.push(DOM_SEP_END);
@@ -162,7 +162,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
     const DOM_SEP_START: u8 = 0x03;
     const DOM_SEP_END: u8 = 0x00;
     let mut buf = [S::SUITE_ID, &[DOM_SEP_START]].concat();
-    S::point_encode(pt, &mut buf);
+    S::Codec::point_encode(pt, &mut buf);
     buf.push(DOM_SEP_END);
     hash::<S::Hasher>(&buf)
 }
@@ -188,7 +188,7 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
     let v = [sk_hash, &raw[..]].concat();
     let h = &hash::<S::Hasher>(&v)[..];
 
-    S::scalar_decode(h)
+    S::Codec::scalar_decode(h)
 }
 
 /// Nonce generation according to RFC 9381 section 5.4.2.1.
@@ -197,8 +197,7 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 /// the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature
 /// Algorithm (ECDSA)".
 ///
-/// The algorithm generate the nonce value in a deterministic
-/// pseudorandom fashion.
+/// The algorithm generate the nonce value in a deterministic pseudorandom fashion.
 #[cfg(feature = "rfc-6979")]
 pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S>
 where
@@ -228,27 +227,27 @@ where
     // TODO: loop until 1 < k < q
     let v = hmac::<S::Hasher>(&k, &v);
 
-    S::scalar_decode(&v)
+    S::Codec::scalar_decode(&v)
 }
 
 pub fn encode_point<S: Suite>(pt: &AffinePoint<S>) -> Vec<u8> {
     let mut buf = Vec::new();
-    S::point_encode(pt, &mut buf);
+    S::Codec::point_encode(pt, &mut buf);
     buf
 }
 
 pub fn decode_point<S: Suite>(buf: &[u8]) -> AffinePoint<S> {
-    S::point_decode(buf)
+    S::Codec::point_decode(buf)
 }
 
 pub fn encode_scalar<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
     let mut buf = Vec::new();
-    S::scalar_encode(sc, &mut buf);
+    S::Codec::scalar_encode(sc, &mut buf);
     buf
 }
 
 pub fn decode_scalar<S: Suite>(buf: &[u8]) -> ScalarField<S> {
-    S::scalar_decode(buf)
+    S::Codec::scalar_decode(buf)
 }
 
 // Upcoming Arkworks features.
@@ -301,6 +300,38 @@ pub(crate) mod ark_next {
         let y = C::MONT_B_INV * w;
 
         Some(WeierstrassAffine::new_unchecked(x, y))
+    }
+}
+
+pub trait IntoSW<C: ark_ec::short_weierstrass::SWCurveConfig> {
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
+}
+
+impl<C: ark_ec::short_weierstrass::SWCurveConfig> IntoSW<C>
+    for ark_ec::short_weierstrass::Affine<C>
+{
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+        self
+    }
+}
+
+impl<C: ark_next::MapConfig> IntoSW<C> for ark_ec::twisted_edwards::Affine<C> {
+    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
+        const ERR_MSG: &str =
+            "'IntoSW' is expected to be implemented only for curves supporting the mapping";
+        ark_next::map_te_to_sw(&self).expect(ERR_MSG)
+    }
+}
+
+pub trait FromSW<C: ark_ec::short_weierstrass::SWCurveConfig> {
+    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self;
+}
+
+impl<C: ark_ec::short_weierstrass::SWCurveConfig> FromSW<C>
+    for ark_ec::short_weierstrass::Affine<C>
+{
+    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
+        sw
     }
 }
 

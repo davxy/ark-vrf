@@ -181,7 +181,10 @@ pub mod testing {
 
         fn to_map(&self) -> common::TestVectorMap {
             let items = [
-                ("proof_c", hex::encode(utils::encode_scalar::<S>(&self.c))),
+                (
+                    "proof_c",
+                    hex::encode(&utils::encode_scalar::<S>(&self.c)[..S::CHALLENGE_LEN]),
+                ),
                 ("proof_s", hex::encode(utils::encode_scalar::<S>(&self.s))),
             ];
             let mut map = self.base.to_map();

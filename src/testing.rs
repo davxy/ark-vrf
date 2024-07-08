@@ -19,6 +19,7 @@ pub(crate) mod suite {
 
         type Affine = ark_ed25519::EdwardsAffine;
         type Hasher = sha2::Sha256;
+        type Codec = codec::ArkworksCodec;
     }
 
     suite_types!(TestSuite);

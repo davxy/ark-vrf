@@ -284,24 +284,6 @@ where
     }
 }
 
-pub trait IntoSW<C: SWCurveConfig> {
-    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
-}
-
-impl<C: SWCurveConfig> IntoSW<C> for ark_ec::short_weierstrass::Affine<C> {
-    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
-        self
-    }
-}
-
-impl<C: utils::ark_next::MapConfig> IntoSW<C> for ark_ec::twisted_edwards::Affine<C> {
-    fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
-        const ERR_MSG: &str =
-            "'IntoSW' is expected to be implemented only for curves supporting the mapping";
-        utils::ark_next::map_te_to_sw(&self).expect(ERR_MSG)
-    }
-}
-
 pub(crate) fn make_piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
 where
     BaseField<S>: ark_ff::PrimeField,
