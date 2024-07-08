@@ -180,11 +180,15 @@ pub mod testing {
         }
 
         fn to_map(&self) -> common::TestVectorMap {
+            let buf = utils::encode_scalar::<S>(&self.c);
+            let proof_c = if S::Codec::BIG_ENDIAN {
+                let len = buf.len();
+                &buf[len - S::CHALLENGE_LEN..]
+            } else {
+                &buf[..S::CHALLENGE_LEN]
+            };
             let items = [
-                (
-                    "proof_c",
-                    hex::encode(&utils::encode_scalar::<S>(&self.c)[..S::CHALLENGE_LEN]),
-                ),
+                ("proof_c", hex::encode(&proof_c)),
                 ("proof_s", hex::encode(utils::encode_scalar::<S>(&self.s))),
             ];
             let mut map = self.base.to_map();
