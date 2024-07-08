@@ -26,12 +26,17 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
         mut writer: W,
         _compress_always: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        let buf = utils::encode_scalar::<S>(&self.c);
-        if buf.len() < S::CHALLENGE_LEN {
+        let c_buf = utils::encode_scalar::<S>(&self.c);
+        if c_buf.len() < S::CHALLENGE_LEN {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::NotEnoughSpace);
         }
-        writer.write_all(&buf[..S::CHALLENGE_LEN])?;
+        let buf = if S::Codec::BIG_ENDIAN {
+            &c_buf[c_buf.len() - S::CHALLENGE_LEN..]
+        } else {
+            &c_buf[..S::CHALLENGE_LEN]
+        };
+        writer.write_all(buf)?;
         self.s.serialize_compressed(&mut writer)?;
         Ok(())
     }
@@ -47,11 +52,11 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         _compress_always: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let c = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
-            &mut reader,
-            ark_serialize::Compress::No,
-            validate,
-        )?;
+        let mut c_buf = vec![0; S::CHALLENGE_LEN];
+        if reader.read_exact(&mut c_buf[..]).is_err() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        let c = utils::decode_scalar::<S>(&c_buf);
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             ark_serialize::Compress::No,
