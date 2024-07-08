@@ -303,35 +303,38 @@ pub(crate) mod ark_next {
     }
 }
 
-pub trait IntoSW<C: ark_ec::short_weierstrass::SWCurveConfig> {
+pub trait SWMapping<C: ark_ec::short_weierstrass::SWCurveConfig> {
+    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self;
     fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C>;
 }
 
-impl<C: ark_ec::short_weierstrass::SWCurveConfig> IntoSW<C>
+impl<C: ark_ec::short_weierstrass::SWCurveConfig> SWMapping<C>
     for ark_ec::short_weierstrass::Affine<C>
 {
+    #[inline(always)]
+    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
+        sw
+    }
+
+    #[inline(always)]
     fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
         self
     }
 }
 
-impl<C: ark_next::MapConfig> IntoSW<C> for ark_ec::twisted_edwards::Affine<C> {
+impl<C: ark_next::MapConfig> SWMapping<C> for ark_ec::twisted_edwards::Affine<C> {
+    #[inline(always)]
+    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
+        const ERR_MSG: &str =
+            "SW to TE is expected to be implemented only for curves supporting the mapping";
+        ark_next::map_sw_to_te(&sw).expect(ERR_MSG)
+    }
+
+    #[inline(always)]
     fn into_sw(self) -> ark_ec::short_weierstrass::Affine<C> {
         const ERR_MSG: &str =
-            "'IntoSW' is expected to be implemented only for curves supporting the mapping";
+            "TE to SW is expected to be implemented only for curves supporting the mapping";
         ark_next::map_te_to_sw(&self).expect(ERR_MSG)
-    }
-}
-
-pub trait FromSW<C: ark_ec::short_weierstrass::SWCurveConfig> {
-    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self;
-}
-
-impl<C: ark_ec::short_weierstrass::SWCurveConfig> FromSW<C>
-    for ark_ec::short_weierstrass::Affine<C>
-{
-    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
-        sw
     }
 }
 

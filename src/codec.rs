@@ -49,7 +49,7 @@ impl<S: Suite> Codec<S> for Sec1Codec
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig,
-    AffinePoint<S>: utils::IntoSW<CurveConfig<S>> + utils::FromSW<CurveConfig<S>>,
+    AffinePoint<S>: utils::SWMapping<CurveConfig<S>>,
 {
     const BIG_ENDIAN: bool = true;
 
@@ -57,13 +57,13 @@ where
     /// (https://www.secg.org/sec1-v2.pdf) with point compression on.
     fn point_encode(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         use ark_ff::biginteger::BigInteger;
-        let mut tmp = Vec::new();
-        use utils::IntoSW;
+        use utils::SWMapping;
 
         if pt.is_zero() {
             buf.push(0x00);
             return;
         }
+        let mut tmp = Vec::new();
         let sw = pt.into_sw();
 
         let is_odd = sw.y.into_bigint().is_odd();
@@ -78,7 +78,7 @@ where
     /// (https://www.secg.org/sec1-v2.pdf) with point compression on.
     fn point_decode(buf: &[u8]) -> AffinePoint<S> {
         use ark_ff::biginteger::BigInteger;
-        use utils::FromSW;
+        use utils::SWMapping;
         type SWAffine<C> = ark_ec::short_weierstrass::Affine<C>;
         if buf.len() == 1 && buf[0] == 0x00 {
             return AffinePoint::<S>::zero();

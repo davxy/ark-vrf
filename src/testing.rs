@@ -72,7 +72,7 @@ pub fn ring_prove_verify<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: ring::IntoSW<CurveConfig<S>>,
+    AffinePoint<S>: utils::SWMapping<CurveConfig<S>>,
 {
     use ring::{Prover, RingContext, Verifier};
 
@@ -105,9 +105,9 @@ pub fn check_complement_point<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: ring::IntoSW<CurveConfig<S>>,
+    AffinePoint<S>: utils::SWMapping<CurveConfig<S>>,
 {
-    use ring::IntoSW;
+    use utils::SWMapping;
     let pt = S::COMPLEMENT_POINT.into_sw();
     assert!(pt.is_on_curve());
     assert!(!pt.is_in_correct_subgroup_assuming_on_curve());
