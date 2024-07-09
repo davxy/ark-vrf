@@ -1,4 +1,4 @@
-use crate::{AffinePoint, BaseField, Codec, HashOutput, ScalarField, Suite};
+use crate::*;
 
 use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
@@ -186,10 +186,10 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
         "Suite::Hasher output is required to be >= 64 bytes"
     );
 
-    let raw = scalar_encode::<S>(sk);
+    let raw = codec::scalar_encode::<S>(sk);
     let sk_hash = &hash::<S::Hasher>(&raw)[32..];
 
-    let raw = encode_point::<S>(input);
+    let raw = codec::point_encode::<S>(input);
     let v = [sk_hash, &raw[..]].concat();
     let h = &hash::<S::Hasher>(&v)[..];
 
@@ -208,14 +208,14 @@ pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 where
     S::Hasher: digest::core_api::BlockSizeUser,
 {
-    let raw = encode_point::<S>(input);
+    let raw = codec::point_encode::<S>(input);
     let h1 = hash::<S::Hasher>(&raw);
 
     let v = [1; 32];
     let k = [0; 32];
 
     // K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
-    let x = scalar_encode::<S>(sk);
+    let x = codec::scalar_encode::<S>(sk);
     let raw = [&v[..], &[0x00], &x[..], &h1[..]].concat();
     let k = hmac::<S::Hasher>(&k, &raw);
 
@@ -233,30 +233,6 @@ where
     let v = hmac::<S::Hasher>(&k, &v);
 
     S::Codec::scalar_decode(&v)
-}
-
-/// Point encoder wrapper using `Suite::Codec`.
-pub fn encode_point<S: Suite>(pt: &AffinePoint<S>) -> Vec<u8> {
-    let mut buf = Vec::new();
-    S::Codec::point_encode(pt, &mut buf);
-    buf
-}
-
-/// Point decoder wrapper using `Suite::Codec`.
-pub fn decode_point<S: Suite>(buf: &[u8]) -> AffinePoint<S> {
-    S::Codec::point_decode(buf)
-}
-
-/// Scalar encoder wrapper using `Suite::Codec`.
-pub fn scalar_encode<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
-    let mut buf = Vec::new();
-    S::Codec::scalar_encode(sc, &mut buf);
-    buf
-}
-
-/// Scalar decoder wrapper using `Suite::Codec`.
-pub fn scalar_decode<S: Suite>(buf: &[u8]) -> ScalarField<S> {
-    S::Codec::scalar_decode(buf)
 }
 
 // Upcoming Arkworks features.
