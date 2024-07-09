@@ -49,10 +49,13 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
+        // TODO: Build as rand if not test-vectors feature? Or is this enough
+        let cb = S::challenge(&[&input.0, &output.0], ad.as_ref());
+        let b = self.scalar * cb;
+
         // Construct the nonces
         let k = S::nonce(&self.scalar, input);
-        let kb = S::nonce(&k, input);
-        let b = S::nonce(&kb, input);
+        let kb = S::nonce(&b, input);
 
         // Yb = x*G + b*B
         let pk_blind = (S::Affine::generator() * self.scalar + S::BLINDING_BASE * b).into_affine();
