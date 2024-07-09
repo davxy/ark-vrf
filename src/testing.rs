@@ -20,6 +20,10 @@ pub(crate) mod suite {
         type Affine = ark_ed25519::EdwardsAffine;
         type Hasher = sha2::Sha256;
         type Codec = codec::ArkworksCodec;
+
+        fn nonce(_sk: &ScalarField, _pt: Input) -> ScalarField {
+            random_val(None)
+        }
     }
 
     suite_types!(TestSuite);

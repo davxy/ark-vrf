@@ -93,6 +93,7 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
         if S::Codec::BIG_ENDIAN {
             hash.reverse();
         }
+        // TODO: flags? Must be pushed before reversing!
         hash.push(0x00);
 
         if let Ok(pt) = AffinePoint::<S>::deserialize_compressed_unchecked(&hash[..]) {
