@@ -88,10 +88,9 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
     let ctr_pos = buf.len() - 2;
 
     for ctr in 0..=255 {
-        // Modify the `ctr` value
         buf[ctr_pos] = ctr;
         let mut hash = hash::<S::Hasher>(&buf).to_vec();
-        if point_be_encoding {
+        if S::Codec::BIG_ENDIAN {
             hash.reverse();
         }
         hash.push(0x00);
@@ -354,7 +353,7 @@ mod tests {
 
     #[test]
     fn hash_to_curve_tai_works() {
-        let pt = hash_to_curve_tai_rfc_9381::<TestSuite>(b"hello world", false).unwrap();
+        let pt = hash_to_curve_tai_rfc_9381::<TestSuite>(b"hello world").unwrap();
         // Check that `pt` is in the prime subgroup
         assert!(pt.is_on_curve());
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())

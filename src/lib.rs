@@ -124,7 +124,7 @@ pub trait Suite: Copy + Clone {
     ///
     /// By default uses "try and increment" method described by RFC 9381.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data, false)
+        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
     }
 
     /// Map the point to a hash value using `Self::Hasher`.
