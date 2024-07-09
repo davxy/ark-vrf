@@ -265,12 +265,14 @@ mod tests {
     };
 
     #[test]
-    fn proof_to_hash_works() {
+    fn vrf_output_check() {
+        use ark_std::rand::SeedableRng;
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
         let secret = Secret::from_seed(TEST_SEED);
-        let input = Input::from(random_val(None));
+        let input = Input::from(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "2eaa1a349197bb2b6c455bc5554b331162f0e9b13aea0aab28283cc30e7c6482";
+        let expected = "0245a793d85347ca3c056f8c8f42f1049a310fabff6933b9eae592541a545cb8";
         assert_eq!(expected, hex::encode(output.hash()));
     }
 }
