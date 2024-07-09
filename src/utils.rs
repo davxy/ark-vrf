@@ -1,4 +1,4 @@
-use crate::{AffinePoint, Codec, HashOutput, ScalarField, Suite};
+use crate::{AffinePoint, BaseField, Codec, HashOutput, ScalarField, Suite};
 
 use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
@@ -63,10 +63,12 @@ pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data:
 /// find a valid curve point after approximately two attempts on average.
 ///
 /// The input `data` is defined to be `salt || alpha` according to the RFC 9281.
-pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
-    data: &[u8],
-    point_be_encoding: bool,
-) -> Option<AffinePoint<S>> {
+///
+/// # Panics
+///
+/// This function panics if `Suite::Hasher` output is less than AffinePoint base field
+/// modulus size (in bytes).
+pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
     use ark_ff::Field;
     use ark_serialize::CanonicalDeserialize;
@@ -74,12 +76,13 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(
     const DOM_SEP_FRONT: u8 = 0x01;
     const DOM_SEP_BACK: u8 = 0x00;
 
-    let mod_size = <<crate::BaseField<S> as Field>::BasePrimeField as PrimeField>::MODULUS_BIT_SIZE
-        as usize
-        / 8;
-    if S::Hasher::output_size() < mod_size {
-        return None;
-    }
+    let mod_size =
+        <<BaseField<S> as Field>::BasePrimeField as PrimeField>::MODULUS_BIT_SIZE as usize / 8;
+
+    assert!(
+        S::Hasher::output_size() >= mod_size,
+        "Suite::Hasher output is required to be >= base field modulus size"
+    );
 
     let mut buf = [S::SUITE_ID, &[DOM_SEP_FRONT], data, &[0x00, DOM_SEP_BACK]].concat();
     let ctr_pos = buf.len() - 2;
@@ -172,15 +175,17 @@ pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
 /// This procedure is based on section 5.1.6 of RFC 8032: "Edwards-Curve Digital
 /// Signature Algorithm (EdDSA)".
 ///
-/// The algorithm generate the nonce value in a deterministic
-/// pseudorandom fashion.
-///
-/// `Suite::Hash` is recommended to be be at least 64 bytes.
+/// The algorithm generate the nonce value in a deterministic pseudorandom fashion.
 ///
 /// # Panics
 ///
-/// This function panics if `Hash` is less than 32 bytes.
+/// This function panics if `Suite::Hasher` output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S> {
+    assert!(
+        S::Hasher::output_size() >= 64,
+        "Suite::Hasher output is required to be >= 64 bytes"
+    );
+
     let raw = scalar_encode::<S>(sk);
     let sk_hash = &hash::<S::Hasher>(&raw)[32..];
 

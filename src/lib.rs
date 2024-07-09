@@ -105,7 +105,7 @@ pub trait Suite: Copy + Clone {
     ///
     /// # Panics
     ///
-    /// This function panics if `Hasher` output is less than 32 bytes.
+    /// This function panics if `Hasher` output is less than 64 bytes.
     fn nonce(sk: &ScalarField<Self>, pt: Input<Self>) -> ScalarField<Self> {
         utils::nonce_rfc_8032::<Self>(sk, &pt.0)
     }
