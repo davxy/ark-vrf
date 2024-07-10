@@ -49,7 +49,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        // TODO: Build as rand if not test-vectors feature? Or is this enough
+        // TODO:is this ok?
         let cb = S::challenge(&[&input.0, &output.0], ad.as_ref());
         let b = self.scalar * cb;
 
