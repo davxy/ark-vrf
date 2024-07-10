@@ -89,12 +89,15 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
     for ctr in 0..=255 {
         buf[ctr_pos] = ctr;
 
-        let mut hash = hash::<S::Hasher>(&buf).to_vec();
+        let mut buf = hash::<S::Hasher>(&buf).to_vec();
+        // TODO: remove this hack at some point!
+        // Maybe we can just leave `buf` "as-is", and introduce a default behavior in
+        // `point_decode` where, if flag is missing, then use the default one (e.g. 0x02).
         if S::Codec::BIG_ENDIAN {
-            hash.insert(0, 0x02);
+            buf.insert(0, 0x02);
         }
 
-        if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
+        if let Ok(pt) = codec::point_decode::<S>(&buf[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
                 return Some(pt);
@@ -144,7 +147,7 @@ where
     Some(res)
 }
 
-/// Challenge generation according to RFC 9381 section 5.4.3.
+/// Challenge generation according to RFC-9381 section 5.4.3.
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
     const DOM_SEP_START: u8 = 0x02;
     const DOM_SEP_END: u8 = 0x00;
@@ -158,7 +161,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     ScalarField::<S>::from_be_bytes_mod_order(hash)
 }
 
-/// Point to a hash according to RFC 9381 section <TODO>.
+/// Point to a hash according to RFC-9381 section 5.2.
 pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
     const DOM_SEP_START: u8 = 0x03;
     const DOM_SEP_END: u8 = 0x00;
@@ -168,7 +171,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(pt: &AffinePoint<S>) -> HashOutput<S> {
     hash::<S::Hasher>(&buf)
 }
 
-/// Nonce generation according to RFC 9381 section 5.4.2.2.
+/// Nonce generation according to RFC-9381 section 5.4.2.2.
 ///
 /// This procedure is based on section 5.1.6 of RFC 8032: "Edwards-Curve Digital
 /// Signature Algorithm (EdDSA)".

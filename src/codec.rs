@@ -32,7 +32,7 @@ impl<S: Suite> Codec<S> for ArkworksCodec {
     }
 
     fn point_decode(buf: &[u8]) -> Result<AffinePoint<S>, Error> {
-        AffinePoint::<S>::deserialize_compressed_unchecked(buf).map_err(|e| e.into())
+        AffinePoint::<S>::deserialize_compressed_unchecked(buf).map_err(Into::into)
     }
 
     fn scalar_encode(sc: &ScalarField<S>, buf: &mut Vec<u8>) {
