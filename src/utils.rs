@@ -71,7 +71,6 @@ pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data:
 pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
     use ark_ff::Field;
-    use ark_serialize::CanonicalDeserialize;
 
     const DOM_SEP_FRONT: u8 = 0x01;
     const DOM_SEP_BACK: u8 = 0x00;
@@ -89,14 +88,13 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
 
     for ctr in 0..=255 {
         buf[ctr_pos] = ctr;
+
         let mut hash = hash::<S::Hasher>(&buf).to_vec();
         if S::Codec::BIG_ENDIAN {
-            hash.reverse();
+            hash.insert(0, 0x02);
         }
-        // TODO: flags? Must be pushed before reversing!
-        hash.push(0x00);
 
-        if let Ok(pt) = AffinePoint::<S>::deserialize_compressed_unchecked(&hash[..]) {
+        if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
                 return Some(pt);
