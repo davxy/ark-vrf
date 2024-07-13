@@ -1,4 +1,4 @@
-use crate::utils::SWMapping;
+use crate::arkworks::te_sw_map::{SWMapping, SWMappingSeq};
 use crate::*;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
@@ -7,9 +7,6 @@ pub mod prelude {
     pub use fflonk;
     pub use ring_proof;
 }
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 /// Ring suite.
 pub trait RingSuite: PedersenSuite {
@@ -138,7 +135,7 @@ where
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = sig.pedersen_proof.key_commitment().into_sw();
+        let key_commitment = *sig.pedersen_proof.key_commitment().into_sw();
         if !verifier.verify_ring_proof(sig.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -156,11 +153,13 @@ where
     pub piop_params: PiopParams<S>,
 }
 
+#[inline(always)]
 fn domain_size(ring_size: usize) -> usize {
     const RING_DOMAIN_OVERHEAD: usize = 257;
     1 << ark_std::log2(ring_size + RING_DOMAIN_OVERHEAD)
 }
 
+#[allow(private_bounds)]
 impl<S: RingSuite> RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -194,8 +193,8 @@ where
 
         let piop_params = PiopParams::<S>::setup(
             ring_proof::Domain::new(domain_size, true),
-            S::BLINDING_BASE.into_sw(),
-            S::COMPLEMENT_POINT.into_sw(),
+            *S::BLINDING_BASE.into_sw(),
+            *S::COMPLEMENT_POINT.into_sw(),
         );
 
         Ok(Self {
@@ -205,6 +204,7 @@ where
     }
 
     /// The max ring size this context is able to manage.
+    #[inline(always)]
     pub fn max_ring_size(&self) -> usize {
         self.piop_params.keyset_part_size
     }
@@ -212,24 +212,22 @@ where
     /// Construct a `ProverKey` instance for the given ring.
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
-        let pks = &pks[..pks.len().min(self.max_ring_size())];
-        #[cfg(feature = "parallel")]
-        let pks: Vec<_> = pks.par_iter().map(|p| p.into_sw()).collect();
-        #[cfg(not(feature = "parallel"))]
-        let pks: Vec<_> = pks.iter().map(|p| p.into_sw()).collect();
+    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S>
+    where
+        [AffinePoint<S>]: SWMappingSeq<CurveConfig<S>>,
+    {
+        let pks = pks[..pks.len().min(self.max_ring_size())].into_sw_seq();
         ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
     }
 
     /// Construct a `VerifierKey` instance for the given ring.
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
-        let pks = &pks[..pks.len().min(self.max_ring_size())];
-        #[cfg(feature = "parallel")]
-        let pks: Vec<_> = pks.par_iter().map(|p| p.into_sw()).collect();
-        #[cfg(not(feature = "parallel"))]
-        let pks: Vec<_> = pks.iter().map(|p| p.into_sw()).collect();
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S>
+    where
+        [AffinePoint<S>]: SWMappingSeq<CurveConfig<S>>,
+    {
+        let pks = pks[..pks.len().min(self.max_ring_size())].into_sw_seq();
         ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
     }
 
@@ -297,7 +295,6 @@ impl<S: RingSuite> ark_serialize::Valid for RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.pcs_params.check()
