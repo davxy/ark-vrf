@@ -47,77 +47,60 @@ pub fn map_te_to_sw<C: MapConfig>(point: &EdwardsAffine<C>) -> Option<Weierstras
     Some(WeierstrassAffine::new_unchecked(x, y))
 }
 
-pub trait SWMapping<C: ark_ec::short_weierstrass::SWCurveConfig> {
-    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self;
-    fn into_sw(&self) -> Cow<ark_ec::short_weierstrass::Affine<C>>;
+pub trait SWMapping<C: SWCurveConfig> {
+    fn from_sw(sw: WeierstrassAffine<C>) -> Self;
+
+    fn into_sw(self) -> WeierstrassAffine<C>;
+
+    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]>
+    where
+        Self: Sized;
 }
 
-impl<C: ark_ec::short_weierstrass::SWCurveConfig> SWMapping<C>
-    for ark_ec::short_weierstrass::Affine<C>
-{
+impl<C: SWCurveConfig> SWMapping<C> for WeierstrassAffine<C> {
     #[inline(always)]
-    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
+    fn from_sw(sw: WeierstrassAffine<C>) -> Self {
         sw
     }
 
     #[inline(always)]
-    fn into_sw(&self) -> Cow<ark_ec::short_weierstrass::Affine<C>> {
-        Cow::Borrowed(self)
+    fn into_sw(self) -> WeierstrassAffine<C> {
+        self
+    }
+
+    #[inline(always)]
+    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
+        Cow::Borrowed(other)
     }
 }
 
-impl<C: MapConfig> SWMapping<C> for ark_ec::twisted_edwards::Affine<C> {
+impl<C: MapConfig> SWMapping<C> for EdwardsAffine<C> {
     #[inline(always)]
-    fn from_sw(sw: ark_ec::short_weierstrass::Affine<C>) -> Self {
+    fn from_sw(sw: WeierstrassAffine<C>) -> Self {
         const ERR_MSG: &str =
             "SW to TE is expected to be implemented only for curves supporting the mapping";
         map_sw_to_te(&sw).expect(ERR_MSG)
     }
 
     #[inline(always)]
-    fn into_sw(&self) -> Cow<ark_ec::short_weierstrass::Affine<C>> {
+    fn into_sw(self) -> WeierstrassAffine<C> {
         const ERR_MSG: &str =
             "TE to SW is expected to be implemented only for curves supporting the mapping";
-        Cow::Owned(map_te_to_sw(&self).expect(ERR_MSG))
+        map_te_to_sw(&self).expect(ERR_MSG)
     }
-}
 
-pub(crate) trait SWMappingSeq<C: ark_ec::short_weierstrass::SWCurveConfig> {
     #[inline(always)]
-    fn into_sw_seq(&self) -> Cow<[ark_ec::short_weierstrass::Affine<C>]>;
-}
-
-impl<C: SWCurveConfig> SWMappingSeq<C> for [ark_ec::short_weierstrass::Affine<C>]
-where
-    ark_ec::short_weierstrass::Affine<C>: SWMapping<C>,
-{
-    #[inline(always)]
-    fn into_sw_seq(&self) -> Cow<[ark_ec::short_weierstrass::Affine<C>]> {
-        Cow::Borrowed(self)
-    }
-}
-
-impl<C: MapConfig> SWMappingSeq<C> for [ark_ec::twisted_edwards::Affine<C>]
-where
-    ark_ec::twisted_edwards::Affine<C>: SWMapping<C>,
-{
-    #[inline(always)]
-    fn into_sw_seq(&self) -> Cow<[WeierstrassAffine<C>]> {
+    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
+        let pks;
         #[cfg(feature = "parallel")]
-        use rayon::prelude::*;
-
-        const ERR_MSG: &str =
-            "TE to SW is expected to be implemented only for curves supporting the mapping";
-        #[cfg(feature = "parallel")]
-        let pks: Vec<_> = self
-            .par_iter()
-            .map(|p| map_te_to_sw(p).expect(ERR_MSG))
-            .collect();
+        {
+            use rayon::prelude::*;
+            pks = other.par_iter().map(|p| p.into_sw()).collect();
+        }
         #[cfg(not(feature = "parallel"))]
-        let pks: Vec<_> = self
-            .iter()
-            .map(|p| map_te_to_sw(p).expect(ERR_MSG))
-            .collect();
+        {
+            pks = other.iter().map(|p| p.into_sw()).collect();
+        }
         Cow::Owned(pks)
     }
 }

@@ -1,4 +1,4 @@
-use crate::arkworks::te_sw_map::{SWMapping, SWMappingSeq};
+use crate::arkworks::te_sw_map::SWMapping;
 use crate::*;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
@@ -135,7 +135,7 @@ where
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = *sig.pedersen_proof.key_commitment().into_sw();
+        let key_commitment = sig.pedersen_proof.key_commitment().into_sw();
         if !verifier.verify_ring_proof(sig.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -193,8 +193,8 @@ where
 
         let piop_params = PiopParams::<S>::setup(
             ring_proof::Domain::new(domain_size, true),
-            *S::BLINDING_BASE.into_sw(),
-            *S::COMPLEMENT_POINT.into_sw(),
+            S::BLINDING_BASE.into_sw(),
+            S::COMPLEMENT_POINT.into_sw(),
         );
 
         Ok(Self {
@@ -212,22 +212,16 @@ where
     /// Construct a `ProverKey` instance for the given ring.
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S>
-    where
-        [AffinePoint<S>]: SWMappingSeq<CurveConfig<S>>,
-    {
-        let pks = pks[..pks.len().min(self.max_ring_size())].into_sw_seq();
+    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
+        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
         ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
     }
 
     /// Construct a `VerifierKey` instance for the given ring.
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S>
-    where
-        [AffinePoint<S>]: SWMappingSeq<CurveConfig<S>>,
-    {
-        let pks = pks[..pks.len().min(self.max_ring_size())].into_sw_seq();
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
+        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
         ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
     }
 
