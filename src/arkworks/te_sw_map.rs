@@ -52,7 +52,7 @@ pub trait SWMapping<C: SWCurveConfig> {
 
     fn into_sw(self) -> WeierstrassAffine<C>;
 
-    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]>
+    fn to_sw_slice(slice: &[Self]) -> Cow<[WeierstrassAffine<C>]>
     where
         Self: Sized;
 }
@@ -69,8 +69,8 @@ impl<C: SWCurveConfig> SWMapping<C> for WeierstrassAffine<C> {
     }
 
     #[inline(always)]
-    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
-        Cow::Borrowed(other)
+    fn to_sw_slice(slice: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
+        Cow::Borrowed(slice)
     }
 }
 
@@ -90,16 +90,16 @@ impl<C: MapConfig> SWMapping<C> for EdwardsAffine<C> {
     }
 
     #[inline(always)]
-    fn to_sw_slice(other: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
+    fn to_sw_slice(slice: &[Self]) -> Cow<[WeierstrassAffine<C>]> {
         let pks;
         #[cfg(feature = "parallel")]
         {
             use rayon::prelude::*;
-            pks = other.par_iter().map(|p| p.into_sw()).collect();
+            pks = slice.par_iter().map(|p| p.into_sw()).collect();
         }
         #[cfg(not(feature = "parallel"))]
         {
-            pks = other.iter().map(|p| p.into_sw()).collect();
+            pks = slice.iter().map(|p| p.into_sw()).collect();
         }
         Cow::Owned(pks)
     }
