@@ -165,11 +165,11 @@ where
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-        Self::new_random(ring_size, &mut rng)
+        Self::from_rand(ring_size, &mut rng)
     }
 
     /// Construct a new random ring context suitable for the given ring size.
-    pub fn new_random<R: ark_std::rand::RngCore>(ring_size: usize, rng: &mut R) -> Self {
+    pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let domain_size = domain_size(ring_size);
         let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);

@@ -11,7 +11,6 @@ ark-ec = { version = "0.4", default-features = false }
 ark-ff = { version = "0.4", default-features = false }
 ark-std = { version = "0.4", default-features = false }
 ark-serialize = { version = "0.4", default-features = false }
-rand_core = { version = "0.6", default-features = false, optional = true }
 rand_chacha = { version = "0.3", default-features = false }
 rayon = { version = "1.10", default-features = false, optional = true }
 zeroize = { version = "1.8", default-features = false }
@@ -36,20 +35,10 @@ indexmap = { version = "2.2.6", features = ["serde"] }
 [features]
 default = [ "std" ]
 std = [
-  "getrandom",
   "ark-std/std",
+  "ark-std/getrandom",
   "ark-ec/std",
-  "rand_core/std",
   "ring-proof/std",
-]
-getrandom = [
-  "rand_core",
-  "ark-std/getrandom"
-]
-curves = [
-  "secp256r1",
-  "ed25519",
-  "bandersnatch",
 ]
 secp256r1 = [
   "ark-secp256r1",
@@ -57,13 +46,6 @@ secp256r1 = [
 ]
 ed25519 = [ "ark-ed25519" ]
 bandersnatch = [ "ark-ed-on-bls12-381-bandersnatch" ]
-parallel = [
-  "ark-ec/parallel",
-  "ark-ff/parallel",
-  "ark-std/parallel",
-  "ring-proof?/parallel",
-  "rayon",
-]
 ring = [
   "bandersnatch",
   "ring-proof",
@@ -71,9 +53,25 @@ ring = [
 ]
 rfc-6979 = [ "hmac" ]
 full = [
-  "curves",
+  "secp256r1",
+  "ed25519",
+  "bandersnatch",
   "ring",
 ]
+
+# Optimizations
+parallel = [
+  "ark-ec/parallel",
+  "ark-ff/parallel",
+  "ark-std/parallel",
+  "ring-proof?/parallel",
+  "rayon",
+]
+asm = [
+  "ring-proof?/asm"
+]
+
+# Deterministic ring-proof (unsafe)
 test-vectors = [
   "ring-proof?/test-vectors"
 ]
