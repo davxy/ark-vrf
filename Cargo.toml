@@ -17,17 +17,14 @@ rayon = { version = "1.10", default-features = false, optional = true }
 zeroize = { version = "1.8", default-features = false }
 hmac = {version = "0.12", default-features = false, optional = true }
 digest = { version = "0.10", default-features = false }
-merlin = { version = "3.0", default-features = false, optional = true }
+sha2 = { version = "0.10", default-features = false }
+# Waiting for crates.io
+ring-proof = { package = "ring", git = "https://github.com/davxy/ring-proof", branch = "extended", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.4.0", default-features = false, optional = true }
 ark-ed25519 = { version = "0.4.0", default-features = false, optional = true }
 ark-ed-on-bls12-381-bandersnatch = { version = "0.4.0", default-features = false, optional = true }
 ark-bls12-381 = { version = "0.4.0", default-features = false, optional = true }
-# Hashing
-sha2 = { version = "0.10", default-features = false }
-# Ring VRF (waiting for crates.io)
-fflonk = { git = "https://github.com/w3f/fflonk", default-features = false, optional = true }
-ring-proof = { package = "ring", git = "https://github.com/davxy/ring-proof", branch = "extended", default-features = false, optional = true }
 
 [dev-dependencies]
 ark-ed25519 = "0.4"
@@ -43,7 +40,6 @@ std = [
   "ark-std/std",
   "ark-ec/std",
   "rand_core/std",
-  "fflonk/std",
   "ring-proof/std",
 ]
 getrandom = [
@@ -66,15 +62,12 @@ parallel = [
   "ark-ff/parallel",
   "ark-std/parallel",
   "ring-proof?/parallel",
-  "fflonk?/parallel",
   "rayon",
 ]
 ring = [
   "bandersnatch",
-  "fflonk",
   "ring-proof",
   "ark-bls12-381/curve",
-  "merlin",
 ]
 rfc-6979 = [ "hmac" ]
 full = [

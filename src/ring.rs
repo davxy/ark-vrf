@@ -3,11 +3,6 @@ use crate::*;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 
-pub mod prelude {
-    pub use fflonk;
-    pub use ring_proof;
-}
-
 /// Ring suite.
 pub trait RingSuite: PedersenSuite {
     /// Pairing type.
@@ -18,12 +13,12 @@ pub trait RingSuite: PedersenSuite {
 }
 
 /// Polinomial Commitment Scheme (KZG)
-type Pcs<S> = fflonk::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
+type Pcs<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
 /// PCS setup parameters.
 ///
 /// Basically the powers of tau SRS.
-pub type PcsParams<S> = fflonk::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
+pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 
 /// Polynomial Interactive Oracle Proof (IOP) parameters.
 ///
@@ -32,7 +27,8 @@ pub type PcsParams<S> = fflonk::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 pub type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
 
 /// Single PCS commitment.
-pub type PcsCommitment<S> = fflonk::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
+pub type PcsCommitment<S> =
+    ring_proof::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
 
 /// Ring keys commitment.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
@@ -175,7 +171,7 @@ where
 
     /// Construct a new random ring context suitable for the given ring size.
     pub fn new_random<R: ark_std::rand::RngCore>(ring_size: usize, rng: &mut R) -> Self {
-        use fflonk::pcs::PCS;
+        use ring_proof::pcs::PCS;
         let domain_size = domain_size(ring_size);
         let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);
         Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
@@ -230,7 +226,7 @@ where
             prover_key,
             self.piop_params.clone(),
             key_index,
-            merlin::Transcript::new(b""),
+            ring_proof::Transcript::new(b""),
         )
     }
 
@@ -238,7 +234,7 @@ where
         RingVerifier::<S>::init(
             verifier_key,
             self.piop_params.clone(),
-            merlin::Transcript::new(b""),
+            ring_proof::Transcript::new(b""),
         )
     }
 }
