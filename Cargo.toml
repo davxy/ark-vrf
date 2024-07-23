@@ -11,12 +11,12 @@ ark-ec = { version = "0.4", default-features = false }
 ark-ff = { version = "0.4", default-features = false }
 ark-std = { version = "0.4", default-features = false }
 ark-serialize = { version = "0.4", default-features = false }
-rand_chacha = { version = "0.3", default-features = false }
-rayon = { version = "1.10", default-features = false, optional = true }
 zeroize = { version = "1.8", default-features = false }
-hmac = {version = "0.12", default-features = false, optional = true }
 digest = { version = "0.10", default-features = false }
 sha2 = { version = "0.10", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
+rayon = { version = "1.10", default-features = false, optional = true }
+hmac = {version = "0.12", default-features = false, optional = true }
 # Waiting for crates.io
 ring-proof = { package = "ring", git = "https://github.com/davxy/ring-proof", branch = "extended", default-features = false, optional = true }
 # Curves
