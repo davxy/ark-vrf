@@ -213,14 +213,10 @@ where
         ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
     }
 
-    /// Construct a `VerifierKey` instance for the given ring.
+    /// Construct `RingProver` from `ProverKey` for the prover implied by `key_index`.
     ///
-    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
-        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
-        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
-    }
-
+    /// Key index is the prover index within the `pks` sequence passed to construct the
+    /// `ProverKey` via the `prover_key` method.
     pub fn prover(&self, prover_key: ProverKey<S>, key_index: usize) -> RingProver<S> {
         RingProver::<S>::init(
             prover_key,
@@ -230,6 +226,26 @@ where
         )
     }
 
+    /// Construct a `VerifierKey` instance for the given ring.
+    ///
+    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
+        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
+        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
+    }
+
+    /// Construct `VerifierKey` instance for the ring previously committed.
+    ///
+    /// The `RingCommitment` can be obtained via the `VerifierKey::commitment()` method.
+    ///
+    /// This allows to quickly reconstruct the verifier key without having to recompute the
+    /// keys commitment.
+    pub fn verifier_key_from_commitment(&self, commitment: RingCommitment<S>) -> VerifierKey<S> {
+        use ring_proof::pcs::PcsParams;
+        VerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
+    }
+
+    /// Construct `RingVerifier` from `VerifierKey`.
     pub fn verifier(&self, verifier_key: VerifierKey<S>) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
