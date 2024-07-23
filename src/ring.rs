@@ -15,20 +15,19 @@ pub trait RingSuite: PedersenSuite {
 /// Polinomial Commitment Scheme (KZG)
 type Pcs<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
-/// PCS setup parameters.
+/// Single PCS commitment.
+type PcsCommitment<S> = ring_proof::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
+
+/// KZG "Polynomial Commitment Scheme" (PCS) parameters.
 ///
-/// Basically the powers of tau SRS.
+/// Basically powers of tau SRS.
 pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 
-/// Polynomial Interactive Oracle Proof (IOP) parameters.
+/// Polynomial "Interactive Oracle Proof" (IOP) parameters.
 ///
 /// Basically all the application specific parameters required to construct and
 /// verify the ring proof.
-pub type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
-
-/// Single PCS commitment.
-pub type PcsCommitment<S> =
-    ring_proof::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
+type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
 
 /// Ring keys commitment.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
@@ -145,8 +144,8 @@ where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig + Clone,
 {
-    pub pcs_params: PcsParams<S>,
-    pub piop_params: PiopParams<S>,
+    pcs_params: PcsParams<S>,
+    piop_params: PiopParams<S>,
 }
 
 #[inline(always)]
@@ -236,7 +235,7 @@ where
 
     /// Construct `VerifierKey` instance for the ring previously committed.
     ///
-    /// The `RingCommitment` can be obtained via the `VerifierKey::commitment()` method.
+    /// The `RingCommitment` instance can be obtained via the `VerifierKey::commitment()` method.
     ///
     /// This allows to quickly reconstruct the verifier key without having to recompute the
     /// keys commitment.
