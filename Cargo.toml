@@ -68,6 +68,7 @@ parallel = [
   "rayon",
 ]
 asm = [
+  "ark-ff/asm",
   "ring-proof?/asm"
 ]
 
