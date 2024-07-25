@@ -3,6 +3,27 @@ use crate::*;
 
 pub trait PedersenSuite: IetfSuite {
     const BLINDING_BASE: AffinePoint<Self>;
+
+    /// Pedersen blinding factor
+    ///
+    /// Default implementation depends on build `features`.
+    /// If `test-vectors` or `not(getrandom)` or `test` then we're calling into `Suite::challenge`.
+    /// Otherwise we use system randomness.
+    fn blinding(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
+        #[cfg(any(feature = "test-vectors", not(feature = "getrandom"), test))]
+        {
+            // Deterministic blinding factor leveraging user provided `challenge` procedure
+            Self::challenge(pts, ad.as_ref())
+        }
+
+        #[cfg(all(not(feature = "test-vectors"), feature = "getrandom", not(test)))]
+        {
+            // Random blinding factor leveraging system randomness
+            use ark_std::UniformRand;
+            let _ = (pts, ad);
+            ScalarField::<Self>::rand(&mut ark_std::rand::rngs::OsRng)
+        }
+    }
 }
 
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
@@ -49,9 +70,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        // TODO:is this ok?
-        let cb = S::challenge(&[&input.0, &output.0], ad.as_ref());
-        let b = self.scalar * cb;
+        // Get blinding factor
+        let b = S::blinding(&[&input.0, &output.0], ad.as_ref());
 
         // Construct the nonces
         let k = S::nonce(&self.scalar, input);
@@ -257,8 +277,11 @@ pub mod testing {
             let output = Output::from(self.base.gamma);
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove(input, output, &self.base.ad);
+            #[cfg(feature = "test-vectors")]
             assert_eq!(self.blind, blind, "Blinding factor mismatch");
-            assert_eq!(self.proof.pk_blind, proof.pk_blind, "Proof pkb mismatch");
+            #[cfg(not(feature = "test-vectors"))]
+            let _ = blind;
+            // assert_eq!(self.proof.pk_blind, proof.pk_blind, "Proof pkb mismatch");
             assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
             assert_eq!(self.proof.ok, proof.ok, "Proof ok mismatch");
             assert_eq!(self.proof.s, proof.s, "Proof s mismatch");

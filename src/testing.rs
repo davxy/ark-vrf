@@ -289,7 +289,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     }
 
     fn run(&self) {
-        println!("Running test vector: {}", self.comment);
+        println!("Run test vector: {}", self.comment);
 
         let sk = Secret::<S>::from_scalar(self.sk);
 
@@ -332,6 +332,7 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(file: &str, i
         let ad = hex::decode(var_data.1).unwrap();
         let comment = format!("{} - vector-{}", identifier, i + 1);
         let vector = V::new(&comment, &[i as u8], &alpha, None, &ad, 0);
+        println!("Gen test vector: {}", comment);
         vector.run();
         vector_maps.push(vector.to_map());
     }
