@@ -6,9 +6,18 @@ pub trait PedersenSuite: IetfSuite {
 
     /// Pedersen blinding factor.
     ///
-    /// Default implementation calls into `Suite::challenge`
+    /// Default implementation is deterministic and inspired by the RFC-9381 challenge procedure.
     fn blinding(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
-        Self::challenge(pts, ad)
+        const DOM_SEP_START: u8 = 0xC2;
+        const DOM_SEP_END: u8 = 0x00;
+        let mut buf = [Self::SUITE_ID, &[DOM_SEP_START]].concat();
+        pts.iter().for_each(|p| {
+            Self::Codec::point_encode(p, &mut buf);
+        });
+        buf.extend_from_slice(ad);
+        buf.push(DOM_SEP_END);
+        let hash = &utils::hash::<Self::Hasher>(&buf);
+        ScalarField::<Self>::from_be_bytes_mod_order(hash)
     }
 }
 
