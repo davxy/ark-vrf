@@ -277,11 +277,8 @@ pub mod testing {
             let output = Output::from(self.base.gamma);
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove(input, output, &self.base.ad);
-            #[cfg(feature = "test-vectors")]
             assert_eq!(self.blind, blind, "Blinding factor mismatch");
-            #[cfg(not(feature = "test-vectors"))]
-            let _ = blind;
-            // assert_eq!(self.proof.pk_blind, proof.pk_blind, "Proof pkb mismatch");
+            assert_eq!(self.proof.pk_blind, proof.pk_blind, "Proof pkb mismatch");
             assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
             assert_eq!(self.proof.ok, proof.ok, "Proof ok mismatch");
             assert_eq!(self.proof.s, proof.s, "Proof s mismatch");
