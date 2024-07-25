@@ -4,25 +4,11 @@ use crate::*;
 pub trait PedersenSuite: IetfSuite {
     const BLINDING_BASE: AffinePoint<Self>;
 
-    /// Pedersen blinding factor
+    /// Pedersen blinding factor.
     ///
-    /// Default implementation depends on build `features`.
-    /// If `test-vectors` or `not(getrandom)` or `test` then we're calling into `Suite::challenge`.
-    /// Otherwise we use system randomness.
+    /// Default implementation calls into `Suite::challenge`
     fn blinding(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
-        #[cfg(any(feature = "test-vectors", not(feature = "getrandom"), test))]
-        {
-            // Deterministic blinding factor leveraging user provided `challenge` procedure
-            Self::challenge(pts, ad.as_ref())
-        }
-
-        #[cfg(all(not(feature = "test-vectors"), feature = "getrandom", not(test)))]
-        {
-            // Random blinding factor leveraging system randomness
-            use ark_std::UniformRand;
-            let _ = (pts, ad);
-            ScalarField::<Self>::rand(&mut ark_std::rand::rngs::OsRng)
-        }
+        Self::challenge(pts, ad)
     }
 }
 
