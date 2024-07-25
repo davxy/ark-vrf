@@ -50,7 +50,7 @@
 //!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_ELL2_RO_"`
 //!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
 
-use crate::{pedersen::PedersenSuite, utils::ark_next::*, *};
+use crate::{arkworks::te_sw_map::*, pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 pub mod weierstrass {
@@ -89,6 +89,7 @@ pub mod weierstrass {
 
         pub type PcsParams = ring_suite::PcsParams<BandersnatchSha512Tai>;
         pub type RingContext = ring_suite::RingContext<BandersnatchSha512Tai>;
+        pub type RingCommitment = ring_suite::RingCommitment<BandersnatchSha512Tai>;
         pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512Tai>;
         pub type RingProver = ring_suite::RingProver<BandersnatchSha512Tai>;
         pub type RingVerifier = ring_suite::RingVerifier<BandersnatchSha512Tai>;
@@ -177,6 +178,7 @@ pub mod edwards {
 
         pub type PcsParams = ring_suite::PcsParams<BandersnatchSha512Ell2>;
         pub type RingContext = ring_suite::RingContext<BandersnatchSha512Ell2>;
+        pub type RingCommitment = ring_suite::RingCommitment<BandersnatchSha512Ell2>;
         pub type VerifierKey = ring_suite::VerifierKey<BandersnatchSha512Ell2>;
         pub type RingProver = ring_suite::RingProver<BandersnatchSha512Ell2>;
         pub type RingVerifier = ring_suite::RingVerifier<BandersnatchSha512Ell2>;
@@ -228,17 +230,17 @@ impl MapConfig for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing, utils::ark_next};
+    use crate::{testing, utils::te_sw_map::*};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
     #[test]
     fn sw_to_te_roundtrip() {
         let org_point = testing::random_val::<SWAffine>(None);
 
-        let te_point = ark_next::map_sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
+        let te_point = map_sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
         assert!(te_point.is_on_curve());
 
-        let sw_point = ark_next::map_te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
+        let sw_point = map_te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
         assert!(sw_point.is_on_curve());
     }
 }

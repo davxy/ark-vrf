@@ -1,35 +1,33 @@
-use crate::utils::SWMapping;
+use crate::arkworks::te_sw_map::SWMapping;
 use crate::*;
 use ark_ec::short_weierstrass::SWCurveConfig;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 
-pub mod prelude {
-    pub use fflonk;
-    pub use ring_proof;
-}
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
+/// Ring suite.
 pub trait RingSuite: PedersenSuite {
+    /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
+    /// Complement point.
     const COMPLEMENT_POINT: AffinePoint<Self>;
 }
 
-/// KZG Polynomial Commitment Scheme.
-pub type Pcs<S> = fflonk::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
+/// Polinomial Commitment Scheme (KZG)
+type Pcs<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
-/// KZG commitment.
-pub type PcsCommitment<S> = fflonk::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
+/// Single PCS commitment.
+type PcsCommitment<S> = ring_proof::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
 
-/// KZG setup parameters.
+/// KZG "Polynomial Commitment Scheme" (PCS) parameters.
 ///
-/// Basically the powers of tau SRS.
-pub type PcsParams<S> = fflonk::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
+/// Basically powers of tau SRS.
+pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 
-/// Ring proof application specific setup parameters.
-pub type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
+/// Polynomial "Interactive Oracle Proof" (IOP) parameters.
+///
+/// Basically all the application specific parameters required to construct and
+/// verify the ring proof.
+type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
 
 /// Ring keys commitment.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
@@ -48,10 +46,12 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Pcs<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Pcs<S>, CurveConfig<S>>;
 
-/// Ring proof.
+/// Actual ring proof.
 pub type RingProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 
-/// Ring proof.
+/// Ring proof bundled together with a Pedersen proof.
+///
+/// Pedersen proof is used to provide VRF capability.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite>
 where
@@ -144,15 +144,17 @@ where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig + Clone,
 {
-    pub pcs_params: PcsParams<S>,
-    pub piop_params: PiopParams<S>,
+    pcs_params: PcsParams<S>,
+    piop_params: PiopParams<S>,
 }
 
+#[inline(always)]
 fn domain_size(ring_size: usize) -> usize {
     const RING_DOMAIN_OVERHEAD: usize = 257;
     1 << ark_std::log2(ring_size + RING_DOMAIN_OVERHEAD)
 }
 
+#[allow(private_bounds)]
 impl<S: RingSuite> RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -163,12 +165,12 @@ where
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-        Self::new_random(ring_size, &mut rng)
+        Self::from_rand(ring_size, &mut rng)
     }
 
     /// Construct a new random ring context suitable for the given ring size.
-    pub fn new_random<R: ark_std::rand::RngCore>(ring_size: usize, rng: &mut R) -> Self {
-        use fflonk::pcs::PCS;
+    pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
+        use ring_proof::pcs::PCS;
         let domain_size = domain_size(ring_size);
         let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);
         Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
@@ -197,40 +199,57 @@ where
     }
 
     /// The max ring size this context is able to manage.
+    #[inline(always)]
     pub fn max_ring_size(&self) -> usize {
         self.piop_params.keyset_part_size
     }
 
+    /// Construct a `ProverKey` instance for the given ring.
+    ///
+    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
-        #[cfg(feature = "parallel")]
-        let pks = pks.par_iter().map(|p| p.into_sw()).collect();
-        #[cfg(not(feature = "parallel"))]
-        let pks = pks.iter().map(|p| p.into_sw()).collect();
-        ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).0
+        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
+        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
     }
 
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
-        #[cfg(feature = "parallel")]
-        let pks = pks.par_iter().map(|p| p.into_sw()).collect();
-        #[cfg(not(feature = "parallel"))]
-        let pks = pks.iter().map(|p| p.into_sw()).collect();
-        ring_proof::index(self.pcs_params.clone(), &self.piop_params, pks).1
-    }
-
+    /// Construct `RingProver` from `ProverKey` for the prover implied by `key_index`.
+    ///
+    /// Key index is the prover index within the `pks` sequence passed to construct the
+    /// `ProverKey` via the `prover_key` method.
     pub fn prover(&self, prover_key: ProverKey<S>, key_index: usize) -> RingProver<S> {
         RingProver::<S>::init(
             prover_key,
             self.piop_params.clone(),
             key_index,
-            merlin::Transcript::new(b""),
+            ring_proof::Transcript::new(b""),
         )
     }
 
+    /// Construct a `VerifierKey` instance for the given ring.
+    ///
+    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
+        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
+        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
+    }
+
+    /// Construct `VerifierKey` instance for the ring previously committed.
+    ///
+    /// The `RingCommitment` instance can be obtained via the `VerifierKey::commitment()` method.
+    ///
+    /// This allows to quickly reconstruct the verifier key without having to recompute the
+    /// keys commitment.
+    pub fn verifier_key_from_commitment(&self, commitment: RingCommitment<S>) -> VerifierKey<S> {
+        use ring_proof::pcs::PcsParams;
+        VerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
+    }
+
+    /// Construct `RingVerifier` from `VerifierKey`.
     pub fn verifier(&self, verifier_key: VerifierKey<S>) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
             self.piop_params.clone(),
-            merlin::Transcript::new(b""),
+            ring_proof::Transcript::new(b""),
         )
     }
 }
@@ -281,7 +300,6 @@ impl<S: RingSuite> ark_serialize::Valid for RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.pcs_params.check()

@@ -76,12 +76,12 @@ pub fn ring_prove_verify<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: utils::SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
 {
     use ring::{Prover, RingContext, Verifier};
 
     let rng = &mut ark_std::test_rng();
-    let ring_ctx = RingContext::<S>::new_random(512, rng);
+    let ring_ctx = RingContext::<S>::from_rand(512, rng);
 
     let secret = Secret::<S>::from_seed(TEST_SEED);
     let public = secret.public();
@@ -109,9 +109,9 @@ pub fn check_complement_point<S: ring::RingSuite>()
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-    AffinePoint<S>: utils::SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
 {
-    use utils::SWMapping;
+    use utils::te_sw_map::SWMapping;
     let pt = S::COMPLEMENT_POINT.into_sw();
     assert!(pt.is_on_curve());
     assert!(!pt.is_in_correct_subgroup_assuming_on_curve());
