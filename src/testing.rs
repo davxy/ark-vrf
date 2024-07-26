@@ -29,6 +29,11 @@ pub(crate) mod suite {
     suite_types!(TestSuite);
 }
 
+pub fn test_rand(seed: [u8; 32]) -> impl ark_std::rand::RngCore {
+    use ark_std::rand::SeedableRng;
+    rand_chacha::ChaCha20Rng::from_seed(seed)
+}
+
 pub fn random_vec<T: UniformRand>(n: usize, rng: Option<&mut dyn RngCore>) -> Vec<T> {
     let mut local_rng = ark_std::test_rng();
     let rng = rng.unwrap_or(&mut local_rng);

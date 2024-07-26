@@ -305,3 +305,82 @@ where
         self.pcs_params.check()
     }
 }
+
+#[cfg(test)]
+pub mod testing {
+    use super::*;
+    use crate::{pedersen, testing as common};
+
+    pub struct TestVector<S: RingSuite> {
+        pub pedersen: pedersen::testing::TestVector<S>,
+    }
+
+    impl<S: RingSuite> core::fmt::Debug for TestVector<S> {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.debug_struct("TestVector")
+                .field("pedersen", &self.pedersen)
+                .finish()
+        }
+    }
+
+    impl<S: RingSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S>
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        CurveConfig<S>: SWCurveConfig + Clone,
+        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    {
+        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: Option<&[u8]>, ad: &[u8]) -> Self {
+            use super::Prover;
+            let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);
+            //         // TODO: store constructed types in the vectors
+            //         let input = Input::from(base.h);
+            //         let output = Output::from(base.gamma);
+            //         let sk = Secret::from_scalar(base.sk);
+
+            // TODO: create two files:
+            // 1. the SRS file (use the zcash one)
+            // 2. the PKS ring file used by
+            // Both in json format
+
+            let mut rng = crate::testing::test_rand([42; 32]);
+            let ring_ctx = RingContext::<S>::from_rand(512, &mut rng);
+
+            // let proof: Proof<S> = sk.prove(input, output, ad);
+            Self { pedersen }
+        }
+
+        fn from_map(map: &common::TestVectorMap) -> Self {
+            todo!()
+            //         let base = common::TestVector::from_map(map);
+            //         let c = codec::scalar_decode::<S>(&map.item_bytes("proof_c"));
+            //         let s = codec::scalar_decode::<S>(&map.item_bytes("proof_s"));
+            //         Self { base, c, s }
+        }
+
+        fn to_map(&self) -> common::TestVectorMap {
+            let mut map = self.pedersen.to_map();
+            //         let items = [
+            //             ("proof_c", hex::encode(proof_c)),
+            //             ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),
+            //         ];
+            //         let mut map = self.base.to_map();
+            //         items.into_iter().for_each(|(name, value)| {
+            //             map.0.insert(name.to_string(), value);
+            //         });
+            map
+        }
+
+        fn run(&self) {
+            self.pedersen.run();
+            //         let input = Input::<S>::from(self.base.h);
+            //         let output = Output::from(self.base.gamma);
+            //         let sk = Secret::from_scalar(self.base.sk);
+            //         let proof = sk.prove(input, output, &self.base.ad);
+            //         assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
+            //         assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
+
+            //         let pk = Public(self.base.pk);
+            //         assert!(pk.verify(input, output, &self.base.ad, &proof).is_ok());
+        }
+    }
+}

@@ -293,6 +293,30 @@ mod test_vectors_pedersen_ed {
     }
 }
 
+#[cfg(all(test, feature = "ring"))]
+mod test_vectors_ring_ed {
+    use super::edwards::*;
+    use crate::testing;
+
+    type V = crate::ring::testing::TestVector<BandersnatchSha512Ell2>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_ed_sha512_ell2_ring_vectors.json"
+    );
+
+    #[test]
+    // #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_ELL2");
+    }
+
+    // #[test]
+    // fn process() {
+    //     testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    // }
+}
+
 #[cfg(test)]
 mod test_vectors_ietf_sw {
     use super::weierstrass::*;
