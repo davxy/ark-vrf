@@ -83,10 +83,10 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let kb = S::nonce(&blinding, input);
 
         // Yb = x*G + b*B
-        let pk_com =
-            (S::Affine::generator() * self.scalar + S::BLINDING_BASE * blinding).into_affine();
+        let pk_com = (S::generator() * self.scalar + S::BLINDING_BASE * blinding).into_affine();
+
         // R = k*G + kb*B
-        let r = (S::Affine::generator() * k + S::BLINDING_BASE * kb).into_affine();
+        let r = (S::generator() * k + S::BLINDING_BASE * kb).into_affine();
         // Ok = k*I
         let ok = (input.0 * k).into_affine();
 
@@ -133,7 +133,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         }
 
         // R + c*Yb = s*G + sb*B
-        if *pk_com * c + r != S::Affine::generator() * s + S::BLINDING_BASE * sb {
+        if *pk_com * c + r != S::generator() * s + S::BLINDING_BASE * sb {
             return Err(Error::VerificationFailure);
         }
 
