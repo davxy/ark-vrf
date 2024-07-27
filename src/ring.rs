@@ -415,6 +415,7 @@ pub(crate) mod testing {
             // TODO: RingSuiteExt with a function to get a reference to the ring context ('static)
             // ring_ctx = RingSuiteExt::context()
             // The suite is then in charge of its construction
+            // TODO: also dump the verifier pks commitmet
 
             use ark_std::rand::SeedableRng;
             let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
@@ -444,11 +445,13 @@ pub(crate) mod testing {
         }
 
         fn from_map(map: &common::TestVectorMap) -> Self {
-            todo!()
-            //         let base = common::TestVector::from_map(map);
-            //         let c = codec::scalar_decode::<S>(&map.item_bytes("proof_c"));
-            //         let s = codec::scalar_decode::<S>(&map.item_bytes("proof_s"));
-            //         Self { base, c, s }
+            let pedersen = pedersen::testing::TestVector::from_map(map);
+            let ring_bytes = map.item_bytes("ring-proof");
+            let ring_proof = RingProof::<S>::deserialize_compressed(&ring_bytes[..]).unwrap();
+            Self {
+                pedersen,
+                ring: ring_proof,
+            }
         }
 
         fn to_map(&self) -> common::TestVectorMap {

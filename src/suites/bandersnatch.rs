@@ -311,10 +311,10 @@ mod test_vectors_ring_ed {
         testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_ELL2");
     }
 
-    // #[test]
-    // fn process() {
-    //     testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
-    // }
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
 }
 
 #[cfg(test)]
@@ -383,8 +383,8 @@ mod test_vectors_ring_sw {
         testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_TAI");
     }
 
-    // #[test]
-    // fn process() {
-    //     testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
-    // }
+    #[test]
+    fn process() {
+        testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    }
 }
