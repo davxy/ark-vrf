@@ -306,7 +306,7 @@ mod test_vectors_ring_ed {
     );
 
     #[test]
-    // #[ignore = "test vectors generator"]
+    #[ignore = "test vectors generator"]
     fn generate() {
         testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_ELL2");
     }
@@ -356,11 +356,35 @@ mod test_vectors_pedersen_sw {
     #[test]
     #[ignore = "test vectors generator"]
     fn generate() {
-        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SHA-512_TAI");
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_TAI");
     }
 
     #[test]
     fn process() {
         testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
     }
+}
+
+#[cfg(all(test, feature = "ring"))]
+mod test_vectors_ring_sw {
+    use super::weierstrass::*;
+    use crate::testing;
+
+    type V = crate::ring::testing::TestVector<BandersnatchSha512Tai>;
+
+    const TEST_VECTORS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/bandersnatch_sw_sha512_tai_ring_vectors.json"
+    );
+
+    #[test]
+    #[ignore = "test vectors generator"]
+    fn generate() {
+        testing::test_vectors_generate::<V>(TEST_VECTORS_FILE, "Bandersnatch_SW_SHA-512_TAI");
+    }
+
+    // #[test]
+    // fn process() {
+    //     testing::test_vectors_process::<V>(TEST_VECTORS_FILE);
+    // }
 }

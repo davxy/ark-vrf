@@ -7,6 +7,12 @@ use ark_std::{rand::RngCore, UniformRand};
 
 pub const TEST_SEED: &[u8] = b"seed";
 
+// Zcash SRS file derived from (https://zfnd.org/conclusion-of-the-powers-of-tau-ceremony).
+const PCS_SRS_FILE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/data/zcash-srs-2-11-uncompressed.bin"
+);
+
 /// Generate a vector of random values.
 pub fn random_vec<T: UniformRand>(n: usize, rng: Option<&mut dyn RngCore>) -> Vec<T> {
     let mut local_rng = ark_std::test_rng();

@@ -396,12 +396,6 @@ pub(crate) mod testing {
         }
     }
 
-    // Zcash SRS file derived from (https://zfnd.org/conclusion-of-the-powers-of-tau-ceremony).
-    const PCS_SRS_FILE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/data/zcash-srs-2-11-uncompressed.bin"
-    );
-
     impl<S: RingSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
@@ -435,7 +429,13 @@ pub(crate) mod testing {
             let prover = ring_ctx.prover(prover_key, prover_idx);
             let proof = secret.prove(input, output, ad, &prover);
 
-            // TODO: check proof.pedersen fields againts self.pedersen
+            {
+                // Just in case...
+                let mut p = (Vec::new(), Vec::new());
+                pedersen.proof.serialize_compressed(&mut p.0).unwrap();
+                proof.pedersen_proof.serialize_compressed(&mut p.1).unwrap();
+                assert_eq!(p.0, p.1);
+            }
 
             Self {
                 pedersen,
@@ -457,23 +457,55 @@ pub(crate) mod testing {
             self.ring.serialize_compressed(&mut ring_proof_raw).unwrap();
             let ring_proof_hex = hex::encode(ring_proof_raw);
             map.0.insert("ring-proof".to_string(), ring_proof_hex);
-            //         items.into_iter().for_each(|(name, value)| {
-            //             map.0.insert(name.to_string(), value);
-            //         });
             map
         }
 
         fn run(&self) {
             self.pedersen.run();
-            //         let input = Input::<S>::from(self.base.h);
-            //         let output = Output::from(self.base.gamma);
-            //         let sk = Secret::from_scalar(self.base.sk);
-            //         let proof = sk.prove(input, output, &self.base.ad);
-            //         assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
-            //         assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
 
-            //         let pk = Public(self.base.pk);
-            //         assert!(pk.verify(input, output, &self.base.ad, &proof).is_ok());
+            let input = Input::<S>::from(self.pedersen.base.h);
+            let output = Output::from(self.pedersen.base.gamma);
+            let secret = Secret::from_scalar(self.pedersen.base.sk);
+            let public = secret.public();
+
+            use ark_std::rand::SeedableRng;
+            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
+            let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
+            let ring_size = ring_ctx.max_ring_size();
+
+            let prover_idx = 3;
+            let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
+            pks[prover_idx] = public.0;
+
+            let prover_key = ring_ctx.prover_key(&pks);
+            let prover = ring_ctx.prover(prover_key, prover_idx);
+
+            let verifier_key = ring_ctx.verifier_key(&pks);
+            let verifier = ring_ctx.verifier(verifier_key);
+
+            let proof = secret.prove(input, output, &self.pedersen.base.ad, &prover);
+
+            {
+                // Check if Pedersen proof matches
+                let mut p = (Vec::new(), Vec::new());
+                self.pedersen.proof.serialize_compressed(&mut p.0).unwrap();
+                proof.pedersen_proof.serialize_compressed(&mut p.1).unwrap();
+                assert_eq!(p.0, p.1);
+            }
+
+            // TODO
+            // #[cfg(feature = "test-vectors")]
+            {
+                // Check if Ring proof matches
+                let mut p = (Vec::new(), Vec::new());
+                self.ring.serialize_compressed(&mut p.0).unwrap();
+                proof.ring_proof.serialize_compressed(&mut p.1).unwrap();
+                assert_eq!(p.0, p.1);
+            }
+
+            assert!(
+                Public::verify(input, output, &self.pedersen.base.ad, &proof, &verifier).is_ok()
+            );
         }
     }
 }
