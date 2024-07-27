@@ -457,7 +457,7 @@ pub(crate) mod testing {
             let ring_pks_raw = map.item_bytes("ring_pks");
             let ring_pks =
                 <[AffinePoint<S>; TEST_RING_SIZE]>::deserialize_compressed(&ring_pks_raw[..])
-                    .map(|pks| Box::new(pks))
+                    .map(Box::new)
                     .unwrap();
 
             let ring_proof_raw = map.item_bytes("ring_proof");
