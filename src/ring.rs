@@ -311,6 +311,8 @@ pub(crate) mod testing {
     use super::*;
     use crate::{pedersen, testing as common};
 
+    const TEST_RING_SIZE: usize = 512;
+
     pub fn prove_verify<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
@@ -318,7 +320,7 @@ pub(crate) mod testing {
         AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
     {
         let rng = &mut ark_std::test_rng();
-        let ring_ctx = RingContext::<S>::from_rand(512, rng);
+        let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
@@ -371,11 +373,22 @@ pub(crate) mod testing {
         ($suite:ident, false) => {};
     }
 
-    pub struct TestVector<S: RingSuite> {
+    pub struct TestVector<S: RingSuite>
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        CurveConfig<S>: SWCurveConfig + Clone,
+        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    {
         pub pedersen: pedersen::testing::TestVector<S>,
+        pub ring: RingProof<S>,
     }
 
-    impl<S: RingSuite> core::fmt::Debug for TestVector<S> {
+    impl<S: RingSuite> core::fmt::Debug for TestVector<S>
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        CurveConfig<S>: SWCurveConfig + Clone,
+        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
                 .field("pedersen", &self.pedersen)
@@ -398,21 +411,36 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: Option<&[u8]>, ad: &[u8]) -> Self {
             use super::Prover;
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);
-            //         // TODO: store constructed types in the vectors
-            //         let input = Input::from(base.h);
-            //         let output = Output::from(base.gamma);
-            //         let sk = Secret::from_scalar(base.sk);
 
-            // TODO: create two files:
-            // 1. the SRS file (use the zcash one)
-            // 2. the PKS ring file used by
-            // Both in json format
+            let secret = Secret::<S>::from_scalar(pedersen.base.sk);
+            let public = secret.public();
 
-            let mut rng = ark_std::test_rng();
-            let ring_ctx = RingContext::<S>::from_rand(512, &mut rng);
+            let input = Input::<S>::from(pedersen.base.h);
+            let output = Output::from(pedersen.base.gamma);
 
-            // let proof: Proof<S> = sk.prove(input, output, ad);
-            Self { pedersen }
+            // TODO: RingSuiteExt with a function to get a reference to the ring context ('static)
+            // ring_ctx = RingSuiteExt::context()
+            // The suite is then in charge of its construction
+
+            use ark_std::rand::SeedableRng;
+            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
+            let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
+            let ring_size = ring_ctx.max_ring_size();
+
+            let prover_idx = 3;
+            let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
+            pks[prover_idx] = public.0;
+
+            let prover_key = ring_ctx.prover_key(&pks);
+            let prover = ring_ctx.prover(prover_key, prover_idx);
+            let proof = secret.prove(input, output, ad, &prover);
+
+            // TODO: check proof.pedersen fields againts self.pedersen
+
+            Self {
+                pedersen,
+                ring: proof.ring_proof,
+            }
         }
 
         fn from_map(map: &common::TestVectorMap) -> Self {
@@ -425,11 +453,10 @@ pub(crate) mod testing {
 
         fn to_map(&self) -> common::TestVectorMap {
             let mut map = self.pedersen.to_map();
-            //         let items = [
-            //             ("proof_c", hex::encode(proof_c)),
-            //             ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),
-            //         ];
-            //         let mut map = self.base.to_map();
+            let mut ring_proof_raw = Vec::new();
+            self.ring.serialize_compressed(&mut ring_proof_raw).unwrap();
+            let ring_proof_hex = hex::encode(ring_proof_raw);
+            map.0.insert("ring-proof".to_string(), ring_proof_hex);
             //         items.into_iter().for_each(|(name, value)| {
             //             map.0.insert(name.to_string(), value);
             //         });
