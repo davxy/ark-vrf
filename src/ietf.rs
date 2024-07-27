@@ -223,24 +223,3 @@ pub mod testing {
         }
     }
 }
-
-// #[cfg(test)]
-// pub(crate) mod test {
-//     use super::*;
-//     use crate::testing::suite::{ScalarField, TestSuite};
-
-//     #[test]
-//     fn proof_encode_decode() {
-//         let c = hex::decode("d091c00b0f5c3619d10ecea44363b5a5").unwrap();
-//         let c = ScalarField::from_be_bytes_mod_order(&c[..]);
-//         let s = hex::decode("99cadc5b2957e223fec62e81f7b4825fc799a771a3d7334b9186bdbee87316b1")
-//             .unwrap();
-//         let s = ScalarField::from_be_bytes_mod_order(&s[..]);
-
-//         let proof = Proof::<TestSuite> { c, s };
-
-//         let mut buf = Vec::new();
-//         proof.serialize_compressed(&mut buf).unwrap();
-//         assert_eq!(buf.len(), TestSuite::CHALLENGE_LEN + 32);
-//     }
-// }
