@@ -311,7 +311,7 @@ pub(crate) mod testing {
     use super::*;
     use crate::{pedersen, testing as common};
 
-    pub const TEST_RING_SIZE: usize = 512;
+    pub const TEST_RING_SIZE: usize = 8;
 
     pub fn prove_verify<S: RingSuite>()
     where
@@ -390,6 +390,7 @@ pub(crate) mod testing {
     {
         pub pedersen: pedersen::testing::TestVector<S>,
         pub ring: RingProof<S>,
+        pub ring_pks: Box<[AffinePoint<S>; TEST_RING_SIZE]>,
     }
 
     impl<S: RingSuite> core::fmt::Debug for TestVector<S>
@@ -423,15 +424,14 @@ pub(crate) mod testing {
             let output = Output::from(pedersen.base.gamma);
 
             let ring_ctx = <S as RingSuiteExt>::ring_context();
-            let ring_size = ring_ctx.max_ring_size();
 
             use ark_std::rand::SeedableRng;
             let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
             let prover_idx = 3;
-            let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
-            pks[prover_idx] = public.0;
+            let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+            ring_pks[prover_idx] = public.0;
 
-            let prover_key = ring_ctx.prover_key(&pks);
+            let prover_key = ring_ctx.prover_key(&ring_pks);
             let prover = ring_ctx.prover(prover_key, prover_idx);
             let proof = secret.prove(input, output, ad, &prover);
 
@@ -445,6 +445,7 @@ pub(crate) mod testing {
 
             // TODO: also dump the verifier pks commitmet
             Self {
+                ring_pks: crate::testing::vec_to_array(ring_pks).unwrap(),
                 pedersen,
                 ring: proof.ring_proof,
             }
@@ -452,20 +453,37 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let pedersen = pedersen::testing::TestVector::from_map(map);
-            let ring_bytes = map.item_bytes("ring_proof");
-            let ring_proof = RingProof::<S>::deserialize_compressed(&ring_bytes[..]).unwrap();
+
+            let ring_proof_raw = map.item_bytes("ring_proof");
+            let ring_proof = RingProof::<S>::deserialize_compressed(&ring_proof_raw[..]).unwrap();
+
+            let ring_pks_raw = map.item_bytes("ring_pks");
+            let ring_pks =
+                <[AffinePoint<S>; TEST_RING_SIZE]>::deserialize_compressed(&ring_pks_raw[..])
+                    .unwrap();
+
             Self {
                 pedersen,
                 ring: ring_proof,
+                ring_pks: Box::new(ring_pks),
             }
         }
 
         fn to_map(&self) -> common::TestVectorMap {
             let mut map = self.pedersen.to_map();
+
             let mut ring_proof_raw = Vec::new();
             self.ring.serialize_compressed(&mut ring_proof_raw).unwrap();
             let ring_proof_hex = hex::encode(ring_proof_raw);
             map.0.insert("ring_proof".to_string(), ring_proof_hex);
+
+            let mut ring_pks_raw = Vec::new();
+            self.ring_pks
+                .serialize_compressed(&mut ring_pks_raw)
+                .unwrap();
+            let ring_pks_hex = hex::encode(ring_pks_raw);
+            map.0.insert("ring_pks".to_string(), ring_pks_hex);
+
             map
         }
 
@@ -476,20 +494,17 @@ pub(crate) mod testing {
             let output = Output::from(self.pedersen.base.gamma);
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();
+            assert_eq!(public.0, self.pedersen.base.pk);
 
             let ring_ctx = <S as RingSuiteExt>::ring_context();
-            let ring_size = ring_ctx.max_ring_size();
 
-            use ark_std::rand::SeedableRng;
-            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
-            let prover_idx = 3;
-            let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
-            pks[prover_idx] = public.0;
+            let ring_pks = &*self.ring_pks;
+            let prover_idx = ring_pks.iter().position(|&pk| pk == public.0).unwrap();
 
-            let prover_key = ring_ctx.prover_key(&pks);
+            let prover_key = ring_ctx.prover_key(ring_pks);
             let prover = ring_ctx.prover(prover_key, prover_idx);
 
-            let verifier_key = ring_ctx.verifier_key(&pks);
+            let verifier_key = ring_ctx.verifier_key(ring_pks);
             let verifier = ring_ctx.verifier(verifier_key);
 
             let proof = secret.prove(input, output, &self.pedersen.base.ad, &prover);

@@ -27,6 +27,16 @@ pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
     T::rand(rng)
 }
 
+pub fn vec_to_array<T: core::fmt::Debug, const N: usize>(v: Vec<T>) -> Option<Box<[T; N]>> {
+    if v.len() != N {
+        return None;
+    }
+    // Safe because we checked the length
+    let boxed_slice = v.into_boxed_slice();
+    let boxed_array = boxed_slice.try_into().unwrap();
+    Some(boxed_array)
+}
+
 #[macro_export]
 macro_rules! suite_tests {
     ($suite:ident, $build_ring:ident) => {
