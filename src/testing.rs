@@ -8,9 +8,9 @@ use ark_std::{rand::RngCore, UniformRand};
 pub const TEST_SEED: &[u8] = b"seed";
 
 // Zcash SRS file derived from (https://zfnd.org/conclusion-of-the-powers-of-tau-ceremony).
-const PCS_SRS_FILE: &str = concat!(
+pub const PCS_SRS_FILE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/data/zcash-srs-2-11-uncompressed.bin"
+    "/data/zcash-bls12-381-srs-2-11-uncompressed.bin"
 );
 
 /// Generate a vector of random values.

@@ -305,6 +305,23 @@ mod test_vectors_ring_ed {
         "/data/bandersnatch_ed_sha512_ell2_ring_vectors.json"
     );
 
+    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
+        fn ring_context() -> &'static RingContext {
+            use ark_serialize::CanonicalDeserialize;
+            use std::sync::OnceLock;
+            static RING_CTX: OnceLock<RingContext> = OnceLock::new();
+            RING_CTX.get_or_init(|| {
+                use std::{fs::File, io::Read};
+                let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+                let pcs_params =
+                    PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
+                RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+            })
+        }
+    }
+
     #[test]
     #[ignore = "test vectors generator"]
     fn generate() {
@@ -376,6 +393,23 @@ mod test_vectors_ring_sw {
         env!("CARGO_MANIFEST_DIR"),
         "/data/bandersnatch_sw_sha512_tai_ring_vectors.json"
     );
+
+    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Tai {
+        fn ring_context() -> &'static RingContext {
+            use ark_serialize::CanonicalDeserialize;
+            use std::sync::OnceLock;
+            static RING_CTX: OnceLock<RingContext> = OnceLock::new();
+            RING_CTX.get_or_init(|| {
+                use std::{fs::File, io::Read};
+                let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+                let pcs_params =
+                    PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
+                RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+            })
+        }
+    }
 
     #[test]
     #[ignore = "test vectors generator"]

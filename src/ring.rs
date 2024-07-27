@@ -311,7 +311,7 @@ pub(crate) mod testing {
     use super::*;
     use crate::{pedersen, testing as common};
 
-    const TEST_RING_SIZE: usize = 512;
+    pub const TEST_RING_SIZE: usize = 512;
 
     pub fn prove_verify<S: RingSuite>()
     where
@@ -373,6 +373,15 @@ pub(crate) mod testing {
         ($suite:ident, false) => {};
     }
 
+    pub trait RingSuiteExt: RingSuite
+    where
+        BaseField<Self>: ark_ff::PrimeField,
+        CurveConfig<Self>: SWCurveConfig + Clone,
+        AffinePoint<Self>: SWMapping<CurveConfig<Self>>,
+    {
+        fn ring_context() -> &'static RingContext<Self>;
+    }
+
     pub struct TestVector<S: RingSuite>
     where
         BaseField<S>: ark_ff::PrimeField,
@@ -392,11 +401,12 @@ pub(crate) mod testing {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
                 .field("pedersen", &self.pedersen)
+                .field("ring_proof", &"...")
                 .finish()
         }
     }
 
-    impl<S: RingSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S>
+    impl<S: RingSuiteExt + std::fmt::Debug + 'static> common::TestVectorTrait for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: SWCurveConfig + Clone,
@@ -412,16 +422,11 @@ pub(crate) mod testing {
             let input = Input::<S>::from(pedersen.base.h);
             let output = Output::from(pedersen.base.gamma);
 
-            // TODO: RingSuiteExt with a function to get a reference to the ring context ('static)
-            // ring_ctx = RingSuiteExt::context()
-            // The suite is then in charge of its construction
-            // TODO: also dump the verifier pks commitmet
+            let ring_ctx = <S as RingSuiteExt>::ring_context();
+            let ring_size = ring_ctx.max_ring_size();
 
             use ark_std::rand::SeedableRng;
             let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
-            let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
-            let ring_size = ring_ctx.max_ring_size();
-
             let prover_idx = 3;
             let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
             pks[prover_idx] = public.0;
@@ -438,6 +443,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
+            // TODO: also dump the verifier pks commitmet
             Self {
                 pedersen,
                 ring: proof.ring_proof,
@@ -446,7 +452,7 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let pedersen = pedersen::testing::TestVector::from_map(map);
-            let ring_bytes = map.item_bytes("ring-proof");
+            let ring_bytes = map.item_bytes("ring_proof");
             let ring_proof = RingProof::<S>::deserialize_compressed(&ring_bytes[..]).unwrap();
             Self {
                 pedersen,
@@ -459,7 +465,7 @@ pub(crate) mod testing {
             let mut ring_proof_raw = Vec::new();
             self.ring.serialize_compressed(&mut ring_proof_raw).unwrap();
             let ring_proof_hex = hex::encode(ring_proof_raw);
-            map.0.insert("ring-proof".to_string(), ring_proof_hex);
+            map.0.insert("ring_proof".to_string(), ring_proof_hex);
             map
         }
 
@@ -471,11 +477,11 @@ pub(crate) mod testing {
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();
 
-            use ark_std::rand::SeedableRng;
-            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
-            let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
+            let ring_ctx = <S as RingSuiteExt>::ring_context();
             let ring_size = ring_ctx.max_ring_size();
 
+            use ark_std::rand::SeedableRng;
+            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
             let prover_idx = 3;
             let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
             pks[prover_idx] = public.0;
@@ -497,7 +503,7 @@ pub(crate) mod testing {
             }
 
             // TODO
-            // #[cfg(feature = "test-vectors")]
+            #[cfg(feature = "test-vectors")]
             {
                 // Check if Ring proof matches
                 let mut p = (Vec::new(), Vec::new());
