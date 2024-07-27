@@ -136,7 +136,7 @@ pub mod testing {
     use super::*;
     use crate::testing as common;
 
-    pub fn prove_verify<S: ietf::IetfSuite>() {
+    pub fn prove_verify<S: IetfSuite>() {
         use ietf::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(common::TEST_SEED);

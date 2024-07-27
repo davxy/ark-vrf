@@ -146,7 +146,7 @@ pub(crate) mod testing {
     use super::*;
     use crate::testing::{self as common, random_val, TEST_SEED};
 
-    pub fn prove_verify<S: pedersen::PedersenSuite>() {
+    pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
