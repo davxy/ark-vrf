@@ -323,6 +323,12 @@ pub mod testing {
         }
     }
 
+    // Zcash SRS file derived from (https://zfnd.org/conclusion-of-the-powers-of-tau-ceremony).
+    const PCS_SRS_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/data/zcash-srs-2-11-uncompressed.bin"
+    );
+
     impl<S: RingSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
