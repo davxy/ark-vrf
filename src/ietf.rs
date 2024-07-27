@@ -149,6 +149,16 @@ pub mod testing {
         assert!(result.is_ok());
     }
 
+    #[macro_export]
+    macro_rules! ietf_suite_tests {
+        ($suite:ident) => {
+            #[test]
+            fn ietf_prove_verify() {
+                $crate::ietf::testing::prove_verify::<$suite>();
+            }
+        };
+    }
+
     pub struct TestVector<S: IetfSuite> {
         pub base: common::TestVector<S>,
         pub c: ScalarField<S>,

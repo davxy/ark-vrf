@@ -28,15 +28,8 @@ macro_rules! suite_tests {
         ring_suite_tests!($suite, $build_ring);
     };
     ($suite:ident) => {
-        #[test]
-        fn ietf_prove_verify() {
-            $crate::ietf::testing::prove_verify::<$suite>();
-        }
-
-        #[test]
-        fn pedersen_prove_verify() {
-            $crate::pedersen::testing::pedersen_prove_verify::<$suite>();
-        }
+        ietf_suite_tests!($suite);
+        pedersen_suite_tests!($suite);
     };
 }
 

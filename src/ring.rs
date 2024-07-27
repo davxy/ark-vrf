@@ -307,18 +307,16 @@ where
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+pub(crate) mod testing {
     use super::*;
     use crate::testing::*;
 
-    pub fn ring_prove_verify<S: ring::RingSuite>()
+    pub fn prove_verify<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
         AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
     {
-        use ring::{Prover, RingContext, Verifier};
-
         let rng = &mut ark_std::test_rng();
         let ring_ctx = RingContext::<S>::from_rand(512, rng);
 
@@ -343,7 +341,7 @@ pub(crate) mod test {
         assert!(result.is_ok());
     }
 
-    pub fn check_complement_point<S: ring::RingSuite>()
+    pub fn check_complement_point<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
@@ -361,13 +359,13 @@ pub(crate) mod test {
             #[cfg(feature = "ring")]
             #[test]
             fn ring_prove_verify() {
-                $crate::ring::test::ring_prove_verify::<$suite>()
+                $crate::ring::testing::prove_verify::<$suite>()
             }
 
             #[cfg(feature = "ring")]
             #[test]
             fn check_complement_point() {
-                $crate::ring::test::check_complement_point::<$suite>()
+                $crate::ring::testing::check_complement_point::<$suite>()
             }
         };
         ($suite:ident, false) => {};

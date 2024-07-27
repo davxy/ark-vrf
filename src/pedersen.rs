@@ -146,7 +146,7 @@ pub(crate) mod testing {
     use super::*;
     use crate::testing::{self as common, random_val, TEST_SEED};
 
-    pub fn pedersen_prove_verify<S: pedersen::PedersenSuite>() {
+    pub fn prove_verify<S: pedersen::PedersenSuite>() {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -161,6 +161,16 @@ pub(crate) mod testing {
             proof.key_commitment(),
             (secret.public().0 + S::BLINDING_BASE * blinding).into()
         );
+    }
+
+    #[macro_export]
+    macro_rules! pedersen_suite_tests {
+        ($suite:ident) => {
+            #[test]
+            fn pedersen_prove_verify() {
+                $crate::pedersen::testing::prove_verify::<$suite>();
+            }
+        };
     }
 
     pub struct TestVector<S: PedersenSuite> {
