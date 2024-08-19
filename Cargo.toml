@@ -60,6 +60,7 @@ full = [
   "bandersnatch",
   "ring",
 ]
+test-vectors = []
 
 # Optimizations
 parallel = [
@@ -72,9 +73,4 @@ parallel = [
 asm = [
   "ark-ff/asm",
   "ring-proof?/asm"
-]
-
-# Deterministic ring-proof (unsafe)
-test-vectors = [
-  "ring-proof?/test-vectors"
 ]

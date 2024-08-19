@@ -153,6 +153,7 @@ where
 
 #[inline(always)]
 fn domain_size(ring_size: usize) -> usize {
+    // TODO: compute this as BaseField::MODULUS_BIT_SIZE + 1 + if !cfg!(feature = "test-vector") { 3 }
     const RING_DOMAIN_OVERHEAD: usize = 257;
     1 << ark_std::log2(ring_size + RING_DOMAIN_OVERHEAD)
 }
@@ -189,8 +190,9 @@ where
         pcs_params.powers_in_g1.truncate(3 * domain_size + 1);
         pcs_params.powers_in_g2.truncate(2);
 
+        let hiding = !cfg!(feature = "test-vectors");
         let piop_params = PiopParams::<S>::setup(
-            ring_proof::Domain::new(domain_size, true),
+            ring_proof::Domain::new(domain_size, hiding),
             S::BLINDING_BASE.into_sw(),
             S::ACCUMULATOR_BASE.into_sw(),
         );
