@@ -189,8 +189,9 @@ where
         pcs_params.powers_in_g1.truncate(3 * domain_size + 1);
         pcs_params.powers_in_g2.truncate(2);
 
+        let hiding = !cfg!(feature = "test-vectors");
         let piop_params = PiopParams::<S>::setup(
-            ring_proof::Domain::new(domain_size, true),
+            ring_proof::Domain::new(domain_size).with_hiding(hiding),
             S::BLINDING_BASE.into_sw(),
             S::ACCUMULATOR_BASE.into_sw(),
         );
