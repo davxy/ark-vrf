@@ -151,7 +151,7 @@ where
     piop_params: PiopParams<S>,
 }
 
-// Required evaluation domain size for the given ring size.
+// Evaluation domain size required for the given ring size.
 #[inline(always)]
 fn domain_size<S: RingSuite>(ring_size: usize) -> usize {
     1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
