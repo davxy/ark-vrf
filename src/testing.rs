@@ -126,7 +126,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let sk = Secret::<S>::from_seed(seed);
         let pk = sk.public().0;
 
-        let h2c_data = [&salt[..], alpha].concat();
+        let h2c_data = [salt, alpha].concat();
         let h = <S as Suite>::data_to_point(&h2c_data).unwrap();
         let input = Input::from(h);
 
