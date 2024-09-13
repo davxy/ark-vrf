@@ -1,6 +1,6 @@
 [
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-1",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-1",
     "sk": "fc4722b3efeadcfa8b437f6e34f71c50a240bd2e66b958c5c17519cc9d936906",
     "pk": "bf512469e7f9b766bf5c75e47e84fda3ec887bd24d79b9165c19e01a88fe5ff2",
     "alpha": "",
@@ -17,7 +17,7 @@
     "proof_sb": "664f8fe78b0690bb286fa207ff4489cb65c95067d18cd1226695671ecfdb570c"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-2",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-2",
     "sk": "3ed3f4d0fadb42cb77d42a7ea57def2bad464bd1ae0c896dd077c04358415c04",
     "pk": "a9a4b61b52db164253147e0c5bd20852d7ab4763e996d0117febccbc7a1abbd6",
     "alpha": "0a",
@@ -34,7 +34,7 @@
     "proof_sb": "99dea8a87b03c39f1f3d7e014bb20f2922602bbaa727306b5637ae35113e000a"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-3",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-3",
     "sk": "a665fa5af45ab71a60a6b667bc995423d5ee43197a5fd93b16f761cf0bdf0407",
     "pk": "0b33325148327641856fde36d56aaf2cb1e4959824bb0916517160d402973bc5",
     "alpha": "",
@@ -51,7 +51,7 @@
     "proof_sb": "eb67fc2427b74292104e5b879e3f8bdcd8a496c4a3780b469c05d71ea0d0c10f"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-4",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-4",
     "sk": "9a150e5caf622cc949d95af8980d458b551ab394d52ba49759433b4d04d9f703",
     "pk": "cf2d35428c1e329dfbd5ce3a6aafd8cffe31c6a0685471f59f5cddec0725483a",
     "alpha": "73616d706c65",
@@ -68,7 +68,7 @@
     "proof_sb": "bb8386be8878dde1dddb24067aee275ce47537d14c7ac7c42c1f69811ce9810f"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-5",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-5",
     "sk": "03cb98147455ef9db48d9f1ca758d8047f43ed4320909800d849522444b52502",
     "pk": "465a022ab19f37d3586489ae08808b23d39844fd321735d6573c089b12202d1a",
     "alpha": "42616e646572736e6174636820766563746f72",
@@ -85,7 +85,7 @@
     "proof_sb": "3f93d063b8beb51148776d243727aca320b59fcf6d424b0976cabc741f39700e"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-6",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-6",
     "sk": "03cb98147455ef9db48d9f1ca758d8047f43ed4320909800d849522444b52502",
     "pk": "465a022ab19f37d3586489ae08808b23d39844fd321735d6573c089b12202d1a",
     "alpha": "42616e646572736e6174636820766563746f72",
@@ -102,7 +102,7 @@
     "proof_sb": "b547f9b6803ac9c1cfd069ee0feaa22143a025b98095669b6e6fd598b62a7806"
   },
   {
-    "comment": "Ed25519_SHA-512_TAI - vector-7",
+    "comment": "ed25519_sha512_tai_pedersen_vectors - vector-7",
     "sk": "0f6ed8b686b6ef0b2552344803cb0f92a84a654fd46f0e98782c6de71f98d40c",
     "pk": "ea18949e73be86cf0c7de5e688c782689b72c49741baed797ee1a128d7cf1bd7",
     "alpha": "42616e646572736e6174636820766563746f72",

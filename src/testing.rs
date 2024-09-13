@@ -13,6 +13,9 @@ pub const PCS_SRS_FILE: &str = concat!(
     "/data/zcash-bls12-381-srs-2-11-uncompressed.bin"
 );
 
+// Test vectors folder
+pub const VECTORS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/vectors");
+
 /// Generate a vector of random values.
 pub fn random_vec<T: UniformRand>(n: usize, rng: Option<&mut dyn RngCore>) -> Vec<T> {
     let mut local_rng = ark_std::test_rng();
@@ -209,8 +212,13 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     }
 }
 
-pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(file: &str, identifier: &str) {
+fn vector_filename(identifier: &str) -> String {
+    [VECTORS_DIR, "/", identifier, ".json"].concat()
+}
+
+pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(identifier: &str) {
     use std::{fs::File, io::Write};
+
     // ("secret_seed", "vrf raw input", "additional data"))
     let var_data: Vec<(u8, &[u8], &[u8])> = vec![
         (1, b"", b""),
@@ -234,15 +242,15 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(file: &str, i
         vector_maps.push(vector.to_map());
     }
 
-    let mut file = File::create(file).unwrap();
+    let mut file = File::create(vector_filename(identifier)).unwrap();
     let json = serde_json::to_string_pretty(&vector_maps).unwrap();
     file.write_all(json.as_bytes()).unwrap();
 }
 
-pub fn test_vectors_process<V: TestVectorTrait>(file: &str) {
+pub fn test_vectors_process<V: TestVectorTrait>(identifier: &str) {
     use std::{fs::File, io::BufReader};
 
-    let file = File::open(file).unwrap();
+    let file = File::open(vector_filename(identifier)).unwrap();
     let reader = BufReader::new(file);
 
     let vector_maps: Vec<TestVectorMap> = serde_json::from_reader(reader).unwrap();
