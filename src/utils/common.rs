@@ -14,7 +14,7 @@ pub(crate) fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
 
 /// Generic HMAC wrapper.
 #[cfg(feature = "rfc-6979")]
-pub(crate) fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
+fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::{Mac, SimpleHmac};
     SimpleHmac::<H>::new_from_slice(sk)
         .expect("HMAC can take key of any size")
