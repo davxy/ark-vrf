@@ -149,9 +149,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     }
 
     fn from_map(map: &TestVectorMap) -> Self {
-        let item_bytes = |field| {
-            hex::decode(map.0.get(field).map(|v| v.to_owned()).unwrap_or_default()).unwrap()
-        };
+        let item_bytes = |field| hex::decode(map.0.get(field).unwrap()).unwrap();
         let comment = map.0.get("comment").unwrap().to_string();
         let sk = codec::scalar_decode::<S>(&item_bytes("sk"));
         let pk = codec::point_decode::<S>(&item_bytes("pk")).unwrap();
