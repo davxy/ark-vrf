@@ -404,3 +404,57 @@ mod test_vectors_ring_sw {
         testing::test_vectors_process::<V>(VECTOR_ID);
     }
 }
+
+#[test]
+fn blinding_base_sw_te_rountrip() {
+    use crate::arkworks::te_sw_map;
+    let sw = weierstrass::BandersnatchSha512Tai::BLINDING_BASE;
+    let ed = te_sw_map::map_sw_to_te(&sw).unwrap();
+    assert_eq!(ed, edwards::BandersnatchSha512Ell2::BLINDING_BASE);
+    let sw2 = te_sw_map::map_te_to_sw(&ed).unwrap();
+    assert_eq!(sw, sw2);
+}
+
+#[cfg(all(test, feature = "ring"))]
+#[test]
+fn accumulator_base_sw_te_roundtrip() {
+    use crate::arkworks::te_sw_map;
+    use crate::ring::RingSuite;
+    let sw = weierstrass::BandersnatchSha512Tai::ACCUMULATOR_BASE;
+    let ed = te_sw_map::map_sw_to_te(&sw).unwrap();
+    assert_eq!(ed, edwards::BandersnatchSha512Ell2::ACCUMULATOR_BASE);
+    let sw2 = te_sw_map::map_te_to_sw(&ed).unwrap();
+    assert_eq!(sw, sw2);
+}
+
+#[cfg(all(test, feature = "ring"))]
+#[test]
+fn padding_point_sw_te_roundtrip() {
+    use crate::arkworks::te_sw_map;
+
+    // Fixed padding point
+    let sw = {
+        const X: weierstrass::BaseField = MontFp!(
+            "25448400713078632486748382313960039031302935774474538965225823993599751298535"
+        );
+        const Y: weierstrass::BaseField = MontFp!(
+            "24382892199244280513693545286348030912870264650402775682704689602954457435722"
+        );
+        weierstrass::AffinePoint::new_unchecked(X, Y)
+    };
+    let ed = te_sw_map::map_sw_to_te(&sw).unwrap();
+    let sw2 = te_sw_map::map_te_to_sw(&ed).unwrap();
+    assert_eq!(sw, sw2);
+}
+
+#[test]
+fn generator_roundtrip() {
+    use crate::arkworks::te_sw_map;
+
+    let sw1 = weierstrass::AffinePoint::generator();
+    let ed1 = te_sw_map::map_sw_to_te(&sw1).unwrap();
+    let ed2 = edwards::AffinePoint::generator();
+    assert_eq!(ed1, ed2);
+    let sw2 = te_sw_map::map_te_to_sw(&ed1).unwrap();
+    assert_eq!(sw1, sw2);
+}
