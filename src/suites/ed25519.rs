@@ -82,7 +82,7 @@ mod test_vectors_ietf {
     use super::*;
 
     type V = crate::ietf::testing::TestVector<Ed25519Sha512Tai>;
-    const VECTOR_ID: &str = "ed25519_sha512_tai_ietf_vectors";
+    const VECTOR_ID: &str = "ed25519_sha512_tai_ietf";
 
     #[test]
     #[ignore = "test vectors generator"]
@@ -101,7 +101,7 @@ mod test_vectors_pedersen {
     use super::*;
 
     type V = crate::pedersen::testing::TestVector<Ed25519Sha512Tai>;
-    const VECTOR_ID: &str = "ed25519_sha512_tai_pedersen_vectors";
+    const VECTOR_ID: &str = "ed25519_sha512_tai_pedersen";
 
     #[test]
     #[ignore = "test vectors generator"]

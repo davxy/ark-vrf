@@ -91,9 +91,9 @@ mod test_vectors_ietf {
     use super::*;
 
     type V = crate::ietf::testing::TestVector<P256Sha256Tai>;
-    const VECTOR_ID: &str = "secp256_sha256_tai_ietf_vectors";
+    const VECTOR_ID: &str = "secp256_sha256_tai_ietf";
     // Vectors from RFC-9381
-    const VECTOR_ID_RFC_9381: &str = "secp256_sha256_tai_ietf_vectors_rfc_9381";
+    const VECTOR_ID_RFC_9381: &str = "secp256_sha256_tai_ietf_rfc_9381";
 
     #[test]
     #[ignore = "test vectors generator"]
@@ -117,7 +117,7 @@ mod test_vectors_pedersen {
     use super::*;
 
     type V = crate::pedersen::testing::TestVector<P256Sha256Tai>;
-    const VECTOR_ID: &str = "secp256r1_sha256_tai_pedersen_vectors";
+    const VECTOR_ID: &str = "secp256r1_sha256_tai_pedersen";
 
     #[test]
     #[ignore = "test vectors generator"]
