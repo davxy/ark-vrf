@@ -64,7 +64,7 @@ impl TestVectorMap {
 }
 
 pub trait TestVectorTrait {
-    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: Option<&[u8]>, ad: &[u8]) -> Self;
+    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self;
 
     fn from_map(map: &TestVectorMap) -> Self;
 
@@ -119,11 +119,9 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
 }
 
 impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
-    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: Option<&[u8]>, ad: &[u8]) -> Self {
+    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
         let sk = Secret::<S>::from_seed(seed);
         let pk = sk.public().0;
-
-        let salt = salt.unwrap_or_default();
 
         let h2c_data = [&salt[..], alpha].concat();
         let h = <S as Suite>::data_to_point(&h2c_data).unwrap();
@@ -148,7 +146,9 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     }
 
     fn from_map(map: &TestVectorMap) -> Self {
-        let item_bytes = |field| hex::decode(map.0.get(field).unwrap()).unwrap();
+        let item_bytes = |field| {
+            hex::decode(map.0.get(field).map(|v| v.to_owned()).unwrap_or_default()).unwrap()
+        };
         let comment = map.0.get("comment").unwrap().to_string();
         let sk = codec::scalar_decode::<S>(&item_bytes("sk"));
         let pk = codec::point_decode::<S>(&item_bytes("pk")).unwrap();
@@ -228,7 +228,7 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(file: &str, i
         let alpha = hex::decode(var_data.1).unwrap();
         let ad = hex::decode(var_data.2).unwrap();
         let comment = format!("{} - vector-{}", identifier, i + 1);
-        let vector = V::new(&comment, &[var_data.0], &alpha, None, &ad);
+        let vector = V::new(&comment, &[var_data.0], &alpha, b"", &ad);
         println!("Gen test vector: {}", comment);
         vector.run();
         vector_maps.push(vector.to_map());
