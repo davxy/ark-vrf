@@ -12,6 +12,7 @@ pub trait MapConfig: TECurveConfig + SWCurveConfig + MontCurveConfig {
     const MONT_B_INV: <Self as CurveConfig>::BaseField;
 }
 
+/// Map a a point in Short Weierstrass form into its corresponding point in Twisted Edwards form.
 pub fn sw_to_te<C: MapConfig>(point: &WeierstrassAffine<C>) -> Option<EdwardsAffine<C>> {
     // First map the point from SW to Montgomery
     // (Bx - A/3, By)
@@ -29,6 +30,7 @@ pub fn sw_to_te<C: MapConfig>(point: &WeierstrassAffine<C>) -> Option<EdwardsAff
     Some(EdwardsAffine::new_unchecked(v, w))
 }
 
+/// Map a a point in Twisted Edwards form into its corresponding point in Short Weierstrass form.
 pub fn te_to_sw<C: MapConfig>(point: &EdwardsAffine<C>) -> Option<WeierstrassAffine<C>> {
     // Map from TE to Montgomery: (1+y)/(1-y), (1+y)/(x(1-y))
     let v_denom = <<C as CurveConfig>::BaseField as One>::one() - point.y;
