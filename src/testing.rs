@@ -82,6 +82,8 @@ pub struct TestVector<S: Suite> {
     pub pk: AffinePoint<S>,
     /// VRF input raw data.
     pub alpha: Vec<u8>,
+    /// VRF input salt.
+    pub salt: Vec<u8>,
     /// Signature additional raw data.
     pub ad: Vec<u8>,
     /// VRF input point.
@@ -97,6 +99,7 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
         let sk = hex::encode(codec::scalar_encode::<S>(&self.sk));
         let pk = hex::encode(codec::point_encode::<S>(&self.pk));
         let alpha = hex::encode(&self.alpha);
+        let salt = hex::encode(&self.salt);
         let ad = hex::encode(&self.ad);
         let h = hex::encode(codec::point_encode::<S>(&self.h));
         let gamma = hex::encode(codec::point_encode::<S>(&self.gamma));
@@ -106,6 +109,7 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
             .field("sk", &sk)
             .field("pk", &pk)
             .field("alpha", &alpha)
+            .field("salt", &salt)
             .field("ad", &ad)
             .field("h", &h)
             .field("gamma", &gamma)
@@ -119,9 +123,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let sk = Secret::<S>::from_seed(seed);
         let pk = sk.public().0;
 
-        let salt = salt
-            .map(|v| v.to_vec())
-            .unwrap_or_else(|| codec::point_encode::<S>(&pk));
+        let salt = salt.unwrap_or_default();
 
         let h2c_data = [&salt[..], alpha].concat();
         let h = <S as Suite>::data_to_point(&h2c_data).unwrap();
@@ -137,6 +139,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             sk: sk.scalar,
             pk,
             alpha,
+            salt: salt.to_vec(),
             ad: ad.to_vec(),
             h,
             gamma,
@@ -150,6 +153,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let sk = codec::scalar_decode::<S>(&item_bytes("sk"));
         let pk = codec::point_decode::<S>(&item_bytes("pk")).unwrap();
         let alpha = item_bytes("alpha");
+        let salt = item_bytes("salt");
         let ad = item_bytes("ad");
         let h = codec::point_decode::<S>(&item_bytes("h")).unwrap();
         let gamma = codec::point_decode::<S>(&item_bytes("gamma")).unwrap();
@@ -159,6 +163,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             sk,
             pk,
             alpha,
+            salt,
             ad,
             h,
             gamma,
@@ -172,6 +177,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             ("sk", hex::encode(codec::scalar_encode::<S>(&self.sk))),
             ("pk", hex::encode(codec::point_encode::<S>(&self.pk))),
             ("alpha", hex::encode(&self.alpha)),
+            ("salt", hex::encode(&self.salt)),
             ("ad", hex::encode(&self.ad)),
             ("h", hex::encode(codec::point_encode::<S>(&self.h))),
             ("gamma", hex::encode(codec::point_encode::<S>(&self.gamma))),
@@ -190,11 +196,7 @@ impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let pk = sk.public();
         assert_eq!(self.pk, pk.0, "public key ('pk') mismatch");
 
-        // Prepare hash_to_curve data = salt || alpha
-        // Salt is defined to be pk (adjust it to make the encoding to match)
-        let pk_bytes = codec::point_encode::<S>(&pk.0);
-        let h2c_data = [&pk_bytes[..], &self.alpha[..]].concat();
-
+        let h2c_data = [&self.salt[..], &self.alpha[..]].concat();
         let h = S::data_to_point(&h2c_data).unwrap();
         assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
         let input = Input::<S>::from(h);
