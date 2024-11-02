@@ -1,13 +1,8 @@
 use crate::*;
-use ark_ff::FftField;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 
 /// Ring suite.
-pub trait RingSuite: PedersenSuite
-where
-    AffinePoint<Self>: ring_proof::AffineCondAdd,
-    <AffinePoint<Self> as AffineRepr>::BaseField: FftField,
-{
+pub trait RingSuite: PedersenSuite {
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
