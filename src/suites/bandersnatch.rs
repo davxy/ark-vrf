@@ -96,13 +96,20 @@ pub mod weierstrass {
         impl ring_suite::RingSuite for BandersnatchSha512Tai {
             type Pairing = ark_bls12_381::Bls12_381;
 
-            /// A point on the curve not belonging to the prime order subgroup.
-            ///
-            /// Found using `ring_proof::find_complement_point::<Self::Config>()` function.
             const ACCUMULATOR_BASE: AffinePoint = {
                 const X: BaseField = MontFp!("0");
                 const Y: BaseField = MontFp!(
                     "11982629110561008531870698410380659621661946968466267969586599013782997959645"
+                );
+                AffinePoint::new_unchecked(X, Y)
+            };
+
+            const PADDING: AffinePoint = {
+                const X: weierstrass::BaseField = MontFp!(
+                    "25353312785503880631115876544961443547556511355876709037985429927235015446936"
+                );
+                const Y: weierstrass::BaseField = MontFp!(
+                    "48034916494481689813223622984827694955476028581467743482028403440447916980403"
                 );
                 AffinePoint::new_unchecked(X, Y)
             };
@@ -144,7 +151,6 @@ pub mod edwards {
     }
 
     impl PedersenSuite for BandersnatchSha512Ell2 {
-        /// Found mapping `BLINDING_BASE` of `weierstrass` module using the `utils::map_sw_to_te`
         const BLINDING_BASE: AffinePoint = {
             const X: BaseField = MontFp!(
                 "14576224270591906826192118712803723445031237947873156025406837473427562701854"
@@ -186,15 +192,22 @@ pub mod edwards {
         impl ring_suite::RingSuite for BandersnatchSha512Ell2 {
             type Pairing = ark_bls12_381::Bls12_381;
 
-            /// A point on the curve not belonging to the prime order subgroup.
-            ///
-            /// Found mapping the `COMPLEMENT_POINT` of `weierstrass` module using the `utils::map_sw_to_te`
             const ACCUMULATOR_BASE: AffinePoint = {
                 const X: BaseField = MontFp!(
                     "3955725774225903122339172568337849452553276548604445833196164961773358506589"
                 );
                 const Y: BaseField = MontFp!(
                     "29870564530691725960104983716673293929719207405660860235233811770612192692323"
+                );
+                AffinePoint::new_unchecked(X, Y)
+            };
+
+            const PADDING: AffinePoint = {
+                const X: edwards::BaseField = MontFp!(
+                    "23942223917106120326220291257397678561637131227432899006603244452561725937075"
+                );
+                const Y: edwards::BaseField = MontFp!(
+                    "1605027200774560580022502723165578671697794116420567297367317898913080293877"
                 );
                 AffinePoint::new_unchecked(X, Y)
             };

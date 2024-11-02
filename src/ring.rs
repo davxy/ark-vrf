@@ -16,6 +16,9 @@ where
     /// In order for the ring-proof backend to work correctly, this is required to be
     /// in the prime order subgroup.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
+
+    /// Padding point with unknown discrete log.
+    const PADDING: AffinePoint<Self>;
 }
 
 /// Polinomial Commitment Scheme (KZG)
@@ -197,6 +200,7 @@ where
             ring_proof::Domain::new(domain_size, true),
             S::BLINDING_BASE,
             S::ACCUMULATOR_BASE,
+            S::PADDING,
         );
 
         Ok(Self {
@@ -214,7 +218,7 @@ where
     /// Get the padding point.
     #[inline(always)]
     pub fn padding_point(&self) -> AffinePoint<S> {
-        self.piop_params.padding_point()
+        S::PADDING
     }
 
     /// Construct a `ProverKey` instance for the given ring.
