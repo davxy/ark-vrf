@@ -78,6 +78,3 @@ asm = [
 test-vectors = [
   "ring-proof?/test-vectors"
 ]
-
-[patch."https://github.com/davxy/ring-proof"]
-ring_proof = { package="ring", path = "/mnt/ssd/develop/w3f/ring-proof/ring"}
