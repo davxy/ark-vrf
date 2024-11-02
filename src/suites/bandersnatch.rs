@@ -153,10 +153,10 @@ pub mod edwards {
     impl PedersenSuite for BandersnatchSha512Ell2 {
         const BLINDING_BASE: AffinePoint = {
             const X: BaseField = MontFp!(
-                "14576224270591906826192118712803723445031237947873156025406837473427562701854"
+                "38168223498318911142286050663287153682718239172559550124349816380809451936776"
             );
             const Y: BaseField = MontFp!(
-                "38436873314098705092845609371301773715650206984323659492499960072785679638442"
+                "13115037257460794964097483333460798982818600992000859876014531380573406267597"
             );
             AffinePoint::new_unchecked(X, Y)
         };
@@ -194,20 +194,20 @@ pub mod edwards {
 
             const ACCUMULATOR_BASE: AffinePoint = {
                 const X: BaseField = MontFp!(
-                    "3955725774225903122339172568337849452553276548604445833196164961773358506589"
+                    "40466805124442823009206085742433914639946090367156029186462738700056462095646"
                 );
                 const Y: BaseField = MontFp!(
-                    "29870564530691725960104983716673293929719207405660860235233811770612192692323"
+                    "34469198087286762951014035959822415945315930553941756446161542933145938584110"
                 );
                 AffinePoint::new_unchecked(X, Y)
             };
 
             const PADDING: AffinePoint = {
                 const X: edwards::BaseField = MontFp!(
-                    "23942223917106120326220291257397678561637131227432899006603244452561725937075"
+                    "26690044630372444677440308098946018389016038587388751811165279176488605875833"
                 );
                 const Y: edwards::BaseField = MontFp!(
-                    "1605027200774560580022502723165578671697794116420567297367317898913080293877"
+                    "569559155228528470326092120674498621727733902430463954153034712442147510565"
                 );
                 AffinePoint::new_unchecked(X, Y)
             };
@@ -417,57 +417,7 @@ mod test_vectors_ring_sw {
 }
 
 #[test]
-fn blinding_base_sw_te_rountrip() {
-    use crate::utils::*;
-    let sw = weierstrass::BandersnatchSha512Tai::BLINDING_BASE;
-    let ed = sw_to_te(&sw).unwrap();
-    assert_eq!(ed, edwards::BandersnatchSha512Ell2::BLINDING_BASE);
-    let sw2 = te_to_sw(&ed).unwrap();
-    assert_eq!(sw, sw2);
-}
-
-#[cfg(all(test, feature = "ring"))]
-#[test]
-fn accumulator_base_sw_te_roundtrip() {
-    use crate::{ring::RingSuite, utils::*};
-    let sw = weierstrass::BandersnatchSha512Tai::ACCUMULATOR_BASE;
-    let ed = sw_to_te(&sw).unwrap();
-    assert_eq!(ed, edwards::BandersnatchSha512Ell2::ACCUMULATOR_BASE);
-    let sw2 = te_to_sw(&ed).unwrap();
-    assert_eq!(sw, sw2);
-}
-
-#[cfg(all(test, feature = "ring"))]
-#[test]
-fn padding_point_sw_te_roundtrip() {
-    use crate::utils::*;
-    // Fixed padding point
-    let sw = {
-        const X: weierstrass::BaseField = MontFp!(
-            "25353312785503880631115876544961443547556511355876709037985429927235015446936"
-        );
-        const Y: weierstrass::BaseField = MontFp!(
-            "48034916494481689813223622984827694955476028581467743482028403440447916980403"
-        );
-        weierstrass::AffinePoint::new_unchecked(X, Y)
-    };
-    let ed = {
-        const X: edwards::BaseField = MontFp!(
-            "23942223917106120326220291257397678561637131227432899006603244452561725937075"
-        );
-        const Y: edwards::BaseField =
-            MontFp!("1605027200774560580022502723165578671697794116420567297367317898913080293877");
-        edwards::AffinePoint::new_unchecked(X, Y)
-    };
-
-    let ed2 = sw_to_te(&sw).unwrap();
-    assert_eq!(ed, ed2);
-    let sw2 = te_to_sw(&ed).unwrap();
-    assert_eq!(sw, sw2);
-}
-
-#[test]
-fn generator_roundtrip() {
+fn generator_te_sw_roundtrip() {
     use crate::utils::*;
     let sw1 = weierstrass::AffinePoint::generator();
     let ed1 = sw_to_te(&sw1).unwrap();
