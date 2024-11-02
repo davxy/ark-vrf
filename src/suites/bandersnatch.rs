@@ -214,6 +214,14 @@ pub mod edwards {
                 AffinePoint::new_unchecked(X, Y)
             };
         }
+
+        #[test]
+        fn check_assumptions() {
+            use crate::ring::RingSuite;
+            check_point(BandersnatchSha512Ell2::BLINDING_BASE);
+            check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
+            check_point(BandersnatchSha512Ell2::PADDING);
+        }
     }
     #[cfg(feature = "ring")]
     pub use ring_defs::*;
@@ -224,11 +232,15 @@ pub mod edwards {
     #[cfg(test)]
     suite_tests!(BandersnatchSha512Ell2);
 
+    fn check_point(p: AffinePoint) {
+        assert!(p.is_on_curve());
+        assert!(p.is_in_correct_subgroup_assuming_on_curve());
+    }
+
     #[test]
     fn elligator2_hash_to_curve() {
-        let point = BandersnatchSha512Ell2::data_to_point(b"foo").unwrap();
-        assert!(point.is_on_curve());
-        assert!(point.is_in_correct_subgroup_assuming_on_curve());
+        let p = BandersnatchSha512Ell2::data_to_point(b"foo").unwrap();
+        check_point(p);
     }
 }
 
