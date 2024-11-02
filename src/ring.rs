@@ -1,10 +1,13 @@
-use crate::utils::te_sw_map::SWMapping;
 use crate::*;
-use ark_ec::short_weierstrass::SWCurveConfig;
+use ark_ff::FftField;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 
 /// Ring suite.
-pub trait RingSuite: PedersenSuite {
+pub trait RingSuite: PedersenSuite
+where
+    AffinePoint<Self>: ring_proof::AffineCondAdd,
+    <AffinePoint<Self> as AffineRepr>::BaseField: FftField,
+{
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
@@ -30,24 +33,23 @@ pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing
 ///
 /// Basically all the application specific parameters required to construct and
 /// verify the ring proof.
-type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
+type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, AffinePoint<S>>;
 
 /// Ring keys commitment.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
 
 /// Ring prover key.
-pub type ProverKey<S> =
-    ring_proof::ProverKey<BaseField<S>, Pcs<S>, ark_ec::short_weierstrass::Affine<CurveConfig<S>>>;
+pub type ProverKey<S> = ring_proof::ProverKey<BaseField<S>, Pcs<S>, AffinePoint<S>>;
 
 /// Ring verifier key.
 pub type VerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Pcs<S>>;
 
 /// Ring prover.
-pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Pcs<S>, CurveConfig<S>>;
+pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Pcs<S>, AffinePoint<S>>;
 
 /// Ring verifier.
 pub type RingVerifier<S> =
-    ring_proof::ring_verifier::RingVerifier<BaseField<S>, Pcs<S>, CurveConfig<S>>;
+    ring_proof::ring_verifier::RingVerifier<BaseField<S>, Pcs<S>, AffinePoint<S>>;
 
 /// Actual ring proof.
 pub type RingProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
@@ -59,7 +61,7 @@ pub type RingProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 pub struct Proof<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     pub pedersen_proof: PedersenProof<S>,
     pub ring_proof: RingProof<S>,
@@ -68,7 +70,7 @@ where
 pub trait Prover<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     /// Generate a proof for the given input/output and user additional data.
     fn prove(
@@ -83,7 +85,7 @@ where
 impl<S: RingSuite> Prover<S> for Secret<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     fn prove(
         &self,
@@ -106,7 +108,7 @@ where
 pub trait Verifier<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     /// Verify a proof for the given input/output and user additional data.
     fn verify(
@@ -121,8 +123,7 @@ where
 impl<S: RingSuite> Verifier<S> for Public<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     fn verify(
         input: Input<S>,
@@ -133,8 +134,8 @@ where
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = sig.pedersen_proof.key_commitment().into_sw();
-        if !verifier.verify_ring_proof(sig.ring_proof.clone(), key_commitment) {
+        let key_commitment = sig.pedersen_proof.key_commitment();
+        if !verifier.verify(sig.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
         Ok(())
@@ -145,7 +146,7 @@ where
 pub struct RingContext<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig + Clone,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     pcs_params: PcsParams<S>,
     piop_params: PiopParams<S>,
@@ -153,7 +154,11 @@ where
 
 // Evaluation domain size required for the given ring size.
 #[inline(always)]
-fn domain_size<S: RingSuite>(ring_size: usize) -> usize {
+fn domain_size<S: RingSuite>(ring_size: usize) -> usize
+where
+    BaseField<S>: ark_ff::FftField,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
+{
     1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
 }
 
@@ -161,8 +166,7 @@ fn domain_size<S: RingSuite>(ring_size: usize) -> usize {
 impl<S: RingSuite> RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     /// Construct a new ring context suitable to manage the given ring size.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
@@ -191,8 +195,8 @@ where
 
         let piop_params = PiopParams::<S>::setup(
             ring_proof::Domain::new(domain_size, true),
-            S::BLINDING_BASE.into_sw(),
-            S::ACCUMULATOR_BASE.into_sw(),
+            S::BLINDING_BASE,
+            S::ACCUMULATOR_BASE,
         );
 
         Ok(Self {
@@ -210,15 +214,15 @@ where
     /// Get the padding point.
     #[inline(always)]
     pub fn padding_point(&self) -> AffinePoint<S> {
-        AffinePoint::<S>::from_sw(self.piop_params.padding_point())
+        self.piop_params.padding_point()
     }
 
     /// Construct a `ProverKey` instance for the given ring.
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
-        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
-        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
+        let pks = &pks[..pks.len().min(self.max_ring_size())];
+        ring_proof::index(&self.pcs_params, &self.piop_params, pks).0
     }
 
     /// Construct `RingProver` from `ProverKey` for the prover implied by `key_index`.
@@ -238,8 +242,8 @@ where
     ///
     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
-        let pks = SWMapping::to_sw_slice(&pks[..pks.len().min(self.max_ring_size())]);
-        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
+        let pks = &pks[..pks.len().min(self.max_ring_size())];
+        ring_proof::index(&self.pcs_params, &self.piop_params, pks).1
     }
 
     /// Construct `VerifierKey` instance for the ring previously committed.
@@ -266,8 +270,7 @@ where
 impl<S: RingSuite> CanonicalSerialize for RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
@@ -286,8 +289,7 @@ where
 impl<S: RingSuite> CanonicalDeserialize for RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig + Clone,
-    AffinePoint<S>: SWMapping<CurveConfig<S>>,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
@@ -308,7 +310,7 @@ where
 impl<S: RingSuite> ark_serialize::Valid for RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: SWCurveConfig + Clone,
+    AffinePoint<S>: ring_proof::AffineCondAdd,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.pcs_params.check()
@@ -326,8 +328,7 @@ pub(crate) mod testing {
     pub fn prove_verify<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-        AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
     {
         let rng = &mut ark_std::test_rng();
         let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
@@ -360,6 +361,7 @@ pub(crate) mod testing {
     pub fn check_accumulator_base<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
         CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
         AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
     {
@@ -387,8 +389,7 @@ pub(crate) mod testing {
     pub trait RingSuiteExt: RingSuite
     where
         BaseField<Self>: ark_ff::PrimeField,
-        CurveConfig<Self>: SWCurveConfig + Clone,
-        AffinePoint<Self>: SWMapping<CurveConfig<Self>>,
+        AffinePoint<Self>: ring_proof::AffineCondAdd,
     {
         fn ring_context() -> &'static RingContext<Self>;
     }
@@ -396,8 +397,7 @@ pub(crate) mod testing {
     pub struct TestVector<S: RingSuite>
     where
         BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: SWCurveConfig + Clone,
-        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
     {
         pub pedersen: pedersen::testing::TestVector<S>,
         pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
@@ -408,8 +408,7 @@ pub(crate) mod testing {
     impl<S: RingSuite> core::fmt::Debug for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: SWCurveConfig + Clone,
-        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
     {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
@@ -422,8 +421,7 @@ pub(crate) mod testing {
     impl<S: RingSuiteExt + std::fmt::Debug + 'static> common::TestVectorTrait for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: SWCurveConfig + Clone,
-        AffinePoint<S>: SWMapping<CurveConfig<S>>,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
     {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
