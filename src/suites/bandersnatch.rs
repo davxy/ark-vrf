@@ -232,6 +232,7 @@ pub mod edwards {
     #[cfg(test)]
     suite_tests!(BandersnatchSha512Ell2);
 
+    #[cfg(test)]
     fn check_point(p: AffinePoint) {
         assert!(p.is_on_curve());
         assert!(p.is_in_correct_subgroup_assuming_on_curve());

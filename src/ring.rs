@@ -258,6 +258,12 @@ where
             ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
+
+    /// Get the padding point.
+    #[inline(always)]
+    pub const fn padding_point() -> AffinePoint<S> {
+        S::PADDING
+    }
 }
 
 impl<S: RingSuite> CanonicalSerialize for RingContext<S>
