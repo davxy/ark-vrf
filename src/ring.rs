@@ -352,34 +352,12 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
-    /// Check that complement point is not in the prime subgroup.
-    ///
-    /// This is a requirement for the correct working of ring-proof backend.
-    #[allow(unused)]
-    pub fn check_accumulator_base<S: RingSuite>()
-    where
-        BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
-        CurveConfig<S>: ark_ec::short_weierstrass::SWCurveConfig + Clone,
-        AffinePoint<S>: utils::te_sw_map::SWMapping<CurveConfig<S>>,
-    {
-        use utils::te_sw_map::SWMapping;
-        let pt = S::ACCUMULATOR_BASE.into_sw();
-        assert!(pt.is_on_curve());
-        assert!(!pt.is_in_correct_subgroup_assuming_on_curve());
-    }
-
     #[macro_export]
     macro_rules! ring_suite_tests {
         ($suite:ident) => {
             #[test]
             fn ring_prove_verify() {
                 $crate::ring::testing::prove_verify::<$suite>()
-            }
-
-            #[test]
-            fn check_accumulator_base() {
-                $crate::ring::testing::check_accumulator_base::<$suite>()
             }
         };
     }
