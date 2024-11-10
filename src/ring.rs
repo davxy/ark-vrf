@@ -353,12 +353,44 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
+    #[allow(unused)]
+    pub fn padding_check<S: RingSuite>()
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
+    {
+        const PADDING_SEED: &[u8] = b"w3f/ring-proof/padding";
+        let p = S::data_to_point(PADDING_SEED).unwrap();
+        assert_eq!(S::PADDING, p);
+    }
+
+    #[allow(unused)]
+    pub fn accumulator_base_check<S: RingSuite>()
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        AffinePoint<S>: ring_proof::AffineCondAdd,
+    {
+        const ACCUMULATOR_BASE_SEED: &[u8] = b"w3f/ring-proof/accumulator";
+        let p = S::data_to_point(ACCUMULATOR_BASE_SEED).unwrap();
+        assert_eq!(S::ACCUMULATOR_BASE, p);
+    }
+
     #[macro_export]
     macro_rules! ring_suite_tests {
         ($suite:ident) => {
             #[test]
             fn ring_prove_verify() {
                 $crate::ring::testing::prove_verify::<$suite>()
+            }
+
+            #[test]
+            fn ring_padding_check() {
+                $crate::ring::testing::padding_check::<$suite>()
+            }
+
+            #[test]
+            fn ring_accumulator_base_check() {
+                $crate::ring::testing::accumulator_base_check::<$suite>()
             }
         };
     }

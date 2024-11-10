@@ -162,12 +162,23 @@ pub(crate) mod testing {
         );
     }
 
+    pub fn blinding_base_check<S: PedersenSuite>() {
+        const BLINDING_BASE_SEED: &[u8] = b"w3f/ring-proof/blinding";
+        let p = S::data_to_point(BLINDING_BASE_SEED).unwrap();
+        assert_eq!(S::BLINDING_BASE, p);
+    }
+
     #[macro_export]
     macro_rules! pedersen_suite_tests {
         ($suite:ident) => {
             #[test]
             fn pedersen_prove_verify() {
                 $crate::pedersen::testing::prove_verify::<$suite>();
+            }
+
+            #[test]
+            fn pedersen_blinding_base_check() {
+                $crate::pedersen::testing::blinding_base_check::<$suite>();
             }
         };
     }
