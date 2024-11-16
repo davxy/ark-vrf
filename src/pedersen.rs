@@ -143,7 +143,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, TEST_SEED};
+    use crate::testing::{self as common, random_val, PEDERSEN_BASE_SEED, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -163,9 +163,10 @@ pub(crate) mod testing {
     }
 
     pub fn blinding_base_check<S: PedersenSuite>() {
-        const BLINDING_BASE_SEED: &[u8] = b"w3f/ring-proof/blinding";
-        let p = S::data_to_point(BLINDING_BASE_SEED).unwrap();
-        assert_eq!(S::BLINDING_BASE, p);
+        assert_eq!(
+            S::data_to_point(PEDERSEN_BASE_SEED).unwrap(),
+            S::BLINDING_BASE
+        );
     }
 
     #[macro_export]
