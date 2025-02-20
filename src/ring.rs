@@ -338,7 +338,7 @@ where
 pub(crate) mod testing {
     use super::*;
     use crate::pedersen;
-    use crate::testing::{self as common, PADDING_SEED, TEST_SEED};
+    use crate::testing::{self as common, ACCUMULATOR_BASE_SEED, PADDING_SEED, TEST_SEED};
 
     pub const TEST_RING_SIZE: usize = 8;
 
@@ -392,7 +392,6 @@ pub(crate) mod testing {
         AffinePoint<S>: TEMapping<CurveConfig<S>> + utils::common::FindAccumulatorBase<S>,
     {
         use utils::common::FindAccumulatorBase;
-        const ACCUMULATOR_BASE_SEED: &[u8] = b"w3f/ring-proof/accumulator";
         let p = AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap();
         assert_eq!(S::ACCUMULATOR_BASE, p);
     }
