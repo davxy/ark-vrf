@@ -77,3 +77,6 @@ asm = [
 test-vectors = [
   "ring-proof?/test-vectors"
 ]
+
+[patch.crates-io]
+w3f-ring-proof = { git = "https://github.com/davxy/ring-proof", rev = "8b2cab8" }
