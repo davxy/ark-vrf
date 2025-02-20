@@ -31,7 +31,7 @@ macro_rules! suite_types {
         #[allow(dead_code)]
         pub type PedersenProof = $crate::pedersen::Proof<$suite>;
         #[cfg(feature = "ring")]
-        #[allow(dead_code)]
+        #[allow(dead_code, unexpected_cfgs)]
         pub type RingProof = $crate::ring::Proof<$suite>;
     };
 }
