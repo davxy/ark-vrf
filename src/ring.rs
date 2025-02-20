@@ -3,6 +3,18 @@ use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 
+/// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
+///
+/// *"The foundation of the accumulator, which in the silence of time guards the hidden secret"*
+pub const ACCUMULATOR_BASE_SEED: &[u8] =
+    b"substratum accumulatoris, quod in silentio temporis arcanum absconditum custodit";
+
+/// Magic spell for [RingSuite::PADDING] generation in built-in implementations.
+///
+/// *"A shadow that fills the void, left by lost souls, echoing among the darkness"*
+pub const PADDING_SEED: &[u8] =
+    b"umbra quae vacuum implet, ab animabus perditis relictum, inter tenebras resonans";
+
 /// Ring suite.
 pub trait RingSuite: PedersenSuite
 where
@@ -338,7 +350,7 @@ where
 pub(crate) mod testing {
     use super::*;
     use crate::pedersen;
-    use crate::testing::{self as common, ACCUMULATOR_BASE_SEED, PADDING_SEED, TEST_SEED};
+    use crate::testing::{self as common, TEST_SEED};
 
     pub const TEST_RING_SIZE: usize = 8;
 

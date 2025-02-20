@@ -214,9 +214,12 @@ where
     S::Codec::scalar_decode(&v)
 }
 
-pub trait FindComplementPoint<C: ark_ec::CurveConfig>: Sized {
+trait FindComplementPoint<C: ark_ec::CurveConfig>: Sized {
     fn try_from(r: C::BaseField) -> Option<Self>;
 
+    /// Get a point outside the prime order group.
+    ///
+    /// Panics if cofactor is one, which means there is no such point.
     fn find_complement_point() -> Self {
         use ark_ff::{One, Zero};
         assert!(!C::cofactor_is_one());

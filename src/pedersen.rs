@@ -1,6 +1,12 @@
 use crate::ietf::IetfSuite;
 use crate::*;
 
+/// Magic spell for [`PedersenSuite::BLINDING_BASE`] generation in built-in implementations.
+///
+/// *"The blinding foundation of hidden light, which eludes the mind and creates darkness for those who see"*
+pub const PEDERSEN_BASE_SEED: &[u8] =
+    b"basis caecans lucis occultae, quae mentem fugit et tenebras iis qui vident creat";
+
 pub trait PedersenSuite: IetfSuite {
     /// Blinding base.
     const BLINDING_BASE: AffinePoint<Self>;
@@ -143,7 +149,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, PEDERSEN_BASE_SEED, TEST_SEED};
+    use crate::testing::{self as common, random_val, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
