@@ -5,15 +5,15 @@ use ark_std::{vec, vec::Vec};
 use crate::*;
 use ark_std::{rand::RngCore, UniformRand};
 
-// The basis that hides the hidden light, which eludes the mind and creates darkness for those who see.
+/// *"The blinding foundation of hidden light, which eludes the mind and creates darkness for those who see"*
 pub const PEDERSEN_BASE_SEED: &[u8] =
     b"basis caecans lucis occultae, quae mentem fugit et tenebras iis qui vident creat";
 
-// "The substratum of the accumulator, which in the silence of time guards the hidden secret"
+/// *"The foundation of the accumulator, which in the silence of time guards the hidden secret"*
 pub const ACCUMULATOR_BASE_SEED: &[u8] =
     b"substratum accumulatoris, quod in silentio temporis arcanum absconditum custodit";
 
-// "A shadow that fills the void left by lost souls, echoing among the darkness"
+/// *"A shadow that fills the void, left by lost souls, echoing among the darkness"*
 pub const PADDING_SEED: &[u8] =
     b"umbra quae vacuum implet, ab animabus perditis relictum, inter tenebras resonans";
 

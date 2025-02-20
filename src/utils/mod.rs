@@ -1,7 +1,5 @@
 //! Features expected to land into Arkworks at some point in the future
 
-/// Elligator 2 hash-to-curve.
-pub(crate) mod elligator2;
 /// Twisted Edwards to Short Weierstrass mapping.
 pub(crate) mod te_sw_map;
 // Common utilities

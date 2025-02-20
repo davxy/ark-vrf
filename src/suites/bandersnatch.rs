@@ -71,10 +71,10 @@ pub mod weierstrass {
     impl PedersenSuite for BandersnatchSha512Tai {
         const BLINDING_BASE: AffinePoint = {
             const X: BaseField = MontFp!(
-                "18562340202008698890566938329151033008590893716756711454001687823729291008182"
+                "2786133011787754314337355768726781346657410178846871760484458839259174143819"
             );
             const Y: BaseField = MontFp!(
-                "22625275248457848583115064311002569996869205956762839165658064263537101602045"
+                "45091380107337827264009149842055668325926237630986280293235738371137471984708"
             );
             AffinePoint::new_unchecked(X, Y)
         };
@@ -155,27 +155,13 @@ pub mod edwards {
     impl PedersenSuite for BandersnatchSha512Ell2 {
         const BLINDING_BASE: AffinePoint = {
             const X: BaseField = MontFp!(
-                "38168223498318911142286050663287153682718239172559550124349816380809451936776"
+                "18052262123084741752455948684150064373355593391329117224969085991125280703899"
             );
             const Y: BaseField = MontFp!(
-                "13115037257460794964097483333460798982818600992000859876014531380573406267597"
+                "18784055160076939116080959996226112562356442880134706822948812359863029976827"
             );
             AffinePoint::new_unchecked(X, Y)
         };
-    }
-
-    impl utils::elligator2::Elligator2Config for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig {
-        const Z: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!("5");
-
-        /// This must be equal to 1/(MontCurveConfig::COEFF_B)^2;
-        const ONE_OVER_COEFF_B_SQUARE: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!(
-            "35484827650731063748396669747216844996598387089274032563585525486049249153249"
-        );
-
-        /// This must be equal to MontCurveConfig::COEFF_A/MontCurveConfig::COEFF_B;
-        const COEFF_A_OVER_COEFF_B: ark_ed_on_bls12_381_bandersnatch::Fq = MontFp!(
-            "22511181562295907836254750456843438087744031914659733450388350895537307167857"
-        );
     }
 
     #[cfg(feature = "ring")]

@@ -1,6 +1,6 @@
 use crate::*;
-
 use ark_ec::{
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     short_weierstrass::{self, SWCurveConfig},
     twisted_edwards::{self, TECurveConfig},
     AffineRepr,
@@ -97,11 +97,13 @@ pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(
 where
     <S as Suite>::Hasher: Default + Clone + FixedOutputReset + 'static,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
-    CurveConfig<S>: utils::elligator2::Elligator2Config,
-    utils::elligator2::Elligator2Map<CurveConfig<S>>:
+    CurveConfig<S>: Elligator2Config,
+    Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::HashToCurve;
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ff::field_hashers::DefaultFieldHasher;
+
     const SEC_PARAM: usize = 128;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -112,10 +114,10 @@ where
         .cloned()
         .collect();
 
-    let hasher = ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher::<
+    let hasher = MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
-        ark_ff::field_hashers::DefaultFieldHasher<<S as Suite>::Hasher, SEC_PARAM>,
-        utils::elligator2::Elligator2Map<CurveConfig<S>>,
+        DefaultFieldHasher<<S as Suite>::Hasher, SEC_PARAM>,
+        Elligator2Map<CurveConfig<S>>,
     >::new(&dst)
     .ok()?;
 
