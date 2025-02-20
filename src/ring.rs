@@ -490,7 +490,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            // TODO: also dump the verifier pks commitmet
+            // TODO: also dump the verifier pks commitment
             Self {
                 pedersen,
                 ring_pks: ring_pks.try_into().unwrap(),
@@ -551,10 +551,10 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            // TODO
             #[cfg(feature = "test-vectors")]
             {
-                // Check if Ring proof matches
+                // Verify if the ring-proof matches. This check is performed only when
+                // deterministic proof generation is required for test vectors.
                 let mut p = (Vec::new(), Vec::new());
                 self.ring_proof.serialize_compressed(&mut p.0).unwrap();
                 proof.ring_proof.serialize_compressed(&mut p.1).unwrap();
