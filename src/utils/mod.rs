@@ -7,7 +7,7 @@ pub(crate) mod common;
 
 pub(crate) use common::*;
 
-pub use te_sw_map::{sw_to_te, te_to_sw, SWMapping};
+pub use te_sw_map::{sw_to_te, te_to_sw, SWMapping, TEMapping};
 
 #[macro_export]
 macro_rules! suite_types {
