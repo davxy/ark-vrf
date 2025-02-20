@@ -345,7 +345,8 @@ pub(crate) mod testing {
     pub fn prove_verify<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         let rng = &mut ark_std::test_rng();
         let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
@@ -375,7 +376,8 @@ pub(crate) mod testing {
     pub fn padding_check<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         const PADDING_SEED: &[u8] = b"w3f/ring-proof/padding";
         let p = S::data_to_point(PADDING_SEED).unwrap();
@@ -386,7 +388,8 @@ pub(crate) mod testing {
     pub fn accumulator_base_check<S: RingSuite>()
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd + utils::common::FindAccumulatorBase<S>,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>> + utils::common::FindAccumulatorBase<S>,
     {
         use utils::common::FindAccumulatorBase;
         const ACCUMULATOR_BASE_SEED: &[u8] = b"w3f/ring-proof/accumulator";
@@ -417,7 +420,8 @@ pub(crate) mod testing {
     pub trait RingSuiteExt: RingSuite
     where
         BaseField<Self>: ark_ff::PrimeField,
-        AffinePoint<Self>: ring_proof::AffineCondAdd,
+        CurveConfig<Self>: TECurveConfig + Clone,
+        AffinePoint<Self>: TEMapping<CurveConfig<Self>>,
     {
         fn ring_context() -> &'static RingContext<Self>;
     }
@@ -425,7 +429,8 @@ pub(crate) mod testing {
     pub struct TestVector<S: RingSuite>
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         pub pedersen: pedersen::testing::TestVector<S>,
         pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
@@ -436,7 +441,8 @@ pub(crate) mod testing {
     impl<S: RingSuite> core::fmt::Debug for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
@@ -449,7 +455,8 @@ pub(crate) mod testing {
     impl<S: RingSuiteExt + std::fmt::Debug + 'static> common::TestVectorTrait for TestVector<S>
     where
         BaseField<S>: ark_ff::PrimeField,
-        AffinePoint<S>: ring_proof::AffineCondAdd,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
