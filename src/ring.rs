@@ -337,7 +337,8 @@ where
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::{pedersen, testing as common};
+    use crate::pedersen;
+    use crate::testing::{self as common, PADDING_SEED, TEST_SEED};
 
     pub const TEST_RING_SIZE: usize = 8;
 
@@ -351,7 +352,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from(common::random_val(Some(rng)));
         let output = secret.output(input);
@@ -379,7 +380,6 @@ pub(crate) mod testing {
         CurveConfig<S>: TECurveConfig + Clone,
         AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
-        const PADDING_SEED: &[u8] = b"w3f/ring-proof/padding";
         let p = S::data_to_point(PADDING_SEED).unwrap();
         assert_eq!(S::PADDING, p);
     }
