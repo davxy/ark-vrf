@@ -1,10 +1,15 @@
 use crate::*;
-use ark_ec::twisted_edwards::TECurveConfig;
+use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 
 /// Ring suite.
-pub trait RingSuite: PedersenSuite {
+pub trait RingSuite: PedersenSuite
+where
+    BaseField<Self>: ark_ff::PrimeField,
+    CurveConfig<Self>: TECurveConfig,
+    AffinePoint<Self>: TEMapping<CurveConfig<Self>>,
+{
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
@@ -39,7 +44,7 @@ type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
 
 /// Ring prover key.
-pub type ProverKey<S> = ring_proof::ProverKey<BaseField<S>, Pcs<S>, AffinePoint<S>>;
+pub type ProverKey<S> = ring_proof::ProverKey<BaseField<S>, Pcs<S>, TEAffine<CurveConfig<S>>>;
 
 /// Ring verifier key.
 pub type VerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Pcs<S>>;
@@ -62,6 +67,7 @@ pub struct Proof<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     pub pedersen_proof: PedersenProof<S>,
     pub ring_proof: RingProof<S>,
@@ -71,6 +77,7 @@ pub trait Prover<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Generate a proof for the given input/output and user additional data.
     fn prove(
@@ -86,6 +93,7 @@ impl<S: RingSuite> Prover<S> for Secret<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn prove(
         &self,
@@ -109,6 +117,7 @@ pub trait Verifier<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Verify a proof for the given input/output and user additional data.
     fn verify(
@@ -124,7 +133,7 @@ impl<S: RingSuite> Verifier<S> for Public<S>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: utils::te_sw_map::TEMapping<CurveConfig<S>>,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn verify(
         input: Input<S>,
@@ -143,181 +152,187 @@ where
     }
 }
 
-// #[derive(Clone)]
-// pub struct RingContext<S: RingSuite>
-// where
-//     BaseField<S>: ark_ff::PrimeField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     pcs_params: PcsParams<S>,
-//     piop_params: PiopParams<S>,
-// }
+#[derive(Clone)]
+pub struct RingContext<S: RingSuite>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    pcs_params: PcsParams<S>,
+    piop_params: PiopParams<S>,
+}
 
-// // Evaluation domain size required for the given ring size.
-// #[inline(always)]
-// fn domain_size<S: RingSuite>(ring_size: usize) -> usize
-// where
-//     BaseField<S>: ark_ff::FftField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
-// }
+// Evaluation domain size required for the given ring size.
+#[inline(always)]
+fn domain_size<S: RingSuite>(ring_size: usize) -> usize
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
+}
 
-// #[allow(private_bounds)]
-// impl<S: RingSuite> RingContext<S>
-// where
-//     BaseField<S>: ark_ff::PrimeField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     /// Construct a new ring context suitable to manage the given ring size.
-//     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
-//         use ark_std::rand::SeedableRng;
-//         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-//         Self::from_rand(ring_size, &mut rng)
-//     }
+#[allow(private_bounds)]
+impl<S: RingSuite> RingContext<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    /// Construct a new ring context suitable to manage the given ring size.
+    pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
+        use ark_std::rand::SeedableRng;
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        Self::from_rand(ring_size, &mut rng)
+    }
 
-//     /// Construct a new random ring context suitable for the given ring size.
-//     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
-//         use ring_proof::pcs::PCS;
-//         let domain_size = domain_size::<S>(ring_size);
-//         let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);
-//         Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
-//     }
+    /// Construct a new random ring context suitable for the given ring size.
+    pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
+        use ring_proof::pcs::PCS;
+        let domain_size = domain_size::<S>(ring_size);
+        let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);
+        Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
+    }
 
-//     pub fn from_srs(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
-//         let domain_size = domain_size::<S>(ring_size);
-//         if pcs_params.powers_in_g1.len() < 3 * domain_size + 1 || pcs_params.powers_in_g2.len() < 2
-//         {
-//             return Err(Error::InvalidData);
-//         }
-//         // Keep only the required powers of tau.
-//         pcs_params.powers_in_g1.truncate(3 * domain_size + 1);
-//         pcs_params.powers_in_g2.truncate(2);
+    pub fn from_srs(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
+        let domain_size = domain_size::<S>(ring_size);
+        if pcs_params.powers_in_g1.len() < 3 * domain_size + 1 || pcs_params.powers_in_g2.len() < 2
+        {
+            return Err(Error::InvalidData);
+        }
+        // Keep only the required powers of tau.
+        pcs_params.powers_in_g1.truncate(3 * domain_size + 1);
+        pcs_params.powers_in_g2.truncate(2);
 
-//         let piop_params = PiopParams::<S>::setup(
-//             ring_proof::Domain::new(domain_size, true),
-//             S::BLINDING_BASE,
-//             S::ACCUMULATOR_BASE,
-//             S::PADDING,
-//         );
+        let piop_params = PiopParams::<S>::setup(
+            ring_proof::Domain::new(domain_size, true),
+            S::BLINDING_BASE.into_te(),
+            S::ACCUMULATOR_BASE.into_te(),
+            S::PADDING.into_te(),
+        );
 
-//         Ok(Self {
-//             pcs_params,
-//             piop_params,
-//         })
-//     }
+        Ok(Self {
+            pcs_params,
+            piop_params,
+        })
+    }
 
-//     /// The max ring size this context is able to manage.
-//     #[inline(always)]
-//     pub fn max_ring_size(&self) -> usize {
-//         self.piop_params.keyset_part_size
-//     }
+    /// The max ring size this context is able to manage.
+    #[inline(always)]
+    pub fn max_ring_size(&self) -> usize {
+        self.piop_params.keyset_part_size
+    }
 
-//     /// Construct a `ProverKey` instance for the given ring.
-//     ///
-//     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-//     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
-//         let pks = &pks[..pks.len().min(self.max_ring_size())];
-//         ring_proof::index(&self.pcs_params, &self.piop_params, pks).0
-//     }
+    /// Construct a `ProverKey` instance for the given ring.
+    ///
+    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> ProverKey<S> {
+        let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
+        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0
+    }
 
-//     /// Construct `RingProver` from `ProverKey` for the prover implied by `key_index`.
-//     ///
-//     /// Key index is the prover index within the `pks` sequence passed to construct the
-//     /// `ProverKey` via the `prover_key` method.
-//     pub fn prover(&self, prover_key: ProverKey<S>, key_index: usize) -> RingProver<S> {
-//         RingProver::<S>::init(
-//             prover_key,
-//             self.piop_params.clone(),
-//             key_index,
-//             ring_proof::ArkTranscript::new(S::SUITE_ID),
-//         )
-//     }
+    /// Construct `RingProver` from `ProverKey` for the prover implied by `key_index`.
+    ///
+    /// Key index is the prover index within the `pks` sequence passed to construct the
+    /// `ProverKey` via the `prover_key` method.
+    pub fn prover(&self, prover_key: ProverKey<S>, key_index: usize) -> RingProver<S> {
+        RingProver::<S>::init(
+            prover_key,
+            self.piop_params.clone(),
+            key_index,
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
+        )
+    }
 
-//     /// Construct a `VerifierKey` instance for the given ring.
-//     ///
-//     /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
-//     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
-//         let pks = &pks[..pks.len().min(self.max_ring_size())];
-//         ring_proof::index(&self.pcs_params, &self.piop_params, pks).1
-//     }
+    /// Construct a `VerifierKey` instance for the given ring.
+    ///
+    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> VerifierKey<S> {
+        let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
+        ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1
+    }
 
-//     /// Construct `VerifierKey` instance for the ring previously committed.
-//     ///
-//     /// The `RingCommitment` instance can be obtained via the `VerifierKey::commitment()` method.
-//     ///
-//     /// This allows to quickly reconstruct the verifier key without having to recompute the
-//     /// keys commitment.
-//     pub fn verifier_key_from_commitment(&self, commitment: RingCommitment<S>) -> VerifierKey<S> {
-//         use ring_proof::pcs::PcsParams;
-//         VerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
-//     }
+    /// Construct `VerifierKey` instance for the ring previously committed.
+    ///
+    /// The `RingCommitment` instance can be obtained via the `VerifierKey::commitment()` method.
+    ///
+    /// This allows to quickly reconstruct the verifier key without having to recompute the
+    /// keys commitment.
+    pub fn verifier_key_from_commitment(&self, commitment: RingCommitment<S>) -> VerifierKey<S> {
+        use ring_proof::pcs::PcsParams;
+        VerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
+    }
 
-//     /// Construct `RingVerifier` from `VerifierKey`.
-//     pub fn verifier(&self, verifier_key: VerifierKey<S>) -> RingVerifier<S> {
-//         RingVerifier::<S>::init(
-//             verifier_key,
-//             self.piop_params.clone(),
-//             ring_proof::ArkTranscript::new(S::SUITE_ID),
-//         )
-//     }
+    /// Construct `RingVerifier` from `VerifierKey`.
+    pub fn verifier(&self, verifier_key: VerifierKey<S>) -> RingVerifier<S> {
+        RingVerifier::<S>::init(
+            verifier_key,
+            self.piop_params.clone(),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
+        )
+    }
 
-//     /// Get the padding point.
-//     #[inline(always)]
-//     pub const fn padding_point() -> AffinePoint<S> {
-//         S::PADDING
-//     }
-// }
+    /// Get the padding point.
+    #[inline(always)]
+    pub const fn padding_point() -> AffinePoint<S> {
+        S::PADDING
+    }
+}
 
-// impl<S: RingSuite> CanonicalSerialize for RingContext<S>
-// where
-//     BaseField<S>: ark_ff::PrimeField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     fn serialize_with_mode<W: ark_serialize::Write>(
-//         &self,
-//         mut writer: W,
-//         compress: ark_serialize::Compress,
-//     ) -> Result<(), ark_serialize::SerializationError> {
-//         self.pcs_params.serialize_with_mode(&mut writer, compress)?;
-//         Ok(())
-//     }
+impl<S: RingSuite> CanonicalSerialize for RingContext<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        mut writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.pcs_params.serialize_with_mode(&mut writer, compress)?;
+        Ok(())
+    }
 
-//     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-//         self.pcs_params.serialized_size(compress)
-//     }
-// }
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.pcs_params.serialized_size(compress)
+    }
+}
 
-// impl<S: RingSuite> CanonicalDeserialize for RingContext<S>
-// where
-//     BaseField<S>: ark_ff::PrimeField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     fn deserialize_with_mode<R: ark_serialize::Read>(
-//         mut reader: R,
-//         compress: ark_serialize::Compress,
-//         validate: ark_serialize::Validate,
-//     ) -> Result<Self, ark_serialize::SerializationError> {
-//         let pcs_params = <PcsParams<S> as CanonicalDeserialize>::deserialize_with_mode(
-//             &mut reader,
-//             compress,
-//             validate,
-//         )?;
-//         let domain_size = (pcs_params.powers_in_g1.len() - 1) / 3;
-//         Self::from_srs(domain_size, pcs_params)
-//             .map_err(|_| ark_serialize::SerializationError::InvalidData)
-//     }
-// }
+impl<S: RingSuite> CanonicalDeserialize for RingContext<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let pcs_params = <PcsParams<S> as CanonicalDeserialize>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            validate,
+        )?;
+        let domain_size = (pcs_params.powers_in_g1.len() - 1) / 3;
+        Self::from_srs(domain_size, pcs_params)
+            .map_err(|_| ark_serialize::SerializationError::InvalidData)
+    }
+}
 
-// impl<S: RingSuite> ark_serialize::Valid for RingContext<S>
-// where
-//     BaseField<S>: ark_ff::PrimeField,
-//     AffinePoint<S>: ring_proof::AffineCondAdd,
-// {
-//     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-//         self.pcs_params.check()
-//     }
-// }
+impl<S: RingSuite> ark_serialize::Valid for RingContext<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.pcs_params.check()
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod testing {
