@@ -71,6 +71,7 @@ let proof = secret.prove(input, output, aux_data, &prover);
 
 Verify
 ```rust
+use ark_ec_vrfs::ring::Verifier;
 let verifier_key = ring_ctx.verifier_key(&ring);
 let verifier = ring_ctx.verifier(verifier_key);
 let result = Public::verify(input, output, aux_data, &proof, &verifier);
