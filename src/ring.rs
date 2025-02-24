@@ -373,7 +373,6 @@ pub(crate) mod testing {
     }
 
     pub trait FindAccumulatorBase<S: Suite>: Sized {
-        #[allow(dead_code)]
         fn find_accumulator_base(data: &[u8]) -> Option<Self>;
     }
 
