@@ -102,25 +102,16 @@ where
     use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
-    const SEC_PARAM: usize = 128;
-
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
-    let dst: Vec<_> = b"ECVRF_"
-        .iter()
-        .chain(h2c_suite_id)
-        .chain(S::SUITE_ID)
-        .cloned()
-        .collect();
+    let dst: Vec<_> = [b"ECVRF_", h2c_suite_id, S::SUITE_ID].concat();
 
-    let hasher = MapToCurveBasedHasher::<
+    MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
-        DefaultFieldHasher<<S as Suite>::Hasher, SEC_PARAM>,
+        DefaultFieldHasher<<S as Suite>::Hasher, 128>,
         Elligator2Map<CurveConfig<S>>,
     >::new(&dst)
-    .ok()?;
-
-    let res = hasher.hash(data).ok()?;
-    Some(res)
+    .and_then(|hasher| hasher.hash(data))
+    .ok()
 }
 
 /// Challenge generation according to RFC-9381 section 5.4.3.
