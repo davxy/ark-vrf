@@ -1,8 +1,6 @@
 use crate::*;
 use ark_ec::{
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
-    short_weierstrass::{self, SWCurveConfig},
-    twisted_edwards::{self, TECurveConfig},
     AffineRepr,
 };
 use ark_ff::PrimeField;
@@ -212,70 +210,6 @@ where
     let v = hmac::<S::Hasher>(&k, &v);
 
     S::Codec::scalar_decode(&v)
-}
-
-trait FindComplementPoint<C: ark_ec::CurveConfig>: Sized {
-    fn try_from(r: C::BaseField) -> Option<Self>;
-
-    /// Get a point outside the prime order group.
-    ///
-    /// Panics if cofactor is one, which means there is no such point.
-    fn find_complement_point() -> Self {
-        use ark_ff::{One, Zero};
-        assert!(!C::cofactor_is_one());
-        let mut r = C::BaseField::zero();
-        loop {
-            if let Some(p) = Self::try_from(r) {
-                return p;
-            }
-            r += C::BaseField::one();
-        }
-    }
-}
-
-impl<C: SWCurveConfig> FindComplementPoint<C> for short_weierstrass::Affine<C> {
-    fn try_from(r: C::BaseField) -> Option<Self> {
-        Self::get_point_from_x_unchecked(r, false)
-            .filter(|p| !p.is_in_correct_subgroup_assuming_on_curve())
-    }
-}
-
-impl<C: TECurveConfig> FindComplementPoint<C> for twisted_edwards::Affine<C> {
-    fn try_from(r: C::BaseField) -> Option<Self> {
-        Self::get_point_from_y_unchecked(r, false)
-            .filter(|p| !p.is_in_correct_subgroup_assuming_on_curve())
-    }
-}
-
-pub trait FindAccumulatorBase<S: Suite>: Sized {
-    #[allow(dead_code)]
-    fn find_accumulator_base(data: &[u8]) -> Option<Self>;
-}
-
-impl<S, C> FindAccumulatorBase<S> for short_weierstrass::Affine<C>
-where
-    C: SWCurveConfig,
-    S: Suite<Affine = Self>,
-{
-    fn find_accumulator_base(data: &[u8]) -> Option<Self> {
-        let p = S::data_to_point(data)?;
-        let c = Self::find_complement_point();
-        let res = (p + c).into_affine();
-        debug_assert!(!res.is_in_correct_subgroup_assuming_on_curve());
-        Some(res)
-    }
-}
-
-impl<S, C> FindAccumulatorBase<S> for twisted_edwards::Affine<C>
-where
-    C: TECurveConfig,
-    S: Suite<Affine = Self>,
-{
-    fn find_accumulator_base(data: &[u8]) -> Option<Self> {
-        let res = S::data_to_point(data)?;
-        debug_assert!(res.is_in_correct_subgroup_assuming_on_curve());
-        Some(res)
-    }
 }
 
 #[cfg(test)]
