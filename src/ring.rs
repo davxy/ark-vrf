@@ -71,6 +71,26 @@ pub type RingVerifier<S> =
 /// Actual ring proof.
 pub type RingProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 
+#[macro_export]
+macro_rules! ring_suite_types {
+    ($suite:ident) => {
+        #[allow(dead_code)]
+        pub type PcsParams = $crate::ring::PcsParams<$suite>;
+        #[allow(dead_code)]
+        pub type RingContext = $crate::ring::RingContext<$suite>;
+        #[allow(dead_code)]
+        pub type RingCommitment = $crate::ring::RingCommitment<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifierKey = $crate::ring::VerifierKey<$suite>;
+        #[allow(dead_code)]
+        pub type RingProver = $crate::ring::RingProver<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type RingProof = $crate::ring::Proof<$suite>;
+    };
+}
+
 /// Ring proof bundled together with a Pedersen proof.
 ///
 /// Pedersen proof is used to provide VRF capability.
@@ -493,17 +513,17 @@ pub(crate) mod testing {
     macro_rules! ring_suite_tests {
         ($suite:ident) => {
             #[test]
-            fn ring_prove_verify() {
+            fn prove_verify() {
                 $crate::ring::testing::prove_verify::<$suite>()
             }
 
             #[test]
-            fn ring_padding_check() {
+            fn padding_check() {
                 $crate::ring::testing::padding_check::<$suite>()
             }
 
             #[test]
-            fn ring_accumulator_base_check() {
+            fn accumulator_base_check() {
                 $crate::ring::testing::accumulator_base_check::<$suite>()
             }
         };

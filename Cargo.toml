@@ -34,7 +34,7 @@ serde_json = "1.0"
 indexmap = { version = "2.2.6", features = ["serde"] }
 
 [features]
-default = [ "std", "ring" ]
+default = [ "std" ]
 std = [
   "ark-std/std",
   "ark-ec/std",
