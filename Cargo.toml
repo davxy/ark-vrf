@@ -34,11 +34,17 @@ serde_json = "1.0"
 indexmap = { version = "2.2.6", features = ["serde"] }
 
 [features]
-default = [ "std" ]
+default = [ "std", "ring" ]
 std = [
   "ark-std/std",
   "ark-ec/std",
   "ring-proof?/std",
+]
+full = [
+  "secp256r1",
+  "ed25519",
+  "bandersnatch",
+  "ring",
 ]
 # Curves
 ed25519 = [ "ark-ed25519" ]
@@ -47,12 +53,6 @@ secp256r1 = [ "ark-secp256r1", "rfc-6979" ]
 # Miscellanea
 ring = [ "ring-proof" ]
 rfc-6979 = [ "hmac" ]
-full = [
-  "secp256r1",
-  "ed25519",
-  "bandersnatch",
-  "ring",
-]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
@@ -64,3 +64,6 @@ parallel = [
 asm = [ "ark-ff/asm", "ring-proof?/asm" ]
 # Deterministic, no-zk, ring-proof (unsafe)
 test-vectors = [ "ring-proof?/test-vectors" ]
+
+[package.metadata.docs.rs]
+features = [ "full" ]

@@ -164,11 +164,13 @@ pub mod te {
         };
     }
 
+    // TODO @davxy: make module public and rename to just `ring`
     #[cfg(feature = "ring")]
     mod ring_defs {
         use super::*;
         use crate::ring as ring_suite;
 
+        // TODO @davxy : introduce `ring_suite_types!` macro
         pub type PcsParams = ring_suite::PcsParams<BandersnatchSha512Ell2>;
         pub type RingContext = ring_suite::RingContext<BandersnatchSha512Ell2>;
         pub type RingCommitment = ring_suite::RingCommitment<BandersnatchSha512Ell2>;

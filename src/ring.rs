@@ -175,15 +175,31 @@ where
     piop_params: PiopParams<S>,
 }
 
-// Evaluation domain size required for the given ring size.
+/// Evaluation domain size required for the given ring size.
+///
+/// This determines the size of the [PcsParams] required to construct.
 #[inline(always)]
-fn domain_size<S: RingSuite>(ring_size: usize) -> usize
+pub fn domain_size<S: RingSuite>(ring_size: usize) -> usize
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
+}
+
+fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    PiopParams::<S>::setup(
+        ring_proof::Domain::new(domain_size, true),
+        S::BLINDING_BASE.into_te(),
+        S::ACCUMULATOR_BASE.into_te(),
+        S::PADDING.into_te(),
+    )
 }
 
 #[allow(private_bounds)]
@@ -194,6 +210,8 @@ where
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Construct a new ring context suitable to manage the given ring size.
+    ///
+    /// Calls into [`RingContext::from_rand`] with a `ChaCha20Rng` seeded with `seed`.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
@@ -201,6 +219,9 @@ where
     }
 
     /// Construct a new random ring context suitable for the given ring size.
+    ///
+    /// Calls into [`RingContext::from_srs`] with a randomly generated [`PcsParams`]
+    /// large enough to be used with the given `ring_size`.
     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let domain_size = domain_size::<S>(ring_size);
@@ -208,26 +229,20 @@ where
         Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
     }
 
+    /// Construct a new random ring context suitable for the given [`PcsParams`].
+    ///
+    /// Fails if `PcsParams` are not
     pub fn from_srs(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
         let domain_size = domain_size::<S>(ring_size);
-        if pcs_params.powers_in_g1.len() < 3 * domain_size + 1 || pcs_params.powers_in_g2.len() < 2
-        {
+        if pcs_params.powers_in_g1.len() <= 3 * domain_size || pcs_params.powers_in_g2.len() < 2 {
             return Err(Error::InvalidData);
         }
         // Keep only the required powers of tau.
         pcs_params.powers_in_g1.truncate(3 * domain_size + 1);
         pcs_params.powers_in_g2.truncate(2);
-
-        let piop_params = PiopParams::<S>::setup(
-            ring_proof::Domain::new(domain_size, true),
-            S::BLINDING_BASE.into_te(),
-            S::ACCUMULATOR_BASE.into_te(),
-            S::PADDING.into_te(),
-        );
-
         Ok(Self {
             pcs_params,
-            piop_params,
+            piop_params: piop_params::<S>(domain_size),
         })
     }
 
@@ -286,7 +301,25 @@ where
         )
     }
 
+    /// Constructs a `RingVerifier` from a `VerifierKey` without a `RingContext` instance.
+    ///
+    /// While this approach is slightly less efficient than using a pre-constructed `RingContext`,
+    /// as some parameters need to be computed on-the-fly, it is beneficial in memory or
+    /// storage constrained environments. This avoids the need to retain the full `RingContext` for
+    /// ring signature verification. Instead, the `VerifierKey` contains only the essential information
+    /// needed to verify ring proofs.
+    pub fn verifier_no_context(verifier_key: VerifierKey<S>, ring_size: usize) -> RingVerifier<S> {
+        RingVerifier::<S>::init(
+            verifier_key,
+            piop_params::<S>(domain_size::<S>(ring_size)),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
+        )
+    }
+
     /// Get the padding point.
+    ///
+    /// This is a point of unknown dlog that can be used to replace of any key during
+    /// ring construciton.
     #[inline(always)]
     pub const fn padding_point() -> AffinePoint<S> {
         S::PADDING
@@ -304,8 +337,7 @@ where
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.pcs_params.serialize_with_mode(&mut writer, compress)?;
-        Ok(())
+        self.pcs_params.serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
@@ -330,8 +362,10 @@ where
             validate,
         )?;
         let domain_size = (pcs_params.powers_in_g1.len() - 1) / 3;
-        Self::from_srs(domain_size, pcs_params)
-            .map_err(|_| ark_serialize::SerializationError::InvalidData)
+        Ok(Self {
+            pcs_params,
+            piop_params: piop_params::<S>(domain_size),
+        })
     }
 }
 
