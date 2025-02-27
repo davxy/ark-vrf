@@ -178,15 +178,21 @@ pub(crate) mod testing {
 
     #[macro_export]
     macro_rules! pedersen_suite_tests {
-        ($suite:ident) => {
-            #[test]
-            fn pedersen_prove_verify() {
-                $crate::pedersen::testing::prove_verify::<$suite>();
-            }
+        ($suite:ty) => {
+            mod pedersen {
+                use super::*;
 
-            #[test]
-            fn pedersen_blinding_base_check() {
-                $crate::pedersen::testing::blinding_base_check::<$suite>();
+                #[test]
+                fn prove_verify() {
+                    $crate::pedersen::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn blinding_base_check() {
+                    $crate::pedersen::testing::blinding_base_check::<$suite>();
+                }
+
+                $crate::test_vectors!($crate::pedersen::testing::TestVector<$suite>);
             }
         };
     }

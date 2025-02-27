@@ -275,18 +275,19 @@ pub fn test_vectors_process<V: TestVectorTrait>(identifier: &str) {
 #[macro_export]
 macro_rules! test_vectors {
     ($vector_type:ty) => {
+        #[allow(unused)]
         use crate::testing::TestVectorTrait as _;
-        test_vectors!($vector_type, &<$vector_type>::name());
+        $crate::test_vectors!($vector_type, &<$vector_type>::name());
     };
     ($vector_type:ty, $vector_name:expr) => {
         #[test]
         #[ignore = "test vectors generator"]
-        fn generate() {
+        fn vectors_generate() {
             $crate::testing::test_vectors_generate::<$vector_type>($vector_name);
         }
 
         #[test]
-        fn process() {
+        fn vectors_process() {
             $crate::testing::test_vectors_process::<$vector_type>($vector_name);
         }
     };

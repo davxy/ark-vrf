@@ -85,31 +85,33 @@ impl PedersenSuite for P256Sha256Tai {
 suite_types!(P256Sha256Tai);
 
 #[cfg(test)]
-suite_tests!(P256Sha256Tai);
-
-#[cfg(test)]
-mod test_vectors_ietf {
+mod tests {
     use super::*;
 
-    test_vectors!(
-        crate::ietf::testing::TestVector<P256Sha256Tai>,
-        "secp256r1_sha-256_tai_ietf"
-    );
+    #[cfg(test)]
+    suite_tests!(P256Sha256Tai);
 
-    // Vectors from RFC-9381
-    #[test]
-    fn process_rfc_9381() {
-        testing::test_vectors_process::<crate::ietf::testing::TestVector<P256Sha256Tai>>(
-            "secp256_sha256_tai_ietf_rfc_9381",
+    mod ietf_ext {
+        use super::*;
+        test_vectors!(
+            crate::ietf::testing::TestVector<P256Sha256Tai>,
+            "secp256r1_sha-256_tai_ietf"
+        );
+
+        // Vectors from RFC-9381
+        #[test]
+        fn process_rfc_9381() {
+            testing::test_vectors_process::<crate::ietf::testing::TestVector<P256Sha256Tai>>(
+                "secp256r1_sha-256_tai_ietf_rfc_9381",
+            );
+        }
+    }
+
+    mod pedersen_ext {
+        use super::*;
+        test_vectors!(
+            crate::pedersen::testing::TestVector<P256Sha256Tai>,
+            "secp256r1_sha-256_tai_pedersen"
         );
     }
-}
-
-#[cfg(test)]
-mod test_vectors_pedersen {
-    use super::*;
-    test_vectors!(
-        crate::pedersen::testing::TestVector<P256Sha256Tai>,
-        "secp256r1_sha-256_tai_pedersen"
-    );
 }

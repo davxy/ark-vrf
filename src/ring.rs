@@ -408,7 +408,7 @@ macro_rules! ring_suite_types {
         #[allow(dead_code)]
         pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
         #[allow(dead_code)]
-        pub type Proof = $crate::ring::Proof<$suite>;
+        pub type RingProof = $crate::ring::Proof<$suite>;
     };
 }
 
@@ -523,20 +523,26 @@ pub(crate) mod testing {
 
     #[macro_export]
     macro_rules! ring_suite_tests {
-        ($suite:ident) => {
-            #[test]
-            fn prove_verify() {
-                $crate::ring::testing::prove_verify::<$suite>()
-            }
+        ($suite:ty) => {
+            mod ring {
+                use super::*;
 
-            #[test]
-            fn padding_check() {
-                $crate::ring::testing::padding_check::<$suite>()
-            }
+                #[test]
+                fn prove_verify() {
+                    $crate::ring::testing::prove_verify::<$suite>()
+                }
 
-            #[test]
-            fn accumulator_base_check() {
-                $crate::ring::testing::accumulator_base_check::<$suite>()
+                #[test]
+                fn padding_check() {
+                    $crate::ring::testing::padding_check::<$suite>()
+                }
+
+                #[test]
+                fn accumulator_base_check() {
+                    $crate::ring::testing::accumulator_base_check::<$suite>()
+                }
+
+                $crate::test_vectors!($crate::ring::testing::TestVector<$suite>);
             }
         };
     }

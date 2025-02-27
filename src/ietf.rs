@@ -148,10 +148,16 @@ pub mod testing {
 
     #[macro_export]
     macro_rules! ietf_suite_tests {
-        ($suite:ident) => {
-            #[test]
-            fn ietf_prove_verify() {
-                $crate::ietf::testing::prove_verify::<$suite>();
+        ($suite:ty) => {
+            mod ietf {
+                use super::*;
+
+                #[test]
+                fn prove_verify() {
+                    $crate::ietf::testing::prove_verify::<$suite>();
+                }
+
+                $crate::test_vectors!($crate::ietf::testing::TestVector<$suite>);
             }
         };
     }

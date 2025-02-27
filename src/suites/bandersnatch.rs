@@ -74,6 +74,44 @@ impl Suite for ThisSuite {
     }
 }
 
+impl PedersenSuite for BandersnatchSha512Ell2 {
+    const BLINDING_BASE: AffinePoint = {
+        const X: BaseField =
+            MontFp!("6150229251051246713677296363717454238956877613358614224171740096471278798312");
+        const Y: BaseField = MontFp!(
+            "28442734166467795856797249030329035618871580593056783094884474814923353898473"
+        );
+        AffinePoint::new_unchecked(X, Y)
+    };
+}
+
+#[cfg(feature = "ring")]
+impl crate::ring::RingSuite for BandersnatchSha512Ell2 {
+    type Pairing = ark_bls12_381::Bls12_381;
+
+    const ACCUMULATOR_BASE: AffinePoint = {
+        const X: BaseField = MontFp!(
+            "37805570861274048643170021838972902516980894313648523898085159469000338764576"
+        );
+        const Y: BaseField = MontFp!(
+            "14738305321141000190236674389841754997202271418876976886494444739226156422510"
+        );
+        AffinePoint::new_unchecked(X, Y)
+    };
+
+    const PADDING: AffinePoint = {
+        const X: BaseField = MontFp!(
+            "26287722405578650394504321825321286533153045350760430979437739593351290020913"
+        );
+        const Y: BaseField = MontFp!(
+            "19058981610000167534379068105702216971787064146691007947119244515951752366738"
+        );
+        AffinePoint::new_unchecked(X, Y)
+    };
+}
+#[cfg(feature = "ring")]
+ring_suite_types!(BandersnatchSha512Ell2);
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -88,110 +126,37 @@ pub(crate) mod tests {
         let p = ThisSuite::data_to_point(b"foo").unwrap();
         check_point(p);
     }
-}
 
-pub mod ietf {
-    use super::*;
-    pub type Proof = crate::ietf::Proof<ThisSuite>;
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        ietf_suite_tests!(ThisSuite);
-
-        type V = crate::ietf::testing::TestVector<ThisSuite>;
-        test_vectors!(V);
-    }
-}
-
-pub mod pedersen {
-    use super::*;
-
-    pub type Proof = crate::pedersen::Proof<ThisSuite>;
-
-    impl PedersenSuite for BandersnatchSha512Ell2 {
-        const BLINDING_BASE: AffinePoint = {
-            const X: BaseField = MontFp!(
-                "6150229251051246713677296363717454238956877613358614224171740096471278798312"
-            );
-            const Y: BaseField = MontFp!(
-                "28442734166467795856797249030329035618871580593056783094884474814923353898473"
-            );
-            AffinePoint::new_unchecked(X, Y)
-        };
+    #[test]
+    fn check_assumptions() {
+        use crate::ring::RingSuite;
+        check_point(BandersnatchSha512Ell2::BLINDING_BASE);
+        check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
+        check_point(BandersnatchSha512Ell2::PADDING);
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        pedersen_suite_tests!(ThisSuite);
-        test_vectors!(crate::pedersen::testing::TestVector<ThisSuite>);
-    }
-}
-
-#[cfg(feature = "ring")]
-pub mod ring {
-    use super::*;
-    use crate::ring as ring_suite;
-
-    impl ring_suite::RingSuite for BandersnatchSha512Ell2 {
-        type Pairing = ark_bls12_381::Bls12_381;
-
-        const ACCUMULATOR_BASE: AffinePoint = {
-            const X: BaseField = MontFp!(
-                "37805570861274048643170021838972902516980894313648523898085159469000338764576"
-            );
-            const Y: BaseField = MontFp!(
-                "14738305321141000190236674389841754997202271418876976886494444739226156422510"
-            );
-            AffinePoint::new_unchecked(X, Y)
-        };
-
-        const PADDING: AffinePoint = {
-            const X: BaseField = MontFp!(
-                "26287722405578650394504321825321286533153045350760430979437739593351290020913"
-            );
-            const Y: BaseField = MontFp!(
-                "19058981610000167534379068105702216971787064146691007947119244515951752366738"
-            );
-            AffinePoint::new_unchecked(X, Y)
-        };
-    }
-
-    ring_suite_types!(BandersnatchSha512Ell2);
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        // #[test]
-        // fn check_assumptions() {
-        //     use crate::ring::RingSuite;
-        //     super::super::tests:::check_point(BandersnatchSha512Ell2::BLINDING_BASE);
-        //     check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
-        //     check_point(BandersnatchSha512Ell2::PADDING);
-        // }
-
-        impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
-            fn ring_context() -> &'static RingContext {
-                use ark_serialize::CanonicalDeserialize;
-                use std::sync::OnceLock;
-                static RING_CTX: OnceLock<RingContext> = OnceLock::new();
-                RING_CTX.get_or_init(|| {
-                    use std::{fs::File, io::Read};
-                    let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
-                    let mut buf = Vec::new();
-                    file.read_to_end(&mut buf).unwrap();
-                    let pcs_params =
-                        PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
-                    RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
-                })
-            }
+    #[cfg(feature = "ring")]
+    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
+        fn ring_context() -> &'static RingContext {
+            use ark_serialize::CanonicalDeserialize;
+            use std::sync::OnceLock;
+            static RING_CTX: OnceLock<RingContext> = OnceLock::new();
+            RING_CTX.get_or_init(|| {
+                use std::{fs::File, io::Read};
+                let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+                let pcs_params =
+                    PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
+                RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+            })
         }
-
-        ring_suite_tests!(BandersnatchSha512Ell2);
-        test_vectors!(crate::ring::testing::TestVector<ThisSuite>);
     }
+
+    ietf_suite_tests!(ThisSuite);
+
+    pedersen_suite_tests!(ThisSuite);
+
+    #[cfg(feature = "ring")]
+    ring_suite_tests!(ThisSuite);
 }

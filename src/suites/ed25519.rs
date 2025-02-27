@@ -76,16 +76,7 @@ impl PedersenSuite for Ed25519Sha512Tai {
 suite_types!(Ed25519Sha512Tai);
 
 #[cfg(test)]
-suite_tests!(Ed25519Sha512Tai);
-
-#[cfg(test)]
-mod test_vectors_ietf {
+mod tests {
     use super::*;
-    test_vectors!(crate::ietf::testing::TestVector<Ed25519Sha512Tai>);
-}
-
-#[cfg(test)]
-mod test_vectors_pedersen {
-    use super::*;
-    test_vectors!(crate::pedersen::testing::TestVector<Ed25519Sha512Tai>);
+    suite_tests!(Ed25519Sha512Tai);
 }
