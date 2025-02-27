@@ -68,9 +68,13 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Pcs<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Pcs<S>, CurveConfig<S>>;
 
-/// Actual ring proof.
+/// Raw ring proof.
+///
+/// This is the primitive ring proof used in conjunction with Pedersen proof to
+/// construct the actual ring vrf proof [`Proof`].
 pub type RingProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 
+/// Define type aliases for the given ring suite.
 #[macro_export]
 macro_rules! ring_suite_types {
     ($suite:ident) => {
@@ -87,7 +91,9 @@ macro_rules! ring_suite_types {
         #[allow(dead_code)]
         pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
         #[allow(dead_code)]
-        pub type RingProof = $crate::ring::Proof<$suite>;
+        pub type RingProof = $crate::ring::RingProof<$suite>;
+        #[allow(dead_code)]
+        pub type Proof = $crate::ring::Proof<$suite>;
     };
 }
 
@@ -105,13 +111,14 @@ where
     pub ring_proof: RingProof<S>,
 }
 
+/// Ring VRF prover.
 pub trait Prover<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    /// Generate a proof for the given input/output and user additional data.
+    /// Generate a proof for the given input/output and additional data.
     fn prove(
         &self,
         input: Input<S>,
@@ -145,6 +152,7 @@ where
     }
 }
 
+/// Ring VRF verifier.
 pub trait Verifier<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,

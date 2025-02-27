@@ -10,7 +10,7 @@ pub trait IetfSuite: Suite {}
 
 impl<T> IetfSuite for T where T: Suite {}
 
-/// VRF proof generic over the suite.
+/// IETF VRF proof.
 #[derive(Debug, Clone)]
 pub struct Proof<S: IetfSuite> {
     pub c: ScalarField<S>,
