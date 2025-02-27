@@ -26,9 +26,5 @@ macro_rules! suite_types {
         pub type ScalarField = $crate::ScalarField<$suite>;
         #[allow(dead_code)]
         pub type BaseField = $crate::BaseField<$suite>;
-        #[allow(dead_code)]
-        pub type IetfProof = $crate::ietf::Proof<$suite>;
-        #[allow(dead_code)]
-        pub type PedersenProof = $crate::pedersen::Proof<$suite>;
     };
 }

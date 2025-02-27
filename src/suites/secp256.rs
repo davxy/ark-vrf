@@ -99,7 +99,7 @@ mod test_vectors_ietf {
     // Vectors from RFC-9381
     #[test]
     fn process_rfc_9381() {
-        testing::test_vectors_process::<crate::pedersen::testing::TestVector<P256Sha256Tai>>(
+        testing::test_vectors_process::<crate::ietf::testing::TestVector<P256Sha256Tai>>(
             "secp256_sha256_tai_ietf_rfc_9381",
         );
     }
