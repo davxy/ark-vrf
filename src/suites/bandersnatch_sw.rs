@@ -52,7 +52,9 @@ use ark_ff::MontFp;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BandersnatchSha512Tai;
 
-impl Suite for BandersnatchSha512Tai {
+type ThisSuite = BandersnatchSha512Tai;
+
+impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Bandersnatch_SW_SHA-512_TAI";
     const CHALLENGE_LEN: usize = 32;
 
@@ -61,7 +63,7 @@ impl Suite for BandersnatchSha512Tai {
     type Codec = codec::ArkworksCodec;
 }
 
-impl PedersenSuite for BandersnatchSha512Tai {
+impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
             "43295201540795761503961631609120105078472641399392666499799525033203881929458"
@@ -73,17 +75,17 @@ impl PedersenSuite for BandersnatchSha512Tai {
     };
 }
 
-suite_types!(BandersnatchSha512Tai);
+suite_types!(ThisSuite);
 
 #[cfg(test)]
-suite_tests!(BandersnatchSha512Tai);
+suite_tests!(ThisSuite);
 
 #[cfg(feature = "ring")]
 pub mod ring {
     use super::*;
     use crate::ring as ring_suite;
 
-    impl ring_suite::RingSuite for BandersnatchSha512Tai {
+    impl ring_suite::RingSuite for ThisSuite {
         type Pairing = ark_bls12_381::Bls12_381;
 
         const ACCUMULATOR_BASE: AffinePoint = {
@@ -107,10 +109,10 @@ pub mod ring {
         };
     }
 
-    ring_suite_types!(BandersnatchSha512Tai);
+    ring_suite_types!(ThisSuite);
 
     #[cfg(test)]
-    ring_suite_tests!(BandersnatchSha512Tai);
+    ring_suite_tests!(ThisSuite);
 }
 #[cfg(feature = "ring")]
 pub use ring::*;
@@ -152,7 +154,7 @@ mod test_vectors_ietf {
     use super::*;
     use crate::testing;
 
-    type V = crate::ietf::testing::TestVector<BandersnatchSha512Tai>;
+    type V = crate::ietf::testing::TestVector<ThisSuite>;
     const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_ietf";
 
     #[test]
@@ -172,7 +174,7 @@ mod test_vectors_pedersen {
     use super::*;
     use crate::testing;
 
-    type V = crate::pedersen::testing::TestVector<BandersnatchSha512Tai>;
+    type V = crate::pedersen::testing::TestVector<ThisSuite>;
     const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_pedersen";
 
     #[test]
@@ -192,10 +194,10 @@ mod test_vectors_ring {
     use super::*;
     use crate::testing;
 
-    type V = crate::ring::testing::TestVector<BandersnatchSha512Tai>;
+    type V = crate::ring::testing::TestVector<ThisSuite>;
     const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_ring";
 
-    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Tai {
+    impl crate::ring::testing::RingSuiteExt for ThisSuite {
         fn ring_context() -> &'static RingContext {
             use ark_serialize::CanonicalDeserialize;
             use std::sync::OnceLock;

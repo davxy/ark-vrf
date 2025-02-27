@@ -52,7 +52,9 @@ use ark_ff::MontFp;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Ed25519Sha512Tai;
 
-impl Suite for Ed25519Sha512Tai {
+type ThisSuite = Ed25519Sha512Tai;
+
+impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Ed25519_SHA-512_TAI";
     const CHALLENGE_LEN: usize = 16;
 
@@ -61,7 +63,7 @@ impl Suite for Ed25519Sha512Tai {
     type Codec = codec::ArkworksCodec;
 }
 
-impl PedersenSuite for Ed25519Sha512Tai {
+impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
             "52417091031015867055192825304177001039906336859819158874861527659737645967040"
@@ -73,10 +75,10 @@ impl PedersenSuite for Ed25519Sha512Tai {
     };
 }
 
-suite_types!(Ed25519Sha512Tai);
+suite_types!(ThisSuite);
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    suite_tests!(Ed25519Sha512Tai);
+    suite_tests!(ThisSuite);
 }

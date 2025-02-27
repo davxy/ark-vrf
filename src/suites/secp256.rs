@@ -53,7 +53,9 @@ use ark_ff::MontFp;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct P256Sha256Tai;
 
-impl Suite for P256Sha256Tai {
+type ThisSuite = P256Sha256Tai;
+
+impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = &[0x01];
     const CHALLENGE_LEN: usize = 16;
 
@@ -70,7 +72,7 @@ impl Suite for P256Sha256Tai {
     }
 }
 
-impl PedersenSuite for P256Sha256Tai {
+impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
             "55516455597544811540149985232155473070193196202193483189274003004283034832642"
@@ -82,26 +84,26 @@ impl PedersenSuite for P256Sha256Tai {
     };
 }
 
-suite_types!(P256Sha256Tai);
+suite_types!(ThisSuite);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[cfg(test)]
-    suite_tests!(P256Sha256Tai);
+    suite_tests!(ThisSuite);
 
     mod ietf_ext {
         use super::*;
         test_vectors!(
-            crate::ietf::testing::TestVector<P256Sha256Tai>,
+            crate::ietf::testing::TestVector<ThisSuite>,
             "secp256r1_sha-256_tai_ietf"
         );
 
         // Vectors from RFC-9381
         #[test]
         fn process_rfc_9381() {
-            testing::test_vectors_process::<crate::ietf::testing::TestVector<P256Sha256Tai>>(
+            testing::test_vectors_process::<crate::ietf::testing::TestVector<ThisSuite>>(
                 "secp256r1_sha-256_tai_ietf_rfc_9381",
             );
         }
@@ -110,7 +112,7 @@ mod tests {
     mod pedersen_ext {
         use super::*;
         test_vectors!(
-            crate::pedersen::testing::TestVector<P256Sha256Tai>,
+            crate::pedersen::testing::TestVector<ThisSuite>,
             "secp256r1_sha-256_tai_pedersen"
         );
     }

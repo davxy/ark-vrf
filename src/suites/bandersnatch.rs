@@ -74,7 +74,7 @@ impl Suite for ThisSuite {
     }
 }
 
-impl PedersenSuite for BandersnatchSha512Ell2 {
+impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField =
             MontFp!("6150229251051246713677296363717454238956877613358614224171740096471278798312");
@@ -86,7 +86,7 @@ impl PedersenSuite for BandersnatchSha512Ell2 {
 }
 
 #[cfg(feature = "ring")]
-impl crate::ring::RingSuite for BandersnatchSha512Ell2 {
+impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bls12_381::Bls12_381;
 
     const ACCUMULATOR_BASE: AffinePoint = {
@@ -110,7 +110,7 @@ impl crate::ring::RingSuite for BandersnatchSha512Ell2 {
     };
 }
 #[cfg(feature = "ring")]
-ring_suite_types!(BandersnatchSha512Ell2);
+ring_suite_types!(ThisSuite);
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -130,13 +130,13 @@ pub(crate) mod tests {
     #[test]
     fn check_assumptions() {
         use crate::ring::RingSuite;
-        check_point(BandersnatchSha512Ell2::BLINDING_BASE);
-        check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
-        check_point(BandersnatchSha512Ell2::PADDING);
+        check_point(ThisSuite::BLINDING_BASE);
+        check_point(ThisSuite::ACCUMULATOR_BASE);
+        check_point(ThisSuite::PADDING);
     }
 
     #[cfg(feature = "ring")]
-    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
+    impl crate::ring::testing::RingSuiteExt for ThisSuite {
         fn ring_context() -> &'static RingContext {
             use ark_serialize::CanonicalDeserialize;
             use std::sync::OnceLock;

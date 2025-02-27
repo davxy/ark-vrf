@@ -32,10 +32,6 @@ pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
 
 #[macro_export]
 macro_rules! suite_tests {
-    ($suite:ident, $build_ring:expr) => {
-        suite_tests!($suite);
-        ring_suite_tests!($suite, $build_ring);
-    };
     ($suite:ident) => {
         ietf_suite_tests!($suite);
         pedersen_suite_tests!($suite);
