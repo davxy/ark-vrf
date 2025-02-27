@@ -91,43 +91,25 @@ suite_tests!(P256Sha256Tai);
 mod test_vectors_ietf {
     use super::*;
 
-    type V = crate::ietf::testing::TestVector<P256Sha256Tai>;
-    const VECTOR_ID: &str = "secp256_sha256_tai_ietf";
+    test_vectors!(
+        crate::ietf::testing::TestVector<P256Sha256Tai>,
+        "secp256r1_sha-256_tai_ietf"
+    );
+
     // Vectors from RFC-9381
-    const VECTOR_ID_RFC_9381: &str = "secp256_sha256_tai_ietf_rfc_9381";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-
     #[test]
     fn process_rfc_9381() {
-        testing::test_vectors_process::<V>(VECTOR_ID_RFC_9381);
+        testing::test_vectors_process::<crate::pedersen::testing::TestVector<P256Sha256Tai>>(
+            "secp256_sha256_tai_ietf_rfc_9381",
+        );
     }
 }
 
 #[cfg(test)]
 mod test_vectors_pedersen {
     use super::*;
-
-    type V = crate::pedersen::testing::TestVector<P256Sha256Tai>;
-    const VECTOR_ID: &str = "secp256r1_sha256_tai_pedersen";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
+    test_vectors!(
+        crate::pedersen::testing::TestVector<P256Sha256Tai>,
+        "secp256r1_sha-256_tai_pedersen"
+    );
 }

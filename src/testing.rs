@@ -66,7 +66,16 @@ impl TestVectorMap {
     }
 }
 
+pub fn suite_name<S: Suite>() -> String {
+    std::str::from_utf8(S::SUITE_ID)
+        .map(|s| s.to_owned())
+        .unwrap_or_else(|_| hex::encode(S::SUITE_ID))
+        .to_lowercase()
+}
+
 pub trait TestVectorTrait {
+    fn name() -> String;
+
     fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self;
 
     fn from_map(map: &TestVectorMap) -> Self;
@@ -122,6 +131,10 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
 }
 
 impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
+    fn name() -> String {
+        crate::testing::suite_name::<S>() + "_xxx"
+    }
+
     fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
         let sk = Secret::<S>::from_seed(seed);
         let pk = sk.public().0;
@@ -257,4 +270,24 @@ pub fn test_vectors_process<V: TestVectorTrait>(identifier: &str) {
         let vector = V::from_map(vector_map);
         vector.run();
     }
+}
+
+#[macro_export]
+macro_rules! test_vectors {
+    ($vector_type:ty) => {
+        use crate::testing::TestVectorTrait as _;
+        test_vectors!($vector_type, &<$vector_type>::name());
+    };
+    ($vector_type:ty, $vector_name:expr) => {
+        #[test]
+        #[ignore = "test vectors generator"]
+        fn generate() {
+            $crate::testing::test_vectors_generate::<$vector_type>($vector_name);
+        }
+
+        #[test]
+        fn process() {
+            $crate::testing::test_vectors_process::<$vector_type>($vector_name);
+        }
+    };
 }

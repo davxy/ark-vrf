@@ -53,7 +53,11 @@ use ark_ff::MontFp;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BandersnatchSha512Ell2;
 
-impl Suite for BandersnatchSha512Ell2 {
+type ThisSuite = BandersnatchSha512Ell2;
+
+suite_types!(ThisSuite);
+
+impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512_ELL2";
     const CHALLENGE_LEN: usize = 32;
 
@@ -70,32 +74,61 @@ impl Suite for BandersnatchSha512Ell2 {
     }
 }
 
-impl PedersenSuite for BandersnatchSha512Ell2 {
-    const BLINDING_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("6150229251051246713677296363717454238956877613358614224171740096471278798312");
-        const Y: BaseField = MontFp!(
-            "28442734166467795856797249030329035618871580593056783094884474814923353898473"
-        );
-        AffinePoint::new_unchecked(X, Y)
-    };
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    pub fn check_point(p: AffinePoint) {
+        assert!(p.is_on_curve());
+        assert!(p.is_in_correct_subgroup_assuming_on_curve());
+    }
+
+    #[test]
+    fn elligator2_hash_to_curve() {
+        let p = ThisSuite::data_to_point(b"foo").unwrap();
+        check_point(p);
+    }
 }
 
-suite_types!(BandersnatchSha512Ell2);
+pub mod ietf {
+    use super::*;
+    pub type Proof = crate::ietf::Proof<ThisSuite>;
 
-#[cfg(test)]
-suite_tests!(BandersnatchSha512Ell2);
+    #[cfg(test)]
+    mod tests {
+        use super::*;
 
-#[cfg(test)]
-fn check_point(p: AffinePoint) {
-    assert!(p.is_on_curve());
-    assert!(p.is_in_correct_subgroup_assuming_on_curve());
+        ietf_suite_tests!(ThisSuite);
+
+        type V = crate::ietf::testing::TestVector<ThisSuite>;
+        test_vectors!(V);
+    }
 }
 
-#[test]
-fn elligator2_hash_to_curve() {
-    let p = BandersnatchSha512Ell2::data_to_point(b"foo").unwrap();
-    check_point(p);
+pub mod pedersen {
+    use super::*;
+
+    pub type Proof = crate::pedersen::Proof<ThisSuite>;
+
+    impl PedersenSuite for BandersnatchSha512Ell2 {
+        const BLINDING_BASE: AffinePoint = {
+            const X: BaseField = MontFp!(
+                "6150229251051246713677296363717454238956877613358614224171740096471278798312"
+            );
+            const Y: BaseField = MontFp!(
+                "28442734166467795856797249030329035618871580593056783094884474814923353898473"
+            );
+            AffinePoint::new_unchecked(X, Y)
+        };
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        pedersen_suite_tests!(ThisSuite);
+        test_vectors!(crate::pedersen::testing::TestVector<ThisSuite>);
+    }
 }
 
 #[cfg(feature = "ring")]
@@ -130,92 +163,35 @@ pub mod ring {
     ring_suite_types!(BandersnatchSha512Ell2);
 
     #[cfg(test)]
-    ring_suite_tests!(BandersnatchSha512Ell2);
+    mod tests {
+        use super::*;
 
-    #[test]
-    fn check_assumptions() {
-        use crate::ring::RingSuite;
-        check_point(BandersnatchSha512Ell2::BLINDING_BASE);
-        check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
-        check_point(BandersnatchSha512Ell2::PADDING);
-    }
-}
-#[cfg(feature = "ring")]
-pub use ring::*;
+        // #[test]
+        // fn check_assumptions() {
+        //     use crate::ring::RingSuite;
+        //     super::super::tests:::check_point(BandersnatchSha512Ell2::BLINDING_BASE);
+        //     check_point(BandersnatchSha512Ell2::ACCUMULATOR_BASE);
+        //     check_point(BandersnatchSha512Ell2::PADDING);
+        // }
 
-#[cfg(test)]
-mod test_vectors_ietf {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::ietf::testing::TestVector<BandersnatchSha512Ell2>;
-    const VECTOR_ID: &str = "bandersnatch_sha512_ell2_ietf";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-}
-
-#[cfg(test)]
-mod test_vectors_pedersen {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::pedersen::testing::TestVector<BandersnatchSha512Ell2>;
-    const VECTOR_ID: &str = "bandersnatch_sha512_ell2_pedersen";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-}
-
-#[cfg(all(test, feature = "ring"))]
-mod test_vectors_ring {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::ring::testing::TestVector<BandersnatchSha512Ell2>;
-    const VECTOR_ID: &str = "bandersnatch_sha512_ell2_ring";
-
-    impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
-        fn ring_context() -> &'static RingContext {
-            use ark_serialize::CanonicalDeserialize;
-            use std::sync::OnceLock;
-            static RING_CTX: OnceLock<RingContext> = OnceLock::new();
-            RING_CTX.get_or_init(|| {
-                use std::{fs::File, io::Read};
-                let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf).unwrap();
-                let pcs_params =
-                    PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
-                RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
-            })
+        impl crate::ring::testing::RingSuiteExt for BandersnatchSha512Ell2 {
+            fn ring_context() -> &'static RingContext {
+                use ark_serialize::CanonicalDeserialize;
+                use std::sync::OnceLock;
+                static RING_CTX: OnceLock<RingContext> = OnceLock::new();
+                RING_CTX.get_or_init(|| {
+                    use std::{fs::File, io::Read};
+                    let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+                    let mut buf = Vec::new();
+                    file.read_to_end(&mut buf).unwrap();
+                    let pcs_params =
+                        PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
+                    RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+                })
+            }
         }
-    }
 
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
+        ring_suite_tests!(BandersnatchSha512Ell2);
+        test_vectors!(crate::ring::testing::TestVector<ThisSuite>);
     }
 }

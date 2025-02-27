@@ -103,6 +103,23 @@ where
     ) -> Proof<S>;
 }
 
+/// Ring VRF verifier.
+pub trait Verifier<S: RingSuite>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    /// Verify a proof for the given input/output and user additional data.
+    fn verify(
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        sig: &Proof<S>,
+        verifier: &RingVerifier<S>,
+    ) -> Result<(), Error>;
+}
+
 impl<S: RingSuite> Prover<S> for Secret<S>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -125,23 +142,6 @@ where
             ring_proof,
         }
     }
-}
-
-/// Ring VRF verifier.
-pub trait Verifier<S: RingSuite>
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
-{
-    /// Verify a proof for the given input/output and user additional data.
-    fn verify(
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        sig: &Proof<S>,
-        verifier: &RingVerifier<S>,
-    ) -> Result<(), Error>;
 }
 
 impl<S: RingSuite> Verifier<S> for Public<S>
@@ -180,7 +180,7 @@ where
 
 /// Evaluation domain size required for the given ring size.
 ///
-/// This determines the size of the [PcsParams] required to construct.
+/// This determines the size of the [`PcsParams`] multiples of g1.
 #[inline(always)]
 pub fn domain_size<S: RingSuite>(ring_size: usize) -> usize
 where
@@ -582,6 +582,10 @@ pub(crate) mod testing {
         CurveConfig<S>: TECurveConfig + Clone,
         AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
+        fn name() -> String {
+            crate::testing::suite_name::<S>() + "_ring"
+        }
+
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);

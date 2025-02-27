@@ -175,6 +175,10 @@ pub mod testing {
     }
 
     impl<S: IetfSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S> {
+        fn name() -> String {
+            crate::testing::suite_name::<S>() + "_ietf"
+        }
+
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
