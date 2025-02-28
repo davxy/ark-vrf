@@ -8,9 +8,10 @@ use ark_ff::MontFp;
 pub struct TestSuite;
 
 impl Suite for TestSuite {
-    const SUITE_ID: &'static [u8] = b"ark-ec-vrfs-testing";
+    const SUITE_ID: &'static [u8] = b"Testing_SHA-256_TAI";
     const CHALLENGE_LEN: usize = 16;
 
+    // TODO: babyjubjub?
     type Affine = ark_ed25519::EdwardsAffine;
     type Hasher = sha2::Sha256;
     type Codec = codec::ArkworksCodec;
