@@ -93,7 +93,7 @@ mod tests {
 
     impl SuiteExt for ThisSuite {
         fn suite_name() -> String {
-            "secp256r1_sha-256_tai_ietf".to_owned()
+            "secp256r1_sha-256_tai".to_owned()
         }
     }
 
