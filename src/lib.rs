@@ -311,8 +311,9 @@ macro_rules! suite_types {
 
 #[cfg(test)]
 mod tests {
-    use crate::suites::testing::{Input, Secret};
-    use crate::testing::{random_val, TEST_SEED};
+    use super::*;
+    use suites::testing::{Input, Secret};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {

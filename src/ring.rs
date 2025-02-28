@@ -568,7 +568,21 @@ pub(crate) mod testing {
         CurveConfig<Self>: TECurveConfig + Clone,
         AffinePoint<Self>: TEMapping<CurveConfig<Self>>,
     {
-        fn ring_context() -> &'static RingContext<Self>;
+        const SRS_FILE: &str;
+
+        fn context() -> &'static RingContext<Self>;
+
+        fn load_context() -> RingContext<Self> {
+            use ark_serialize::CanonicalDeserialize;
+
+            use std::{fs::File, io::Read};
+            let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).unwrap();
+            let pcs_params =
+                PcsParams::<Self>::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
+            RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+        }
     }
 
     pub struct TestVector<S: RingSuite>
@@ -617,7 +631,7 @@ pub(crate) mod testing {
             let input = Input::<S>::from(pedersen.base.h);
             let output = Output::from(pedersen.base.gamma);
 
-            let ring_ctx = <S as RingSuiteExt>::ring_context();
+            let ring_ctx = <S as RingSuiteExt>::context();
 
             use ark_std::rand::SeedableRng;
             let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
@@ -681,7 +695,7 @@ pub(crate) mod testing {
             let public = secret.public();
             assert_eq!(public.0, self.pedersen.base.pk);
 
-            let ring_ctx = <S as RingSuiteExt>::ring_context();
+            let ring_ctx = <S as RingSuiteExt>::context();
 
             let prover_idx = self.ring_pks.iter().position(|&pk| pk == public.0).unwrap();
 

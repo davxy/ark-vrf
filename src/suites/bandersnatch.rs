@@ -126,19 +126,12 @@ pub(crate) mod tests {
 
     #[cfg(feature = "ring")]
     impl crate::ring::testing::RingSuiteExt for ThisSuite {
-        fn ring_context() -> &'static RingContext {
-            use ark_serialize::CanonicalDeserialize;
+        const SRS_FILE: &str = crate::testing::PCS_SRS_FILE;
+
+        fn context() -> &'static RingContext {
             use std::sync::OnceLock;
             static RING_CTX: OnceLock<RingContext> = OnceLock::new();
-            RING_CTX.get_or_init(|| {
-                use std::{fs::File, io::Read};
-                let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf).unwrap();
-                let pcs_params =
-                    PcsParams::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
-                RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
-            })
+            RING_CTX.get_or_init(Self::load_context)
         }
     }
 
