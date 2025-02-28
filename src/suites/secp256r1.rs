@@ -51,9 +51,9 @@ use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct P256Sha256Tai;
+pub struct Secp256r1Sha256Tai;
 
-type ThisSuite = P256Sha256Tai;
+type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = &[0x01];
