@@ -18,14 +18,14 @@ pub trait PedersenSuite: IetfSuite {
     fn blinding(
         secret: &ScalarField<Self>,
         input: &AffinePoint<Self>,
-        ad: &[u8],
+        aux: &[u8],
     ) -> ScalarField<Self> {
         const DOM_SEP_START: u8 = 0xCC;
         const DOM_SEP_END: u8 = 0x00;
         let mut buf = [Self::SUITE_ID, &[DOM_SEP_START]].concat();
         Self::Codec::scalar_encode_into(secret, &mut buf);
         Self::Codec::point_encode_into(input, &mut buf);
-        buf.extend_from_slice(ad);
+        buf.extend_from_slice(aux);
         buf.push(DOM_SEP_END);
         let hash = &utils::hash::<Self::Hasher>(&buf);
         ScalarField::<Self>::from_be_bytes_mod_order(hash)

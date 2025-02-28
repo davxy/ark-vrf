@@ -575,14 +575,23 @@ pub(crate) mod testing {
         #[allow(unused)]
         fn load_context() -> RingContext<Self> {
             use ark_serialize::CanonicalDeserialize;
-
             use std::{fs::File, io::Read};
-            let mut file = File::open(crate::testing::PCS_SRS_FILE).unwrap();
+            let mut file = File::open(Self::SRS_FILE).unwrap();
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).unwrap();
             let pcs_params =
                 PcsParams::<Self>::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
             RingContext::from_srs(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+        }
+
+        #[allow(unused)]
+        fn write_context(ctx: &RingContext<Self>) {
+            use ark_serialize::CanonicalSerialize;
+            use std::{fs::File, io::Write};
+            let mut file = File::create(Self::SRS_FILE).unwrap();
+            let mut buf = Vec::new();
+            ctx.pcs_params.serialize_uncompressed(&mut buf).unwrap();
+            file.write_all(&buf).unwrap();
         }
     }
 

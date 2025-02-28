@@ -134,7 +134,7 @@ mod tests {
 
     #[cfg(feature = "ring")]
     impl crate::ring::testing::RingSuiteExt for ThisSuite {
-        const SRS_FILE: &str = crate::testing::PCS_SRS_FILE;
+        const SRS_FILE: &str = crate::testing::BLS12_381_PCS_SRS_FILE;
 
         fn context() -> &'static RingContext {
             use std::sync::OnceLock;
