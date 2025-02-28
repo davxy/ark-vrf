@@ -512,8 +512,7 @@ pub(crate) mod testing {
         AffinePoint<S>: TEMapping<CurveConfig<S>> + CheckPoint,
     {
         // Check that point has been computed using the magic spell.
-        let p = S::data_to_point(PADDING_SEED).unwrap();
-        assert_eq!(S::PADDING, p);
+        assert_eq!(S::PADDING, S::data_to_point(PADDING_SEED).unwrap());
 
         // Check that the point is on curve.
         assert!(S::PADDING.check(true).is_ok());
@@ -527,8 +526,10 @@ pub(crate) mod testing {
         AffinePoint<S>: TEMapping<CurveConfig<S>> + FindAccumulatorBase<S> + CheckPoint,
     {
         // Check that point has been computed using the magic spell.
-        let p = AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap();
-        assert_eq!(S::ACCUMULATOR_BASE, p);
+        assert_eq!(
+            S::ACCUMULATOR_BASE,
+            AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap()
+        );
 
         // SW form requires accumulator seed to be outside prime order subgroup.
         // TE form requires accumulator seed to be in prime order subgroup.

@@ -175,8 +175,8 @@ pub(crate) mod testing {
     {
         // Check that point has been computed using the magic spell.
         assert_eq!(
-            S::data_to_point(PEDERSEN_BASE_SEED).unwrap(),
-            S::BLINDING_BASE
+            S::BLINDING_BASE,
+            S::data_to_point(PEDERSEN_BASE_SEED).unwrap()
         );
         // Check that the point is on curve.
         assert!(S::BLINDING_BASE.check(true).is_ok());

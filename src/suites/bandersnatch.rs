@@ -4,14 +4,14 @@
 //!
 //! * `suite_string` = b"Bandersnatch_SHA-512_ELL2" for Twisted Edwards form.
 //!
-//! - The EC group <G> is the prime subgroup of the Bandersnatch elliptic curve,
+//! - The EC group is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Twisted Edwards form, with finite field and curve parameters as specified in
 //!   [MSZ21](https://eprint.iacr.org/2021/1152).
 //!   For this group, `fLen` = `qLen` = $32$ and `cofactor` = $4$.
 //!
-//! - The prime subgroup generator G in <G> is defined as follows:
-//!   - G.x = 0x29c132cc2c0b34c5743711777bbe42f32b79c022ad998465e1e71866a252ae18
-//!   - G.y = 0x2a6c669eda123e0f157d8b50badcd586358cad81eee464605e3167b6cc974166
+//! - The prime subgroup generator G is defined as follows:
+//!   - G.x = 18886178867200960497001835917649091219057080094937609519140440539760939937304
+//!   - G.y = 19188667384257783945677642223292697773471335439753913231509108946878080696678
 //!
 //! * `cLen` = 32.
 //!
