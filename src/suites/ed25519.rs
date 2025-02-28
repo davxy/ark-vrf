@@ -81,6 +81,9 @@ suite_types!(ThisSuite);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl crate::testing::SuiteExt for ThisSuite {}
+
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
 }

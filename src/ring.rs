@@ -562,7 +562,7 @@ pub(crate) mod testing {
         };
     }
 
-    pub trait RingSuiteExt: RingSuite
+    pub trait RingSuiteExt: RingSuite + crate::testing::SuiteExt
     where
         BaseField<Self>: ark_ff::PrimeField,
         CurveConfig<Self>: TECurveConfig + Clone,
@@ -572,6 +572,7 @@ pub(crate) mod testing {
 
         fn context() -> &'static RingContext<Self>;
 
+        #[allow(unused)]
         fn load_context() -> RingContext<Self> {
             use ark_serialize::CanonicalDeserialize;
 
@@ -611,14 +612,15 @@ pub(crate) mod testing {
         }
     }
 
-    impl<S: RingSuiteExt + std::fmt::Debug + 'static> common::TestVectorTrait for TestVector<S>
+    impl<S> common::TestVectorTrait for TestVector<S>
     where
+        S: RingSuiteExt + std::fmt::Debug + 'static,
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
         AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         fn name() -> String {
-            crate::testing::suite_name::<S>() + "_ring"
+            S::suite_name() + "_ring"
         }
 
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

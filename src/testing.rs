@@ -90,15 +90,6 @@ impl TestVectorMap {
     }
 }
 
-pub fn suite_name<S: Suite>() -> String {
-    std::str::from_utf8(S::SUITE_ID)
-        .ok()
-        .filter(|s| s.chars().all(|c| c.is_ascii_graphic()))
-        .map(|s| s.to_owned())
-        .unwrap_or_else(|| hex::encode(S::SUITE_ID))
-        .to_lowercase()
-}
-
 pub trait TestVectorTrait {
     fn name() -> String;
 
@@ -156,9 +147,20 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
     }
 }
 
-impl<S: Suite + std::fmt::Debug> TestVectorTrait for TestVector<S> {
+pub trait SuiteExt: Suite {
+    fn suite_name() -> String {
+        std::str::from_utf8(Self::SUITE_ID)
+            .ok()
+            .filter(|s| s.chars().all(|c| c.is_ascii_graphic()))
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| hex::encode(Self::SUITE_ID))
+            .to_lowercase()
+    }
+}
+
+impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     fn name() -> String {
-        crate::testing::suite_name::<S>() + "_xxx"
+        S::suite_name() + "_base"
     }
 
     fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

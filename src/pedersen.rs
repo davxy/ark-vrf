@@ -150,7 +150,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, CheckPoint, TEST_SEED};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -223,9 +223,12 @@ pub(crate) mod testing {
         }
     }
 
-    impl<S: PedersenSuite + std::fmt::Debug> common::TestVectorTrait for TestVector<S> {
+    impl<S> common::TestVectorTrait for TestVector<S>
+    where
+        S: PedersenSuite + SuiteExt + std::fmt::Debug,
+    {
         fn name() -> String {
-            crate::testing::suite_name::<S>() + "_pedersen"
+            S::suite_name() + "_pedersen"
         }
 
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

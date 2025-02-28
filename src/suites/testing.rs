@@ -1,6 +1,5 @@
 //! Suite for testing
 
-use crate::testing as common;
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -17,7 +16,7 @@ impl Suite for TestSuite {
     type Codec = codec::ArkworksCodec;
 
     fn nonce(_sk: &ScalarField, _pt: Input) -> ScalarField {
-        common::random_val(None)
+        crate::testing::random_val(None)
     }
 }
 
@@ -34,6 +33,8 @@ impl PedersenSuite for TestSuite {
 }
 
 suite_types!(TestSuite);
+
+impl crate::testing::SuiteExt for TestSuite {}
 
 #[cfg(test)]
 mod tests {

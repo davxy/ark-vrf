@@ -123,6 +123,8 @@ mod tests {
     use crate::{ietf_suite_tests, testing};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
+    impl crate::testing::SuiteExt for ThisSuite {}
+
     ietf_suite_tests!(ThisSuite);
 
     pedersen_suite_tests!(ThisSuite);

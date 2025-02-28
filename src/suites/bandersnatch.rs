@@ -117,6 +117,8 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
+    impl crate::testing::SuiteExt for ThisSuite {}
+
     ietf_suite_tests!(ThisSuite);
 
     pedersen_suite_tests!(ThisSuite);
