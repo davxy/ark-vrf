@@ -92,8 +92,10 @@ impl TestVectorMap {
 
 pub fn suite_name<S: Suite>() -> String {
     std::str::from_utf8(S::SUITE_ID)
+        .ok()
+        .filter(|s| s.chars().all(|c| c.is_ascii_graphic()))
         .map(|s| s.to_owned())
-        .unwrap_or_else(|_| hex::encode(S::SUITE_ID))
+        .unwrap_or_else(|| hex::encode(S::SUITE_ID))
         .to_lowercase()
 }
 
