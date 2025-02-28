@@ -300,7 +300,7 @@ pub fn test_vectors_process<V: TestVectorTrait>(identifier: &str) {
 macro_rules! test_vectors {
     ($vector_type:ty) => {
         #[allow(unused)]
-        use crate::testing::TestVectorTrait as _;
+        use $crate::testing::TestVectorTrait as _;
         $crate::test_vectors!($vector_type, &<$vector_type>::name());
     };
     ($vector_type:ty, $vector_name:expr) => {
