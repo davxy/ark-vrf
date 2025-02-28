@@ -150,7 +150,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, TEST_SEED};
+    use crate::testing::{self as common, random_val, CheckPoint, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -169,11 +169,17 @@ pub(crate) mod testing {
         );
     }
 
-    pub fn blinding_base_check<S: PedersenSuite>() {
+    pub fn blinding_base_check<S: PedersenSuite>()
+    where
+        AffinePoint<S>: CheckPoint,
+    {
+        // Check that point has been computed using the magic spell.
         assert_eq!(
             S::data_to_point(PEDERSEN_BASE_SEED).unwrap(),
             S::BLINDING_BASE
         );
+        // Check that the point is on curve.
+        assert!(S::BLINDING_BASE.check(true).is_ok());
     }
 
     #[macro_export]

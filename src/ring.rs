@@ -416,7 +416,7 @@ macro_rules! ring_suite_types {
 pub(crate) mod testing {
     use super::*;
     use crate::pedersen;
-    use crate::testing::{self as common, TEST_SEED};
+    use crate::testing::{self as common, CheckPoint, TEST_SEED};
     use ark_ec::{
         short_weierstrass::{Affine as SWAffine, SWCurveConfig},
         twisted_edwards::{Affine as TEAffine, TECurveConfig},
@@ -439,6 +439,7 @@ pub(crate) mod testing {
     }
 
     pub trait FindAccumulatorBase<S: Suite>: Sized {
+        const IN_PRIME_ORDER_SUBGROUP: bool;
         fn find_accumulator_base(data: &[u8]) -> Option<Self>;
     }
 
@@ -447,6 +448,8 @@ pub(crate) mod testing {
         C: SWCurveConfig,
         S: Suite<Affine = Self>,
     {
+        const IN_PRIME_ORDER_SUBGROUP: bool = false;
+
         fn find_accumulator_base(data: &[u8]) -> Option<Self> {
             let p = S::data_to_point(data)?;
             let c = find_complement_point();
@@ -461,6 +464,8 @@ pub(crate) mod testing {
         C: TECurveConfig,
         S: Suite<Affine = Self>,
     {
+        const IN_PRIME_ORDER_SUBGROUP: bool = true;
+
         fn find_accumulator_base(data: &[u8]) -> Option<Self> {
             let res = S::data_to_point(data)?;
             debug_assert!(res.is_in_correct_subgroup_assuming_on_curve());
@@ -504,10 +509,14 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
+        AffinePoint<S>: TEMapping<CurveConfig<S>> + CheckPoint,
     {
+        // Check that point has been computed using the magic spell.
         let p = S::data_to_point(PADDING_SEED).unwrap();
         assert_eq!(S::PADDING, p);
+
+        // Check that the point is on curve.
+        assert!(S::PADDING.check(true).is_ok());
     }
 
     #[allow(unused)]
@@ -515,10 +524,16 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>> + FindAccumulatorBase<S>,
+        AffinePoint<S>: TEMapping<CurveConfig<S>> + FindAccumulatorBase<S> + CheckPoint,
     {
+        // Check that point has been computed using the magic spell.
         let p = AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap();
         assert_eq!(S::ACCUMULATOR_BASE, p);
+
+        // SW form requires accumulator seed to be outside prime order subgroup.
+        // TE form requires accumulator seed to be in prime order subgroup.
+        let in_prime_subgroup = <AffinePoint<S> as FindAccumulatorBase<S>>::IN_PRIME_ORDER_SUBGROUP;
+        assert!(S::ACCUMULATOR_BASE.check(in_prime_subgroup).is_ok());
     }
 
     #[macro_export]

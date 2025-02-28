@@ -77,45 +77,32 @@ impl PedersenSuite for ThisSuite {
 
 suite_types!(ThisSuite);
 
-#[cfg(test)]
-suite_tests!(ThisSuite);
-
 #[cfg(feature = "ring")]
-pub mod ring {
-    use super::*;
-    use crate::ring as ring_suite;
+impl crate::ring::RingSuite for ThisSuite {
+    type Pairing = ark_bls12_381::Bls12_381;
 
-    impl ring_suite::RingSuite for ThisSuite {
-        type Pairing = ark_bls12_381::Bls12_381;
+    const ACCUMULATOR_BASE: AffinePoint = {
+        const X: BaseField = MontFp!(
+            "30949898125816428869319264729524491191916564825332948285337036537112581509345"
+        );
+        const Y: BaseField = MontFp!(
+            "24710605179423906477527954697856492949547783869349655956135737181575131626699"
+        );
+        AffinePoint::new_unchecked(X, Y)
+    };
 
-        const ACCUMULATOR_BASE: AffinePoint = {
-            const X: BaseField = MontFp!(
-                "30949898125816428869319264729524491191916564825332948285337036537112581509345"
-            );
-            const Y: BaseField = MontFp!(
-                "24710605179423906477527954697856492949547783869349655956135737181575131626699"
-            );
-            AffinePoint::new_unchecked(X, Y)
-        };
-
-        const PADDING: AffinePoint = {
-            const X: BaseField = MontFp!(
-                "8207061359626985806593416771596963300097557497392401672976542127083785954233"
-            );
-            const Y: BaseField = MontFp!(
-                "45333580719994708944464512022272093444100012168218634411811045976720128467452"
-            );
-            AffinePoint::new_unchecked(X, Y)
-        };
-    }
-
-    ring_suite_types!(ThisSuite);
-
-    #[cfg(test)]
-    ring_suite_tests!(ThisSuite);
+    const PADDING: AffinePoint = {
+        const X: BaseField =
+            MontFp!("8207061359626985806593416771596963300097557497392401672976542127083785954233");
+        const Y: BaseField = MontFp!(
+            "45333580719994708944464512022272093444100012168218634411811045976720128467452"
+        );
+        AffinePoint::new_unchecked(X, Y)
+    };
 }
+
 #[cfg(feature = "ring")]
-pub use ring::*;
+ring_suite_types!(ThisSuite);
 
 // sage: q = 52435875175126190479447740508185965837690552500527637822603658699938581184513
 // sage: Fq = GF(q)
@@ -132,71 +119,18 @@ impl MapConfig for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing, utils::*};
+    use super::*;
+    use crate::{ietf_suite_tests, testing};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
-    #[test]
-    fn sw_to_te_roundtrip() {
-        let org_point = testing::random_val::<SWAffine>(None);
+    ietf_suite_tests!(ThisSuite);
 
-        let te_point = sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
-        assert!(te_point.is_on_curve());
+    pedersen_suite_tests!(ThisSuite);
 
-        let sw_point = te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
-        assert!(sw_point.is_on_curve());
+    #[cfg(feature = "ring")]
+    ring_suite_tests!(ThisSuite);
 
-        assert_eq!(org_point, sw_point);
-    }
-}
-
-#[cfg(test)]
-mod test_vectors_ietf {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::ietf::testing::TestVector<ThisSuite>;
-    const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_ietf";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-}
-
-#[cfg(test)]
-mod test_vectors_pedersen {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::pedersen::testing::TestVector<ThisSuite>;
-    const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_pedersen";
-
-    #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
-    }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-}
-
-#[cfg(all(test, feature = "ring"))]
-mod test_vectors_ring {
-    use super::*;
-    use crate::testing;
-
-    type V = crate::ring::testing::TestVector<ThisSuite>;
-    const VECTOR_ID: &str = "bandersnatch_sw_sha512_tai_ring";
-
+    #[cfg(feature = "ring")]
     impl crate::ring::testing::RingSuiteExt for ThisSuite {
         fn ring_context() -> &'static RingContext {
             use ark_serialize::CanonicalDeserialize;
@@ -215,24 +149,15 @@ mod test_vectors_ring {
     }
 
     #[test]
-    #[ignore = "test vectors generator"]
-    fn generate() {
-        testing::test_vectors_generate::<V>(VECTOR_ID);
+    fn sw_to_te_roundtrip() {
+        let roundtrip = |org_point| {
+            let te_point = sw_to_te::<BandersnatchConfig>(&org_point).unwrap();
+            assert!(te_point.is_on_curve());
+            let sw_point = te_to_sw::<BandersnatchConfig>(&te_point).unwrap();
+            assert!(sw_point.is_on_curve());
+            assert_eq!(org_point, sw_point);
+        };
+        roundtrip(testing::random_val::<SWAffine>(None));
+        roundtrip(AffinePoint::generator());
     }
-
-    #[test]
-    fn process() {
-        testing::test_vectors_process::<V>(VECTOR_ID);
-    }
-}
-
-#[test]
-fn generator_te_sw_roundtrip() {
-    use crate::utils::*;
-    let sw1 = AffinePoint::generator();
-    let ed1 = sw_to_te(&sw1).unwrap();
-    let ed2 = crate::suites::bandersnatch::AffinePoint::generator();
-    assert_eq!(ed1, ed2);
-    let sw2 = te_to_sw(&ed1).unwrap();
-    assert_eq!(sw1, sw2);
 }

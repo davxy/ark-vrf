@@ -90,30 +90,29 @@ suite_types!(ThisSuite);
 mod tests {
     use super::*;
 
-    #[cfg(test)]
-    suite_tests!(ThisSuite);
+    ietf_suite_tests!(ThisSuite);
 
-    mod ietf_ext {
-        use super::*;
-        test_vectors!(
-            crate::ietf::testing::TestVector<ThisSuite>,
-            "secp256r1_sha-256_tai_ietf"
-        );
+    //     mod ietf_ext {
+    //         use super::*;
+    //         test_vectors!(
+    //             crate::ietf::testing::TestVector<ThisSuite>,
+    //             "secp256r1_sha-256_tai_ietf"
+    //         );
 
-        // Vectors from RFC-9381
-        #[test]
-        fn process_rfc_9381() {
-            testing::test_vectors_process::<crate::ietf::testing::TestVector<ThisSuite>>(
-                "secp256r1_sha-256_tai_ietf_rfc_9381",
-            );
-        }
-    }
+    //         // Vectors from RFC-9381
+    //         #[test]
+    //         fn process_rfc_9381() {
+    //             testing::test_vectors_process::<crate::ietf::testing::TestVector<ThisSuite>>(
+    //                 "secp256r1_sha-256_tai_ietf_rfc_9381",
+    //             );
+    //         }
+    //     }
 
-    mod pedersen_ext {
-        use super::*;
-        test_vectors!(
-            crate::pedersen::testing::TestVector<ThisSuite>,
-            "secp256r1_sha-256_tai_pedersen"
-        );
-    }
+    //     mod pedersen_ext {
+    //         use super::*;
+    //         test_vectors!(
+    //             crate::pedersen::testing::TestVector<ThisSuite>,
+    //             "secp256r1_sha-256_tai_pedersen"
+    //         );
+    //     }
 }

@@ -30,12 +30,40 @@ pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
     T::rand(rng)
 }
 
-#[macro_export]
-macro_rules! suite_tests {
-    ($suite:ident) => {
-        ietf_suite_tests!($suite);
-        pedersen_suite_tests!($suite);
-    };
+pub trait CheckPoint {
+    fn check(&self, in_prime_subgroup: bool) -> Result<(), &'static str>;
+}
+
+use ark_ec::short_weierstrass::{Affine as SWAffine, SWCurveConfig};
+impl<C> CheckPoint for SWAffine<C>
+where
+    C: SWCurveConfig,
+{
+    fn check(&self, in_prime_subgroup: bool) -> Result<(), &'static str> {
+        if !self.is_on_curve() {
+            return Err("Point out of curve group");
+        }
+        if self.is_in_correct_subgroup_assuming_on_curve() != in_prime_subgroup {
+            return Err("Point outside the expected curve subgroup");
+        }
+        Ok(())
+    }
+}
+
+use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
+impl<C> CheckPoint for TEAffine<C>
+where
+    C: TECurveConfig,
+{
+    fn check(&self, in_prime_subgroup: bool) -> Result<(), &'static str> {
+        if !self.is_on_curve() {
+            return Err("Point out of curve group");
+        }
+        if self.is_in_correct_subgroup_assuming_on_curve() != in_prime_subgroup {
+            return Err("Point outside the expected curve subgroup");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

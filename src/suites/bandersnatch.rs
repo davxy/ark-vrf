@@ -109,6 +109,7 @@ impl crate::ring::RingSuite for ThisSuite {
         AffinePoint::new_unchecked(X, Y)
     };
 }
+
 #[cfg(feature = "ring")]
 ring_suite_types!(ThisSuite);
 
@@ -116,24 +117,12 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    pub fn check_point(p: AffinePoint) {
-        assert!(p.is_on_curve());
-        assert!(p.is_in_correct_subgroup_assuming_on_curve());
-    }
+    ietf_suite_tests!(ThisSuite);
 
-    #[test]
-    fn elligator2_hash_to_curve() {
-        let p = ThisSuite::data_to_point(b"foo").unwrap();
-        check_point(p);
-    }
+    pedersen_suite_tests!(ThisSuite);
 
-    #[test]
-    fn check_assumptions() {
-        use crate::ring::RingSuite;
-        check_point(ThisSuite::BLINDING_BASE);
-        check_point(ThisSuite::ACCUMULATOR_BASE);
-        check_point(ThisSuite::PADDING);
-    }
+    #[cfg(feature = "ring")]
+    ring_suite_tests!(ThisSuite);
 
     #[cfg(feature = "ring")]
     impl crate::ring::testing::RingSuiteExt for ThisSuite {
@@ -153,10 +142,12 @@ pub(crate) mod tests {
         }
     }
 
-    ietf_suite_tests!(ThisSuite);
-
-    pedersen_suite_tests!(ThisSuite);
-
-    #[cfg(feature = "ring")]
-    ring_suite_tests!(ThisSuite);
+    #[test]
+    fn elligator2_hash_to_curve() {
+        use crate::testing::CheckPoint;
+        let raw = crate::testing::random_vec(42, None);
+        assert!(ThisSuite::data_to_point(&raw)
+            .map(|p| p.check(true).ok())
+            .is_some());
+    }
 }

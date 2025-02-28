@@ -49,6 +49,7 @@
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
+/// Ed25519_SHA-512_TAI Suite.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Ed25519Sha512Tai;
 
@@ -80,5 +81,6 @@ suite_types!(ThisSuite);
 #[cfg(test)]
 mod tests {
     use super::*;
-    suite_tests!(ThisSuite);
+    ietf_suite_tests!(ThisSuite);
+    pedersen_suite_tests!(ThisSuite);
 }
