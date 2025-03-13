@@ -431,22 +431,24 @@ macro_rules! ring_suite_types {
 
 use ark_std::ops::Range;
 
-type RingVerifierKeyBuilerInner<S> =
+type RingVerifierKeyBuilderInner<S> =
     ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
 
 type RingBuilderKey<S> = ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
 
 type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
+/// Ring verifier key builder.
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    inner: RingVerifierKeyBuilerInner<S>,
+    inner: RingVerifierKeyBuilderInner<S>,
     raw_vk: RawVerifierKey<S>,
     // TODO: replace with a closure to actually fetch the chunks (see verifiable)
+    // Or maybe an enum.
     lag_srs: RingBuilderKey<S>,
 }
 
@@ -462,8 +464,9 @@ where
         let domain_size = piop_domain_size_from_pcs_params::<S>(&ctx.pcs_params);
         let lag_srs = RingBuilderKey::<S>::from_srs(&ctx.pcs_params, domain_size);
         let srs = |range: Range<usize>| Ok(lag_srs.lis_in_g1[range].to_vec());
-        let inner = RingVerifierKeyBuilerInner::<S>::empty(&ctx.piop_params, srs, lag_srs.g1);
         let raw_vk = ctx.pcs_params.raw_vk();
+        let inner =
+            RingVerifierKeyBuilderInner::<S>::empty(&ctx.piop_params, srs, raw_vk.g1.into_group());
         RingVerifierKeyBuilder {
             inner,
             lag_srs,
