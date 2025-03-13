@@ -149,19 +149,21 @@ pub(crate) mod tests {
     #[cfg(feature = "ring")]
     #[test]
     pub fn ring_verifier_key_builder() {
-        use crate::ring::testing::RingSuiteExt;
-        use crate::ring::{Prover, Verifier};
+        use crate::ring::{testing::RingSuiteExt, Prover, Verifier};
+        use crate::testing::random_val;
+
+        let mut rng = ark_std::test_rng();
         let ring_ctx = ThisSuite::context();
 
         let sk = Secret::from_seed(b"");
         let pk = sk.public();
 
         let ring_size = ring_ctx.max_ring_size();
-        let prover_idx = 3;
-        let mut pks = testing::random_vec::<AffinePoint>(ring_size, None);
+        let prover_idx = random_val::<usize>(Some(&mut rng)) % ring_size;
+        let mut pks = testing::random_vec::<AffinePoint>(ring_size, Some(&mut rng));
         pks[prover_idx] = pk.0;
 
-        let input = Input::from(crate::testing::random_val(None));
+        let input = Input::from(random_val(Some(&mut rng)));
         let output = sk.output(input);
 
         let prover_key = ring_ctx.prover_key(&pks);
@@ -170,12 +172,14 @@ pub(crate) mod tests {
 
         // Incremental ring verifier key construction
         let mut vk_builder = ring_ctx.verifier_key_builder();
+
         loop {
-            let chunk_len = 1;
+            let chunk_len = 1 + random_val::<usize>(Some(&mut rng)) % 5;
             let chunk = pks.drain(..pks.len().min(chunk_len)).collect::<Vec<_>>();
             if chunk.is_empty() {
                 break;
             }
+            println!("Appending {} items", chunk.len());
             vk_builder.append(&chunk[..]);
         }
         let verifier_key = vk_builder.finalize();

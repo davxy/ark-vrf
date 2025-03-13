@@ -1,7 +1,6 @@
 use crate::*;
 use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
-use ring_proof::pcs::kzg::params::RawKzgVerifierKey;
 use utils::te_sw_map::TEMapping;
 
 /// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
@@ -437,6 +436,8 @@ type RingVerifierKeyBuilerInner<S> =
 
 type RingBuilderKey<S> = ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
 
+type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
+
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -444,6 +445,7 @@ where
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     inner: RingVerifierKeyBuilerInner<S>,
+    raw_vk: RawVerifierKey<S>,
     // TODO: replace with a closure to actually fetch the chunks (see verifiable)
     lag_srs: RingBuilderKey<S>,
 }
@@ -456,13 +458,16 @@ where
 {
     /// Construct an empty ring verifier key builder.
     pub fn new(ctx: &RingContext<S>) -> Self {
+        use ring_proof::pcs::PcsParams;
         let domain_size = piop_domain_size_from_pcs_params::<S>(&ctx.pcs_params);
-        let builder_srs = RingBuilderKey::<S>::from_srs(&ctx.pcs_params, domain_size);
-        let srs = |range: Range<usize>| Ok(builder_srs.lis_in_g1[range].to_vec());
-        let inner = RingVerifierKeyBuilerInner::<S>::empty(&ctx.piop_params, srs, builder_srs.g1);
+        let lag_srs = RingBuilderKey::<S>::from_srs(&ctx.pcs_params, domain_size);
+        let srs = |range: Range<usize>| Ok(lag_srs.lis_in_g1[range].to_vec());
+        let inner = RingVerifierKeyBuilerInner::<S>::empty(&ctx.piop_params, srs, lag_srs.g1);
+        let raw_vk = ctx.pcs_params.raw_vk();
         RingVerifierKeyBuilder {
             inner,
-            lag_srs: builder_srs,
+            lag_srs,
+            raw_vk,
         }
     }
 
@@ -475,12 +480,7 @@ where
 
     /// Finalize and build verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
-        let raw_vk = RawKzgVerifierKey {
-            g1: Default::default(),
-            g2: Default::default(),
-            tau_in_g2: Default::default(),
-        };
-        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.inner, raw_vk)
+        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.inner, self.raw_vk)
     }
 }
 
