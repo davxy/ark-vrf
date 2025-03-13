@@ -1,5 +1,9 @@
 use crate::*;
-use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
+use ark_ec::{
+    pairing::Pairing,
+    twisted_edwards::{Affine as TEAffine, TECurveConfig},
+};
+use ark_std::ops::Range;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 
@@ -311,8 +315,11 @@ where
     }
 
     /// Incremental construction of verifier key.
-    pub fn verifier_key_builder(&self) -> RingVerifierKeyBuilder<S> {
-        RingVerifierKeyBuilder::new(self)
+    pub fn verifier_key_builder(&self) -> (RingVerifierKeyBuilder<S>, RingBuilderKey<S>) {
+        let domain_size = piop_domain_size_from_pcs_params::<S>(&self.pcs_params);
+        let loader = RingBuilderKey::<S>::from_srs(&self.pcs_params, domain_size);
+        let builder = RingVerifierKeyBuilder::new(self, &loader);
+        (builder, loader)
     }
 
     /// Construct `RingVerifier` from `RingVerifierKey`.
@@ -426,19 +433,22 @@ macro_rules! ring_suite_types {
         pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
         #[allow(dead_code)]
         pub type RingProof = $crate::ring::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifierKeyBuilder = $crate::ring::RingVerifierKeyBuilder<$suite>;
     };
 }
 
-use ark_std::ops::Range;
+/// TODO: describe
+pub type RingBuilderKey<S> =
+    ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
 
 type RingVerifierKeyBuilderInner<S> =
     ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
 
-type RingBuilderKey<S> = ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
-
 type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
 /// Ring verifier key builder.
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -447,9 +457,44 @@ where
 {
     inner: RingVerifierKeyBuilderInner<S>,
     raw_vk: RawVerifierKey<S>,
-    // TODO: replace with a closure to actually fetch the chunks (see verifiable)
-    // Or maybe an enum.
-    lag_srs: RingBuilderKey<S>,
+}
+
+pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
+pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
+
+pub trait SrsLoader<S: RingSuite>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn load(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
+}
+
+impl<S: RingSuite, F> SrsLoader<S> for F
+where
+    F: Fn(Range<usize>) -> Option<Vec<G1Affine<S>>>,
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn load(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>> {
+        self(range)
+    }
+}
+
+impl<S: RingSuite> SrsLoader<S> for &RingBuilderKey<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    fn load(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>> {
+        if range.end > self.lis_in_g1.len() {
+            return None;
+        }
+        Some(self.lis_in_g1[range].to_vec())
+    }
 }
 
 impl<S: RingSuite> RingVerifierKeyBuilder<S>
@@ -459,26 +504,23 @@ where
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Construct an empty ring verifier key builder.
-    pub fn new(ctx: &RingContext<S>) -> Self {
+    pub fn new(ctx: &RingContext<S>, srs_loader: impl SrsLoader<S>) -> Self {
         use ring_proof::pcs::PcsParams;
-        let domain_size = piop_domain_size_from_pcs_params::<S>(&ctx.pcs_params);
-        let lag_srs = RingBuilderKey::<S>::from_srs(&ctx.pcs_params, domain_size);
-        let srs = |range: Range<usize>| Ok(lag_srs.lis_in_g1[range].to_vec());
+        let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
         let raw_vk = ctx.pcs_params.raw_vk();
-        let inner =
-            RingVerifierKeyBuilderInner::<S>::empty(&ctx.piop_params, srs, raw_vk.g1.into_group());
-        RingVerifierKeyBuilder {
-            inner,
-            lag_srs,
-            raw_vk,
-        }
+        let inner = RingVerifierKeyBuilderInner::<S>::empty(
+            &ctx.piop_params,
+            srs_loader,
+            raw_vk.g1.into_group(),
+        );
+        RingVerifierKeyBuilder { inner, raw_vk }
     }
 
     /// Append a new member to the ring verifier key.
-    pub fn append(&mut self, pks: &[AffinePoint<S>]) {
+    pub fn append(&mut self, pks: &[AffinePoint<S>], srs_loader: impl SrsLoader<S>) {
         let pks = TEMapping::to_te_slice(&pks[..]);
-        let srs = |range: Range<usize>| Ok(self.lag_srs.lis_in_g1[range].to_vec());
-        self.inner.append(&pks, srs);
+        let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
+        self.inner.append(&pks, srs_loader);
     }
 
     /// Finalize and build verifier key.
