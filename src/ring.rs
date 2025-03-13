@@ -74,6 +74,18 @@ pub type RingVerifier<S> =
 /// construct the actual ring vrf proof [`Proof`].
 pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 
+type RingVerifierKeyBuilerInner<S> =
+    ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
+
+pub struct RingVerifierKeyBuilder<S: RingSuite>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    inner: RingVerifierKeyBuilerInner<S>,
+}
+
 /// Ring VRF proof.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite>
@@ -296,6 +308,18 @@ where
     ) -> RingVerifierKey<S> {
         use ring_proof::pcs::PcsParams;
         RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
+    }
+
+    /// Incremental construction of verifier key.
+    pub fn verifier_key_builder(&self) -> RingVerifierKeyBuilder<S> {
+        use ark_std::ops::Range;
+        let domain_size = (self.pcs_params.powers_in_g1.len() - 1) / 3;
+        let ring_builder_key =
+            ring_proof::ring::RingBuilderKey::from_srs(&self.pcs_params, domain_size);
+        let srs = |range: Range<usize>| Ok(ring_builder_key.lis_in_g1[range].to_vec());
+        let inner =
+            RingVerifierKeyBuilerInner::<S>::empty(&self.piop_params, srs, ring_builder_key.g1);
+        RingVerifierKeyBuilder { inner }
     }
 
     /// Construct `RingVerifier` from `RingVerifierKey`.
