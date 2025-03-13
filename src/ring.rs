@@ -201,7 +201,7 @@ where
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    (pcs_params.powers_in_g1.len() - 1) / 3
+    pcs_params.powers_in_g1.len() / 3
 }
 
 fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
