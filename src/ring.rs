@@ -448,11 +448,11 @@ type RingVerifierKeyBuilderInner<S> =
 type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
 /// Ring verifier key builder.
-#[derive(CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
+    CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     inner: RingVerifierKeyBuilderInner<S>,
