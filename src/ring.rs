@@ -1,6 +1,7 @@
 use crate::*;
 use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
+use ring_proof::pcs::kzg::params::RawKzgVerifierKey;
 use utils::te_sw_map::TEMapping;
 
 /// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
@@ -73,18 +74,6 @@ pub type RingVerifier<S> =
 /// This is the primitive ring proof used in conjunction with Pedersen proof to
 /// construct the actual ring vrf proof [`Proof`].
 pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
-
-type RingVerifierKeyBuilerInner<S> =
-    ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
-
-pub struct RingVerifierKeyBuilder<S: RingSuite>
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
-{
-    inner: RingVerifierKeyBuilerInner<S>,
-}
 
 /// Ring VRF proof.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
@@ -194,13 +183,26 @@ where
 ///
 /// This determines the size of the [`PcsParams`] multiples of g1.
 #[inline(always)]
-pub fn domain_size<S: RingSuite>(ring_size: usize) -> usize
+pub fn piop_domain_size<S: RingSuite>(ring_size: usize) -> usize
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     1 << ark_std::log2(ring_size + ScalarField::<S>::MODULUS_BIT_SIZE as usize + 4)
+}
+
+/// PCS params `powers_in_g1` is expected to have length equal to 3*piop_domain_size +1.
+/// This is a strong assumption, guaranteed only for internal usage (e.g.
+/// `PcsParams` constructed as part of `RingContext`)
+#[inline(always)]
+fn piop_domain_size_from_pcs_params<S: RingSuite>(pcs_params: &PcsParams<S>) -> usize
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    (pcs_params.powers_in_g1.len() - 1) / 3
 }
 
 fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
@@ -217,7 +219,6 @@ where
     )
 }
 
-#[allow(private_bounds)]
 impl<S: RingSuite> RingContext<S>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -239,7 +240,7 @@ where
     /// large enough to be used with the given `ring_size`.
     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
-        let domain_size = domain_size::<S>(ring_size);
+        let domain_size = piop_domain_size::<S>(ring_size);
         let pcs_params = Pcs::<S>::setup(3 * domain_size, rng);
         Self::from_srs(ring_size, pcs_params).expect("PCS params is correct")
     }
@@ -248,7 +249,7 @@ where
     ///
     /// Fails if `PcsParams` are not
     pub fn from_srs(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
-        let domain_size = domain_size::<S>(ring_size);
+        let domain_size = piop_domain_size::<S>(ring_size);
         if pcs_params.powers_in_g1.len() <= 3 * domain_size || pcs_params.powers_in_g2.len() < 2 {
             return Err(Error::InvalidData);
         }
@@ -312,14 +313,7 @@ where
 
     /// Incremental construction of verifier key.
     pub fn verifier_key_builder(&self) -> RingVerifierKeyBuilder<S> {
-        use ark_std::ops::Range;
-        let domain_size = (self.pcs_params.powers_in_g1.len() - 1) / 3;
-        let ring_builder_key =
-            ring_proof::ring::RingBuilderKey::from_srs(&self.pcs_params, domain_size);
-        let srs = |range: Range<usize>| Ok(ring_builder_key.lis_in_g1[range].to_vec());
-        let inner =
-            RingVerifierKeyBuilerInner::<S>::empty(&self.piop_params, srs, ring_builder_key.g1);
-        RingVerifierKeyBuilder { inner }
+        RingVerifierKeyBuilder::new(self)
     }
 
     /// Construct `RingVerifier` from `RingVerifierKey`.
@@ -344,7 +338,7 @@ where
     ) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
-            piop_params::<S>(domain_size::<S>(ring_size)),
+            piop_params::<S>(piop_domain_size::<S>(ring_size)),
             ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
@@ -394,10 +388,10 @@ where
             compress,
             validate,
         )?;
-        let domain_size = (pcs_params.powers_in_g1.len() - 1) / 3;
+        let piop_domain_size = piop_domain_size_from_pcs_params::<S>(&pcs_params);
         Ok(Self {
             pcs_params,
-            piop_params: piop_params::<S>(domain_size),
+            piop_params: piop_params::<S>(piop_domain_size),
         })
     }
 }
@@ -434,6 +428,60 @@ macro_rules! ring_suite_types {
         #[allow(dead_code)]
         pub type RingProof = $crate::ring::Proof<$suite>;
     };
+}
+
+use ark_std::ops::Range;
+
+type RingVerifierKeyBuilerInner<S> =
+    ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
+
+type RingBuilderKey<S> = ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
+
+pub struct RingVerifierKeyBuilder<S: RingSuite>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    inner: RingVerifierKeyBuilerInner<S>,
+    // TODO: replace with a closure to actually fetch the chunks (see verifiable)
+    lag_srs: RingBuilderKey<S>,
+}
+
+impl<S: RingSuite> RingVerifierKeyBuilder<S>
+where
+    BaseField<S>: ark_ff::PrimeField,
+    CurveConfig<S>: TECurveConfig + Clone,
+    AffinePoint<S>: TEMapping<CurveConfig<S>>,
+{
+    /// Construct an empty ring verifier key builder.
+    pub fn new(ctx: &RingContext<S>) -> Self {
+        let domain_size = piop_domain_size_from_pcs_params::<S>(&ctx.pcs_params);
+        let builder_srs = RingBuilderKey::<S>::from_srs(&ctx.pcs_params, domain_size);
+        let srs = |range: Range<usize>| Ok(builder_srs.lis_in_g1[range].to_vec());
+        let inner = RingVerifierKeyBuilerInner::<S>::empty(&ctx.piop_params, srs, builder_srs.g1);
+        RingVerifierKeyBuilder {
+            inner,
+            lag_srs: builder_srs,
+        }
+    }
+
+    /// Append a new member to the ring verifier key.
+    pub fn append(&mut self, pks: &[AffinePoint<S>]) {
+        let pks = TEMapping::to_te_slice(&pks[..]);
+        let srs = |range: Range<usize>| Ok(self.lag_srs.lis_in_g1[range].to_vec());
+        self.inner.append(&pks, srs);
+    }
+
+    /// Finalize and build verifier key.
+    pub fn finalize(self) -> RingVerifierKey<S> {
+        let raw_vk = RawKzgVerifierKey {
+            g1: Default::default(),
+            g2: Default::default(),
+            tau_in_g2: Default::default(),
+        };
+        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.inner, raw_vk)
+    }
 }
 
 #[cfg(test)]

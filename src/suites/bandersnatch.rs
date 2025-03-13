@@ -145,4 +145,43 @@ pub(crate) mod tests {
             .map(|p| p.check(true).ok())
             .is_some());
     }
+
+    #[cfg(feature = "ring")]
+    #[test]
+    pub fn ring_verifier_key_builder() {
+        use crate::ring::testing::RingSuiteExt;
+        use crate::ring::{Prover, Verifier};
+        let ring_ctx = ThisSuite::context();
+
+        let sk = Secret::from_seed(b"");
+        let pk = sk.public();
+
+        let ring_size = ring_ctx.max_ring_size();
+        let prover_idx = 3;
+        let mut pks = testing::random_vec::<AffinePoint>(ring_size, None);
+        pks[prover_idx] = pk.0;
+
+        let input = Input::from(crate::testing::random_val(None));
+        let output = sk.output(input);
+
+        let prover_key = ring_ctx.prover_key(&pks);
+        let prover = ring_ctx.prover(prover_key, prover_idx);
+        let proof = sk.prove(input, output, b"foo", &prover);
+
+        // Incremental ring verifier key construction
+        let mut vk_builder = ring_ctx.verifier_key_builder();
+        loop {
+            let chunk_len = 1;
+            let chunk = pks.drain(..pks.len().min(chunk_len)).collect::<Vec<_>>();
+            if chunk.is_empty() {
+                break;
+            }
+            vk_builder.append(&chunk[..]);
+        }
+        let verifier_key = vk_builder.finalize();
+
+        let verifier = ring_ctx.verifier(verifier_key);
+        let result = Public::verify(input, output, b"foo", &proof, &verifier);
+        assert!(result.is_ok());
+    }
 }
