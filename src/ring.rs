@@ -171,6 +171,9 @@ where
     }
 }
 
+/// Ring proof full parameters.
+///
+/// Wraps `PcsParams` and `PiopParams`.
 #[derive(Clone)]
 pub struct RingContext<S: RingSuite>
 where
@@ -178,8 +181,8 @@ where
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    pcs_params: PcsParams<S>,
-    piop_params: PiopParams<S>,
+    pub pcs_params: PcsParams<S>,
+    pub piop_params: PiopParams<S>,
 }
 
 /// Evaluation domain size required for the given ring size.
@@ -314,7 +317,10 @@ where
         RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
     }
 
-    /// Incremental construction of verifier key.
+    /// Builder for incremental construction of verifier key.
+    ///
+    /// This returns both the builder and `RingBuilderKey`, which may be used to append
+    /// new key items to the ring builder (as it implements `SrsLoader`).
     pub fn verifier_key_builder(&self) -> (RingVerifierKeyBuilder<S>, RingBuilderKey<S>) {
         let domain_size = piop_domain_size_from_pcs_params::<S>(&self.pcs_params);
         let loader = RingBuilderKey::<S>::from_srs(&self.pcs_params, domain_size);
@@ -438,11 +444,15 @@ macro_rules! ring_suite_types {
     };
 }
 
-/// TODO: describe
+/// Information required for incremental ring construction.
+///
+/// Basically the SRS in Lagrangian form plus G1 generator used in the monomial form.
+/// Can be constructed via the `PcsParams::ck_with_lagrangian()` method.
 pub type RingBuilderKey<S> =
     ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
 
-type RingVerifierKeyBuilderInner<S> =
+// Under construction ring commitment.
+type PartialRingCommitment<S> =
     ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
 
 type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
@@ -455,13 +465,14 @@ where
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    inner: RingVerifierKeyBuilderInner<S>,
+    partial: PartialRingCommitment<S>,
     raw_vk: RawVerifierKey<S>,
 }
 
 pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
 pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 
+/// Lagrangian form SRS loader.
 pub trait SrsLoader<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -508,17 +519,14 @@ where
         use ring_proof::pcs::PcsParams;
         let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
         let raw_vk = ctx.pcs_params.raw_vk();
-        let inner = RingVerifierKeyBuilderInner::<S>::empty(
-            &ctx.piop_params,
-            srs_loader,
-            raw_vk.g1.into_group(),
-        );
-        RingVerifierKeyBuilder { inner, raw_vk }
+        let partial =
+            PartialRingCommitment::<S>::empty(&ctx.piop_params, srs_loader, raw_vk.g1.into_group());
+        RingVerifierKeyBuilder { partial, raw_vk }
     }
 
     #[inline(always)]
     pub fn free_slots(&self) -> usize {
-        self.inner.max_keys - self.inner.curr_keys
+        self.partial.max_keys - self.partial.curr_keys
     }
 
     /// Append a new member to the ring verifier key.
@@ -536,13 +544,13 @@ where
         }
         let pks = TEMapping::to_te_slice(pks);
         let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
-        self.inner.append(&pks, srs_loader);
+        self.partial.append(&pks, srs_loader);
         Ok(())
     }
 
     /// Finalize and build verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
-        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.inner, self.raw_vk)
+        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
     }
 }
 
