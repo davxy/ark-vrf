@@ -693,6 +693,60 @@ pub(crate) mod testing {
         assert!(S::ACCUMULATOR_BASE.check(in_prime_subgroup).is_ok());
     }
 
+    #[allow(unused)]
+    pub fn verifier_key_builder<S: RingSuite>()
+    where
+        BaseField<S>: ark_ff::PrimeField,
+        CurveConfig<S>: TECurveConfig + Clone,
+        AffinePoint<S>: TEMapping<CurveConfig<S>>,
+    {
+        // use crate::ring::{testing::RingSuiteExt, Prover, Verifier};
+        use crate::testing::{random_val, random_vec};
+
+        let rng = &mut ark_std::test_rng();
+        let ring_ctx = RingContext::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::from(common::random_val(Some(rng)));
+        let output = secret.output(input);
+
+        let ring_size = ring_ctx.max_ring_size();
+        let prover_idx = random_val::<usize>(Some(rng)) % ring_size;
+        let mut pks = random_vec::<AffinePoint<S>>(ring_size, Some(rng));
+        pks[prover_idx] = public.0;
+
+        let prover_key = ring_ctx.prover_key(&pks);
+        let prover = ring_ctx.prover(prover_key, prover_idx);
+        let proof = secret.prove(input, output, b"foo", &prover);
+
+        // Incremental ring verifier key construction
+        let (mut vk_builder, loader) = ring_ctx.verifier_key_builder();
+        assert_eq!(vk_builder.free_slots(), pks.len());
+
+        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        let faulty_loader = |_| None;
+        assert_eq!(
+            vk_builder.append(&[extra_pk], faulty_loader).unwrap_err(),
+            usize::MAX
+        );
+
+        while !pks.is_empty() {
+            let chunk_len = 1 + random_val::<usize>(Some(rng)) % 5;
+            let chunk = pks.drain(..pks.len().min(chunk_len)).collect::<Vec<_>>();
+            println!("Appending {} items", chunk.len());
+            vk_builder.append(&chunk[..], &loader).unwrap();
+            assert_eq!(vk_builder.free_slots(), pks.len());
+        }
+        // No more space left
+        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        assert_eq!(vk_builder.append(&[extra_pk], &loader).unwrap_err(), 0);
+        let verifier_key = vk_builder.finalize();
+        let verifier = ring_ctx.verifier(verifier_key);
+        let result = Public::verify(input, output, b"foo", &proof, &verifier);
+        assert!(result.is_ok());
+    }
+
     #[macro_export]
     macro_rules! ring_suite_tests {
         ($suite:ty) => {
@@ -712,6 +766,11 @@ pub(crate) mod testing {
                 #[test]
                 fn accumulator_base_check() {
                     $crate::ring::testing::accumulator_base_check::<$suite>()
+                }
+
+                #[test]
+                fn verifier_key_builder() {
+                    $crate::ring::testing::verifier_key_builder::<$suite>()
                 }
 
                 $crate::test_vectors!($crate::ring::testing::TestVector<$suite>);
