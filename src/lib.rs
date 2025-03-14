@@ -165,7 +165,7 @@ pub trait Suite: Copy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Secret<S: Suite> {
     // Secret scalar.
-    pub scala: ScalarField<S>,
+    pub scalar: ScalarField<S>,
     // Cached public point.
     pub public: Public<S>,
 }
@@ -242,18 +242,7 @@ impl<S: Suite> Secret<S> {
 
     /// Get the VRF output point relative to input.
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        let out = self.secure_mul(input.0);
-        Output(out.into_affine())
-    }
-
-    /// Multiplication with secret splitting.
-    // #[cfg(feature = "getrandom")]
-    pub fn secure_mul(&self, pt: AffinePoint<S>) -> <AffinePoint<S> as AffineRepr>::Group {
-        use ark_std::UniformRand;
-        let mut rng = ark_std::rand::rngs::OsRng;
-        let x1 = ScalarField::<S>::rand(&mut rng);
-        let x2 = self.scalar - x1;
-        pt * x1 + pt * x2
+        Output(utils::mul_secret::<S>(self.scalar, input.0).into_affine())
     }
 }
 

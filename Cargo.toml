@@ -44,7 +44,7 @@ std = [
   "ark-ec/std",
   "ring-proof?/std",
 ]
-getrandom = [ "ark-std/getrandom" ]
+secret-split = [ "ark-std/getrandom" ]
 full = [
   "secp256r1",
   "ed25519",
