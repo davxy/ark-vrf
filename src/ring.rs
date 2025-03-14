@@ -516,11 +516,28 @@ where
         RingVerifierKeyBuilder { inner, raw_vk }
     }
 
+    #[inline(always)]
+    pub fn free_slots(&self) -> usize {
+        self.inner.max_keys - self.inner.curr_keys
+    }
+
     /// Append a new member to the ring verifier key.
-    pub fn append(&mut self, pks: &[AffinePoint<S>], srs_loader: impl SrsLoader<S>) {
+    ///
+    /// If the `pks` length is greater than the number of available slots in the ring
+    /// then an error is returned with the available slots count.
+    pub fn append(
+        &mut self,
+        pks: &[AffinePoint<S>],
+        srs_loader: impl SrsLoader<S>,
+    ) -> Result<(), usize> {
+        let avail_slots = self.free_slots();
+        if avail_slots < pks.len() {
+            return Err(avail_slots);
+        }
         let pks = TEMapping::to_te_slice(pks);
         let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
         self.inner.append(&pks, srs_loader);
+        Ok(())
     }
 
     /// Finalize and build verifier key.
