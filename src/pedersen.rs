@@ -1,3 +1,5 @@
+//! Pedersen VRF
+
 use crate::ietf::IetfSuite;
 use crate::*;
 

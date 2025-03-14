@@ -38,6 +38,8 @@ pub mod ring;
 mod testing;
 
 use codec::Codec;
+
+/// Re-export stuff that may be useful downstream.
 pub mod reexports {
     pub use ark_ec;
     pub use ark_ff;
@@ -52,7 +54,7 @@ pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
 pub type HashOutput<S> = digest::Output<<S as Suite>::Hasher>;
 
-
+/// Overarching errors.
 #[derive(Debug)]
 pub enum Error {
     /// Verification error
@@ -286,6 +288,7 @@ impl<S: Suite> Output<S> {
     }
 }
 
+/// Type aliases for the given suite.
 #[macro_export]
 macro_rules! suite_types {
     ($suite:ident) => {

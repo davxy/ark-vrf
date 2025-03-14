@@ -13,7 +13,7 @@
 //! *  `cLen = 16`.
 //!
 //! *  The key pair generation primitive is specified in Section 3.2.1 of
-//!    [SECG1] (q, B, SK, and Y in this document correspond to n, G, d,
+//!    `[SECG1]` (q, B, SK, and Y in this document correspond to n, G, d,
 //!    and Q in Section 3.2.1 of [SECG1]).  In this ciphersuite, the
 //!    secret scalar x is equal to the secret key SK.
 //!

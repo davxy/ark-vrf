@@ -1,3 +1,6 @@
+//! Ring VRF.
+//!
+//! This module is gated by the `ring` feature.
 use crate::*;
 use ark_ec::{
     pairing::Pairing,
@@ -543,7 +546,7 @@ where
     }
 }
 
-/// Define type aliases for the given ring suite.
+/// Type aliases for the given ring suite.
 #[macro_export]
 macro_rules! ring_suite_types {
     ($suite:ident) => {
