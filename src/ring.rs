@@ -524,6 +524,7 @@ where
         RingVerifierKeyBuilder { partial, raw_vk }
     }
 
+    /// Free public key slots.
     #[inline(always)]
     pub fn free_slots(&self) -> usize {
         self.partial.max_keys - self.partial.curr_keys
@@ -533,6 +534,11 @@ where
     ///
     /// If the `pks` length is greater than the number of available slots in the ring
     /// then an error is returned with the available slots count.
+    ///
+    /// If the available free slots are not sufficient to append `pks` sequence, the
+    /// number of available slots are returned in the error variant.
+    /// If the supplied loader returns `None`, then an error with `usize::MAX` is
+    /// returned.
     pub fn append(
         &mut self,
         pks: &[AffinePoint<S>],
@@ -543,12 +549,20 @@ where
             return Err(avail_slots);
         }
         let pks = TEMapping::to_te_slice(pks);
-        let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
+        // Currently ring_proof backend panics if `srs_loader` fails.
+        // As it stands, this workaround prevents it (but requires a clone).
+        let segment = srs_loader
+            .load(self.partial.curr_keys..self.partial.curr_keys + pks.len())
+            .ok_or(usize::MAX)?;
+        let srs_loader = |range: Range<usize>| {
+            debug_assert_eq!(segment.len(), range.len());
+            Ok(segment.clone())
+        };
         self.partial.append(&pks, srs_loader);
         Ok(())
     }
 
-    /// Finalize and build verifier key.
+    /// Build verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
         RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
     }
