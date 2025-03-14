@@ -120,4 +120,4 @@ let verifier_key = ring_ctx.verifier_key_from_commitment(ring_commitment);
 
 ## License
 
-Distributed under the [MIT License](LICENSE).
+Distributed under the [MIT License](./LICENSE).
