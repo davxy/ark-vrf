@@ -172,6 +172,7 @@ pub(crate) mod tests {
 
         // Incremental ring verifier key construction
         let (mut vk_builder, loader) = ring_ctx.verifier_key_builder();
+        assert_eq!(vk_builder.free_slots(), pks.len());
 
         loop {
             let chunk_len = 1 + random_val::<usize>(Some(&mut rng)) % 5;
@@ -180,7 +181,8 @@ pub(crate) mod tests {
                 break;
             }
             println!("Appending {} items", chunk.len());
-            vk_builder.append(&chunk[..], &loader);
+            vk_builder.append(&chunk[..], &loader).unwrap();
+            assert_eq!(vk_builder.free_slots(), pks.len());
         }
         let verifier_key = vk_builder.finalize();
 
