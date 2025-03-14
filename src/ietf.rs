@@ -91,8 +91,8 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let k = S::nonce(&self.scalar, input);
 
-        let k_b = utils::mul_secret::<S>(S::generator(), k).into_affine();
-        let k_h = utils::mul_secret::<S>(input.0, k).into_affine();
+        let k_b = smul!(S::generator(), k).into_affine();
+        let k_h = smul!(input.0, k).into_affine();
 
         let c = S::challenge(
             &[&self.public.0, &input.0, &output.0, &k_b, &k_h],

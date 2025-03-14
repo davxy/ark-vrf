@@ -89,17 +89,17 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let kb = S::nonce(&blinding, input);
 
         // Yb = x*G + b*B
-        let xg = utils::mul_secret::<S>(S::generator(), self.scalar);
-        let bb = utils::mul_secret::<S>(S::BLINDING_BASE, blinding);
+        let xg = smul!(S::generator(), self.scalar);
+        let bb = smul!(S::BLINDING_BASE, blinding);
         let pk_com = (xg + bb).into_affine();
 
         // R = k*G + kb*B
-        let kg = utils::mul_secret::<S>(S::generator(), k);
-        let kbb = utils::mul_secret::<S>(S::BLINDING_BASE, kb);
+        let kg = smul!(S::generator(), k);
+        let kbb = smul!(S::BLINDING_BASE, kb);
         let r = (kg + kbb).into_affine();
 
         // Ok = k*I
-        let ok = utils::mul_secret::<S>(input.0, k).into_affine();
+        let ok = smul!(input.0, k).into_affine();
 
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad.as_ref());

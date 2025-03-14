@@ -37,8 +37,7 @@ pub mod ring;
 #[cfg(test)]
 mod testing;
 
-// Re-export stuff that may be useful downstream.
-#[doc(hidden)]
+use codec::Codec;
 pub mod reexports {
     pub use ark_ec;
     pub use ark_ff;
@@ -47,14 +46,12 @@ pub mod reexports {
 }
 
 pub type AffinePoint<S> = <S as Suite>::Affine;
-
 pub type BaseField<S> = <AffinePoint<S> as AffineRepr>::BaseField;
 pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
 pub type HashOutput<S> = digest::Output<<S as Suite>::Hasher>;
 
-pub use codec::Codec;
 
 #[derive(Debug)]
 pub enum Error {
@@ -242,7 +239,7 @@ impl<S: Suite> Secret<S> {
 
     /// Get the VRF output point relative to input.
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        Output(utils::mul_secret::<S>(input.0, self.scalar).into_affine())
+        Output(smul!(input.0, self.scalar).into_affine())
     }
 }
 
