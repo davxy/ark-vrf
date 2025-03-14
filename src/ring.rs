@@ -419,31 +419,6 @@ where
     }
 }
 
-/// Define type aliases for the given ring suite.
-#[macro_export]
-macro_rules! ring_suite_types {
-    ($suite:ident) => {
-        #[allow(dead_code)]
-        pub type PcsParams = $crate::ring::PcsParams<$suite>;
-        #[allow(dead_code)]
-        pub type RingContext = $crate::ring::RingContext<$suite>;
-        #[allow(dead_code)]
-        pub type RingProverKey = $crate::ring::RingProverKey<$suite>;
-        #[allow(dead_code)]
-        pub type RingVerifierKey = $crate::ring::RingVerifierKey<$suite>;
-        #[allow(dead_code)]
-        pub type RingCommitment = $crate::ring::RingCommitment<$suite>;
-        #[allow(dead_code)]
-        pub type RingProver = $crate::ring::RingProver<$suite>;
-        #[allow(dead_code)]
-        pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
-        #[allow(dead_code)]
-        pub type RingProof = $crate::ring::Proof<$suite>;
-        #[allow(dead_code)]
-        pub type RingVerifierKeyBuilder = $crate::ring::RingVerifierKeyBuilder<$suite>;
-    };
-}
-
 /// Information required for incremental ring construction.
 ///
 /// Basically the SRS in Lagrangian form plus G1 generator used in the monomial form.
@@ -548,9 +523,8 @@ where
         if avail_slots < pks.len() {
             return Err(avail_slots);
         }
-        let pks = TEMapping::to_te_slice(pks);
-        // Currently ring_proof backend panics if `srs_loader` fails.
-        // As it stands, this workaround prevents it (but requires a clone).
+        // Currently `ring-proof` backend panics if `srs_loader` fails.
+        // This workaround makes loader failures a bit less harsh.
         let segment = srs_loader
             .load(self.partial.curr_keys..self.partial.curr_keys + pks.len())
             .ok_or(usize::MAX)?;
@@ -558,6 +532,7 @@ where
             debug_assert_eq!(segment.len(), range.len());
             Ok(segment.clone())
         };
+        let pks = TEMapping::to_te_slice(pks);
         self.partial.append(&pks, srs_loader);
         Ok(())
     }
@@ -566,6 +541,31 @@ where
     pub fn finalize(self) -> RingVerifierKey<S> {
         RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
     }
+}
+
+/// Define type aliases for the given ring suite.
+#[macro_export]
+macro_rules! ring_suite_types {
+    ($suite:ident) => {
+        #[allow(dead_code)]
+        pub type PcsParams = $crate::ring::PcsParams<$suite>;
+        #[allow(dead_code)]
+        pub type RingContext = $crate::ring::RingContext<$suite>;
+        #[allow(dead_code)]
+        pub type RingProverKey = $crate::ring::RingProverKey<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifierKey = $crate::ring::RingVerifierKey<$suite>;
+        #[allow(dead_code)]
+        pub type RingCommitment = $crate::ring::RingCommitment<$suite>;
+        #[allow(dead_code)]
+        pub type RingProver = $crate::ring::RingProver<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type RingProof = $crate::ring::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifierKeyBuilder = $crate::ring::RingVerifierKeyBuilder<$suite>;
+    };
 }
 
 #[cfg(test)]

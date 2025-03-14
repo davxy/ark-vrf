@@ -150,7 +150,7 @@ pub(crate) mod tests {
     #[test]
     pub fn ring_verifier_key_builder() {
         use crate::ring::{testing::RingSuiteExt, Prover, Verifier};
-        use crate::testing::random_val;
+        use crate::testing::{random_val, random_vec};
 
         let mut rng = ark_std::test_rng();
         let ring_ctx = ThisSuite::context();
@@ -160,7 +160,7 @@ pub(crate) mod tests {
 
         let ring_size = ring_ctx.max_ring_size();
         let prover_idx = random_val::<usize>(Some(&mut rng)) % ring_size;
-        let mut pks = testing::random_vec::<AffinePoint>(ring_size, Some(&mut rng));
+        let mut pks = random_vec::<AffinePoint>(ring_size, Some(&mut rng));
         pks[prover_idx] = pk.0;
 
         let input = Input::from(random_val(Some(&mut rng)));
@@ -174,6 +174,13 @@ pub(crate) mod tests {
         let (mut vk_builder, loader) = ring_ctx.verifier_key_builder();
         assert_eq!(vk_builder.free_slots(), pks.len());
 
+        let extra_pk = random_val::<AffinePoint>(Some(&mut rng));
+        let faulty_loader = |_| None;
+        assert_eq!(
+            vk_builder.append(&[extra_pk], faulty_loader).unwrap_err(),
+            usize::MAX
+        );
+
         loop {
             let chunk_len = 1 + random_val::<usize>(Some(&mut rng)) % 5;
             let chunk = pks.drain(..pks.len().min(chunk_len)).collect::<Vec<_>>();
@@ -184,6 +191,10 @@ pub(crate) mod tests {
             vk_builder.append(&chunk[..], &loader).unwrap();
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
+        // No more space left
+        let extra_pk = random_val::<AffinePoint>(Some(&mut rng));
+        assert_eq!(vk_builder.append(&[extra_pk], &loader).unwrap_err(), 0);
+
         let verifier_key = vk_builder.finalize();
 
         let verifier = ring_ctx.verifier(verifier_key);
