@@ -518,7 +518,7 @@ where
 
     /// Append a new member to the ring verifier key.
     pub fn append(&mut self, pks: &[AffinePoint<S>], srs_loader: impl SrsLoader<S>) {
-        let pks = TEMapping::to_te_slice(&pks[..]);
+        let pks = TEMapping::to_te_slice(pks);
         let srs_loader = |range: Range<usize>| srs_loader.load(range).ok_or(());
         self.inner.append(&pks, srs_loader);
     }
