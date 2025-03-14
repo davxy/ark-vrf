@@ -19,7 +19,8 @@ type Projective<S> = <AffinePoint<S> as AffineRepr>::Group;
 /// retain the same sum. Incurs 2x penalty in scalar multiplications, but provides
 /// side channel defenses.
 #[cfg(feature = "secret-split")]
-pub(crate) fn mul_secret<S: Suite>(s: ScalarField<S>, p: AffinePoint<S>) -> Projective<S> {
+#[inline(always)]
+pub(crate) fn mul_secret<S: Suite>(p: AffinePoint<S>, s: ScalarField<S>) -> Projective<S> {
     use ark_std::UniformRand;
     let mut rng = ark_std::rand::rngs::OsRng;
     let x1 = ScalarField::<S>::rand(&mut rng);
@@ -30,6 +31,6 @@ pub(crate) fn mul_secret<S: Suite>(s: ScalarField<S>, p: AffinePoint<S>) -> Proj
 /// Point scalar multiplication with no secret splitting.
 #[cfg(not(feature = "secret-split"))]
 #[inline(always)]
-pub(crate) fn mul_secret<S: Suite>(s: ScalarField<S>, p: AffinePoint<S>) -> Projective<S> {
+pub(crate) fn mul_secret<S: Suite>(p: AffinePoint<S>, s: ScalarField<S>) -> Projective<S> {
     p * s
 }

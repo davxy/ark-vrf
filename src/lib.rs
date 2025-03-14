@@ -242,7 +242,7 @@ impl<S: Suite> Secret<S> {
 
     /// Get the VRF output point relative to input.
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        Output(utils::mul_secret::<S>(self.scalar, input.0).into_affine())
+        Output(utils::mul_secret::<S>(input.0, self.scalar).into_affine())
     }
 }
 
