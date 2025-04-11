@@ -3,7 +3,7 @@
 use ark_std::{vec, vec::Vec};
 
 use crate::*;
-use ark_std::{rand::RngCore, UniformRand};
+use ark_std::{UniformRand, rand::RngCore};
 
 pub const TEST_SEED: &[u8] = b"seed";
 

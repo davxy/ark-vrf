@@ -99,8 +99,8 @@
 //! - `default`: `std`
 //! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `rfc-6979`, `test-vectors`.
 //! - `secret-split`: Point scalar multiplication with secret split. Secret scalar is split into the sum
-//!    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
-//!    sensible scalar multiplications, but provides side channel defenses.
+//!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
+//!   sensible scalar multiplications, but provides side channel defenses.
 //! - `ring`: Ring-VRF for the curves supporting it.
 //! - `rfc-6979`: Support for nonce generation according to RFC-9381 section 5.4.2.1.
 //! - `test-vectors`: Deterministic ring-vrf proof. Useful for reproducible test vectors generation.
@@ -425,7 +425,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use suites::testing::{Input, Secret};
-    use testing::{random_val, TEST_SEED};
+    use testing::{TEST_SEED, random_val};
 
     #[test]
     fn vrf_output_check() {

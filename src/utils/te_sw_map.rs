@@ -1,7 +1,7 @@
 use ark_ec::{
+    CurveConfig,
     short_weierstrass::{Affine as SWAffine, SWCurveConfig},
     twisted_edwards::{Affine as TEAffine, MontCurveConfig, TECurveConfig},
-    CurveConfig,
 };
 use ark_ff::{Field, One};
 use ark_std::borrow::Cow;

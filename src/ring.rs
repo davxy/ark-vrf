@@ -10,6 +10,7 @@ use ark_ec::{
 use ark_std::ops::Range;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
+use w3f_ring_proof as ring_proof;
 
 /// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
 ///
