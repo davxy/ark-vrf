@@ -339,7 +339,7 @@ impl<S: Suite> Secret<S> {
             let mut hasher = S::Hasher::new();
             hasher.update(seed);
             if cnt > 0 {
-                hasher.update(&[cnt]);
+                hasher.update([cnt]);
             }
             let bytes = hasher.finalize();
             let scalar = ScalarField::<S>::from_le_bytes_mod_order(&bytes[..]);
