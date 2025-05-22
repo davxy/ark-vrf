@@ -126,7 +126,7 @@
 #![deny(unsafe_code)]
 
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{One, PrimeField, Zero};
+use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 
@@ -323,15 +323,31 @@ impl<S: Suite> Secret<S> {
         Self { scalar, public }
     }
 
-    /// Construct a `Secret` from the given seed.
+    /// Derives a `Secret` scalar deterministically from a seed.
     ///
-    /// The `seed` is hashed using the `Suite::hash` to construct the secret scalar.
+    /// The seed is hashed using `Suite::Hasher`, and the output is reduced
+    /// modulo the curve's order to produce a valid scalar in the range
+    /// `[1, n - 1]`. No clamping or multiplication by the cofactor is
+    /// performed, regardless of the curve.
+    ///
+    /// The caller is responsible for ensuring that the resulting scalar is
+    /// used safely with respect to the target curve's cofactor and subgroup
+    /// properties.
     pub fn from_seed(seed: &[u8]) -> Self {
-        let bytes = utils::hash::<S::Hasher>(seed);
-        let mut scalar = ScalarField::<S>::from_le_bytes_mod_order(&bytes[..]);
-        if scalar.is_zero() {
-            scalar.set_one();
-        }
+        let mut cnt = 0_u8;
+        let scalar = loop {
+            let mut hasher = S::Hasher::new();
+            hasher.update(seed);
+            if cnt > 0 {
+                hasher.update(&[cnt]);
+            }
+            let bytes = hasher.finalize();
+            let scalar = ScalarField::<S>::from_le_bytes_mod_order(&bytes[..]);
+            if !scalar.is_zero() {
+                break scalar;
+            }
+            cnt += 1;
+        };
         Self::from_scalar(scalar)
     }
 
@@ -425,7 +441,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use suites::testing::{Input, Secret};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {
