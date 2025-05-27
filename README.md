@@ -8,18 +8,35 @@ into its signature.
 It leverages the [Arkworks](https://github.com/arkworks-rs) framework and
 supports customization of scheme parameters.
 
-### Supported Schemes
+## What is a VRF?
+
+ A Verifiable Random Function (VRF) is a cryptographic primitive that maps inputs
+ to verifiable pseudorandom outputs. Key properties include:
+
+ - **Uniqueness**: For a given input and private key, there is exactly one valid output
+ - **Verifiability**: Anyone with the public key can verify that an output is correct
+ - **Pseudorandomness**: Without the private key, outputs appear random and unpredictable
+ - **Collision resistance**: Finding inputs that map to the same output is computationally infeasible
+
+## Supported Schemes
 
 - **IETF VRF**: Complies with ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381).
+  This is a standardized VRF implementation suitable for most applications requiring
+  verifiable randomness.
+
 - **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
-- **Ring VRF**: A zero-knowledge-based inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
+  Extends the basic VRF with key-hiding properties using Pedersen commitments,
 
-### Schemes Specifications
+- **Ring VRF**: A zero-knowledge-based scheme inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
+  Provides signer anonymity within a set of public keys (a "ring"), allowing
+  verification that a ring member created the proof without revealing which specific member.
 
-- [VRF Schemes Details](https://github.com/davxy/bandersnatch-vrf-spec)
-- [Ring VRF ZK Proof](https://github.com/davxy/ring-proof-spec)
+### Specifications
 
-### Built-In suites
+- [VRF Schemes](https://github.com/davxy/bandersnatch-vrf-spec)
+- [Ring Proof](https://github.com/davxy/ring-proof-spec)
+
+## Built-In suites
 
 The library conditionally includes the following pre-configured suites (see features section):
 
@@ -29,68 +46,159 @@ The library conditionally includes the following pre-configured suites (see feat
 - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
 - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Pedersen, and Ring VRF.
 
-### Basic Usage
+## Basic Usage
 
 ```rust
 use ark_vrf::suites::bandersnatch::*;
+
+// Create a secret key from a seed
 let secret = Secret::from_seed(b"example seed");
+
+// Derive the corresponding public key
 let public = secret.public();
+
+// Create an input by hashing date to a curve point
 let input = Input::new(b"example input");
+
+// Compute the VRF output (gamma point)
 let output = secret.output(input);
+
+// Optional additional data that can be bound to the proof
 let aux_data = b"optional aux data";
 ```
-#### IETF-VRF
+
+The VRF output can be hashed to obtain a pseudorandom byte string:
+
+```rust
+// Get a deterministic hash from the VRF output point
+let hash_bytes = output.hash();
+```
+
+### IETF-VRF
+
+The IETF VRF scheme follows [RFC-9381](https://datatracker.ietf.org/doc/rfc9381)
+and provides a standardized approach to verifiable random functions.
 
 _Prove_
 ```rust
 use ark_vrf::ietf::Prover;
+
+// Generate a proof that binds the input, output, and auxiliary data
 let proof = secret.prove(input, output, aux_data);
+
+// The proof can be serialized for transmission
+let serialized_proof = proof.to_bytes();
 ```
 
 _Verify_
 ```rust
 use ark_vrf::ietf::Verifier;
+
+// Verify the proof against the public key
 let result = public.verify(input, output, aux_data, &proof);
+assert!(result.is_ok());
+
+// Verification will fail if any parameter is modified
+let tampered_output = secret.output(Input::new(b"different input").unwrap());
+assert!(public.verify(input, tampered_output, aux_data, &proof).is_err());
 ```
 
-#### Ring-VRF
+### Pedersen-VRF
 
+The Pedersen VRF extends the IETF scheme with key-hiding properties using Pedersen commitments.
+
+_Prove_
+```rust
+use ark_vrf::pedersen::Prover;
+
+// Generate a proof with a blinding factor
+let (proof, blinding_factor) = secret.prove(input, output, aux_data);
+
+// The proof includes a commitment to the public key
+let key_commitment = proof.key_commitment();
+```
+
+_Verify_
+```rust
+use ark_vrf::pedersen::Verifier;
+
+// Verify without knowing which specific public key was used.
+// Verifiers that the secret key used to generate `output` is the same as
+// the secret key used to generate `proof.key_commitment()`.
+let result = Public::verify(input, output, aux_data, &proof);
+assert!(result.is_ok());
+
+assert_eq!(
+    proof.key_commitment(),
+    (public.0 + S::BLINDING_BASE * blinding_factor).into()
+);
+```
+
+### Ring-VRF
+
+The Ring VRF provides anonymity within a set of public keys using zero-knowledge proofs.
+ 
 _Ring construction_
 ```rust
 const RING_SIZE: usize = 100;
 let prover_key_index = 3;
+
 // Construct an example ring with dummy keys
-let mut ring = (0..RING_SIZE).map(|i| Secret::from_seed(&i.to_le_bytes()).public().0).collect();
+let mut ring = (0..RING_SIZE)
+    .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
+    .collect::<Vec<_>>();
+
 // Patch the ring with the public key of the prover
 ring[prover_key_index] = public.0;
+
 // Any key can be replaced with the padding point
 ring[0] = RingProofParams::padding_point();
-```
 
-_Ring parameters construction_
-```rust
+// Create parameters for the ring proof system.
+// These parameters are reusable across multiple proofs
 let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
 ```
 
 _Prove_
 ```rust
 use ark_vrf::ring::Prover;
+
+// Create a prover key specific to this ring
 let prover_key = params.prover_key(&ring);
+
+// Create a prover instance for the specific position in the ring
 let prover = params.prover(prover_key, prover_key_index);
+
+// Generate a zero-knowledge proof that:
+// 1. The prover knows a secret key for one of the public keys in the ring
+// 2. That secret key was used to generate the VRF output
 let proof = secret.prove(input, output, aux_data, &prover);
 ```
 
 _Verify_
 ```rust
 use ark_vrf::ring::Verifier;
+
+// Create a verifier key for this ring
 let verifier_key = params.verifier_key(&ring);
+
+// Create a verifier instance
 let verifier = params.verifier(verifier_key);
+
+// Verify the proof - this confirms that:
+// 1. The proof was created by someone who knows a secret key in the ring
+// 2. The VRF output is correct for the given input
+// But it does NOT reveal which ring member created the proof
 let result = Public::verify(input, output, aux_data, &proof, &verifier);
 ```
 
 _Verifier key from commitment_
 ```rust
+// For efficiency, a commitment to the ring can be shared
 let ring_commitment = params.verifier_key().commitment();
+
+// A verifier can reconstruct the verifier key from just the commitment
+// without needing the full ring of public keys
 let verifier_key = params.verifier_key_from_commitment(ring_commitment);
 ```
 

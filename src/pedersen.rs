@@ -1,4 +1,38 @@
-//! Pedersen VRF
+//! # Pedersen-VRF
+//!
+//! The Pedersen VRF extends the IETF scheme with key-hiding properties
+//! using Pedersen commitments.
+//!
+//! ## Usage
+//!
+//! ### Prove
+//!
+//! ```rust,ignore
+//! use ark_vrf::pedersen::Prover;
+//!
+//! // Generate a proof with a blinding factor
+//! let (proof, blinding_factor) = secret.prove(input, output, aux_data);
+//!
+//! // The proof includes a commitment to the public key
+//! let key_commitment = proof.key_commitment();
+//! ```
+//!
+//! ### Verify
+//!
+//! ```rust,ignore
+//! use ark_vrf::pedersen::Verifier;
+//!
+//! // Verify without knowing which specific public key was used.
+//! // Verifiers that the secret key used to generate `output` is the same as
+//! // the secret key used to generate `proof.key_commitment()`.
+//! let result = Public::verify(input, output, aux_data, &proof);
+//! assert!(result.is_ok());
+//!
+//! assert_eq!(
+//!     proof.key_commitment(),
+//!     (public.0 + S::BLINDING_BASE * blinding_factor).into()
+//! );
+//! ```
 
 use crate::ietf::IetfSuite;
 use crate::*;

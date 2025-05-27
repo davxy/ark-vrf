@@ -1,6 +1,80 @@
-//! Ring VRF.
+//! # Ring VRF.
+//!
+//! The Ring VRF provides anonymity within a set of public keys using
+//! zero-knowledge proofs.
 //!
 //! This module is gated by the `ring` feature.
+//!
+//! ## Usage
+//!
+//! ### Ring Parameters
+//!
+//! ```rust,ignore
+//! const RING_SIZE: usize = 100;
+//! let prover_key_index = 3;
+//!
+//! // Construct an example ring with dummy keys
+//! let mut ring = (0..RING_SIZE)
+//!     .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
+//!     .collect::<Vec<_>>();
+//!     
+//! // Patch the ring with the public key of the prover
+//! ring[prover_key_index] = public.0;
+//!
+//! // Any key can be replaced with the padding point
+//! ring[0] = RingProofParams::padding_point();
+//!
+//! // Create parameters for the ring proof system
+//! // These parameters are reusable across multiple proofs
+//! let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
+//! ```
+//!
+//! ### Prove
+//!
+//! ```rust,ignore
+//! use ark_vrf::ring::Prover;
+//!
+//! // Create a prover key specific to this ring
+//! let prover_key = params.prover_key(&ring);
+//!
+//! // Create a prover instance for the specific position in the ring
+//! let prover = params.prover(prover_key, prover_key_index);
+//!
+//! // Generate a zero-knowledge proof that:
+//! // 1. The prover knows a secret key for one of the public keys in the ring
+//! // 2. That secret key was used to generate the VRF output
+//! let proof = secret.prove(input, output, aux_data, &prover);
+//! ```
+//!
+//! ### Verify
+//!
+//! ```rust,ignore
+//! use ark_vrf::ring::Verifier;
+//!
+//! // Create a verifier key for this ring
+//! let verifier_key = params.verifier_key(&ring);
+//!
+//! // Create a verifier instance
+//! let verifier = params.verifier(verifier_key);
+//!
+//! // Verify the proof - this confirms that:
+//! // 1. The proof was created by someone who knows a secret key in the ring
+//! // 2. The VRF output is correct for the given input
+//! // But it does NOT reveal which ring member created the proof
+//! let result = Public::verify(input, output, aux_data, &proof, &verifier);
+//! assert!(result.is_ok());
+//! ```
+//!
+//! #### Verifier key from commitment
+//!
+//! ```rust,ignore
+//! // For efficiency, a commitment to the ring can be shared
+//! let ring_commitment = params.verifier_key().commitment();
+//!
+//! // A verifier can reconstruct the verifier key from just the commitment
+//! // without needing the full ring of public keys
+//! let verifier_key = params.verifier_key_from_commitment(ring_commitment);
+//! ```
 
 use crate::*;
 use ark_ec::{
@@ -254,7 +328,7 @@ where
 
     /// Construct a new random ring context suitable for the given ring size.
     ///
-    /// Calls into [`RingProofParams::from_srs`] with randomly generated [`PcsParams`]
+    /// Calls into [`RingProofParams::from_pcs_params`] with randomly generated [`PcsParams`]
     /// large enough to be used for the given `ring_size`.
     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;

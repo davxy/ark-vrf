@@ -1,8 +1,39 @@
-//! EC-VRF as specified by [RFC-9381](https://datatracker.ietf.org/doc/rfc9381).
+//! ### IETF-VRF
 //!
-//! The implementation extends RFC9381 to allow to sign additional user data together
+//! The IETF VRF scheme follows [RFC-9381](https://datatracker.ietf.org/doc/rfc9381)
+//! and provides a standardized approach to verifiable random functions.
+//!
+//! The implementation extends RFC-9381 to allow to sign additional user data together
 //! with the VRF input. Refer to <https://github.com/davxy/bandersnatch-vrf-spec> for
 //! specification extension details.
+//!
+//! ## Usage
+//!
+//! ### Prove
+//!
+//! ```rust,ignore
+//! use ark_vrf::ietf::Prover;
+//!
+//! // Generate a proof that binds the input, output, and auxiliary data
+//! let proof = secret.prove(input, output, aux_data);
+//!
+//! // The proof can be serialized for transmission
+//! let serialized_proof = proof.serialize_compressed();
+//! ```
+//!
+//! ### Verify
+//!
+//! ```rust,ignore
+//! use ark_vrf::ietf::Verifier;
+//!
+//! // Verify the proof against the public key
+//! let result = public.verify(input, output, aux_data, &proof);
+//! assert!(result.is_ok());
+//!
+//! // Verification will fail if any parameter is modified
+//! let tampered_output = secret.output(Input::new(b"different input").unwrap());
+//! assert!(public.verify(input, tampered_output, aux_data, &proof).is_err());
+//! ```
 
 use super::*;
 

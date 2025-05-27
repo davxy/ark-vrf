@@ -8,18 +8,35 @@
 //! It leverages the [Arkworks](https://github.com/arkworks-rs) framework and
 //! supports customization of scheme parameters.
 //!
-//! ### Supported Schemes
+//! ## What is a VRF?
+//!
+//! A Verifiable Random Function (VRF) is a cryptographic primitive that maps inputs
+//! to verifiable pseudorandom outputs. Key properties include:
+//!
+//! - **Uniqueness**: For a given input and private key, there is exactly one valid output
+//! - **Verifiability**: Anyone with the public key can verify that an output is correct
+//! - **Pseudorandomness**: Without the private key, outputs appear random and unpredictable
+//! - **Collision resistance**: Finding inputs that map to the same output is computationally infeasible
+//!
+//! ## Supported Schemes
 //!
 //! - **IETF VRF**: Complies with ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381).
+//!   This is a standardized VRF implementation suitable for most applications requiring
+//!   verifiable randomness.
+//!
 //! - **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
-//! - **Ring VRF**: A zero-knowledge-based inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
+//!   Extends the basic VRF with key-hiding properties using Pedersen commitments,
 //!
-//! ### Schemes Specifications
+//! - **Ring VRF**: A zero-knowledge-based scheme inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
+//!   Provides signer anonymity within a set of public keys (a "ring"), allowing
+//!   verification that a ring member created the proof without revealing which specific member.
 //!
-//! - [VRF Schemes Details](https://github.com/davxy/bandersnatch-vrf-spec)
-//! - [Ring VRF ZK Proof](https://github.com/davxy/ring-proof-spec)
+//! ### Specifications
 //!
-//! ### Built-In suites
+//! - [VRF Schemes](https://github.com/davxy/bandersnatch-vrf-spec)
+//! - [Ring Proof](https://github.com/davxy/ring-proof-spec)
+//!
+//! ## Built-In suites
 //!
 //! The library conditionally includes the following pre-configured suites (see features section):
 //!
@@ -29,70 +46,30 @@
 //! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
 //! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Pedersen, and Ring VRF.
 //!
-//! ### Basic Usage
+//! ## Basic Usage
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
+//!
+//! // Create a secret key from a seed
 //! let secret = Secret::from_seed(b"example seed");
+//!
+//! // Derive the corresponding public key
 //! let public = secret.public();
+//!
+//! // Create an input by hashing data to a curve point
 //! let input = Input::new(b"example input").unwrap();
+//!
+//! // Compute the VRF output (gamma point)
 //! let output = secret.output(input);
-//! let aux_data = b"optional aux data";
-//! ```
-//! #### IETF-VRF
 //!
-//! _Prove_
-//! ```rust,ignore
-//! use ark_vrf::ietf::Prover;
-//! let proof = secret.prove(input, output, aux_data);
+//! // The VRF output can be hashed to obtain a pseudorandom byte string:
+//! let hash_bytes = output.hash();
 //! ```
 //!
-//! _Verify_
-//! ```rust,ignore
-//! use ark_vrf::ietf::Verifier;
-//! let result = public.verify(input, output, aux_data, &proof);
-//! ```
-//!
-//! #### Ring-VRF
-//!
-//! _Ring construction_
-//! ```rust,ignore
-//! const RING_SIZE: usize = 100;
-//! let prover_key_index = 3;
-//! // Construct an example ring with dummy keys
-//! let mut ring = (0..RING_SIZE).map(|i| Secret::from_seed(&i.to_le_bytes()).public().0).collect();
-//! // Patch the ring with the public key of the prover
-//! ring[prover_key_index] = public.0;
-//! // Any key can be replaced with the padding point
-//! ring[0] = RingProofParams::padding_point();
-//! ```
-//!
-//! _Ring parameters construction_
-//! ```rust,ignore
-//! let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
-//! ```
-//!
-//! _Prove_
-//! ```rust,ignore
-//! use ark_vrf::ring::Prover;
-//! let prover_key = params.prover_key(&ring);
-//! let prover = params.prover(prover_key, prover_key_index);
-//! let proof = secret.prove(input, output, aux_data, &prover);
-//! ```
-//!
-//! _Verify_
-//! ```rust,ignore
-//! use ark_vrf::ring::Verifier;
-//! let verifier_key = params.verifier_key(&ring);
-//! let verifier = params.verifier(verifier_key);
-//! let result = Public::verify(input, output, aux_data, &proof, &verifier);
-//! ```
-//!
-//! _Verifier key from commitment_
-//! ```rust,ignore
-//! let ring_commitment = params.verifier_key().commitment();
-//! let verifier_key = params.verifier_key_from_commitment(ring_commitment);
-//! ```
+//! - [ietf] vrf proof
+//! - [pedersen] vrf proof
+//! - [ring] vrf proof
 //!
 //! ## Features
 //!
@@ -268,7 +245,10 @@ pub trait Suite: Copy {
     }
 }
 
-/// Secret key.
+/// Secret key for VRF operations.
+///
+/// This structure contains the private scalar and caches the corresponding
+/// public key. The scalar is automatically zeroized when the struct is dropped.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Secret<S: Suite> {
     // Secret scalar.
@@ -354,43 +334,66 @@ impl<S: Suite> Secret<S> {
 }
 
 /// Public key generic over the cipher suite.
+///
+/// This is the public component of a VRF key pair, represented as a point on an elliptic curve.
+/// It's used for verifying VRF proofs and can be safely shared publicly.
 #[derive(Debug, Copy, Clone, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Public<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Public<S> {
     /// Construct from inner affine point.
+    ///
+    /// This allows creating a public key from an existing curve point.
     pub fn from(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
 
 /// VRF input point generic over the cipher suite.
+///
+/// This represents an input to the VRF, which is a point on the elliptic curve.
+/// Typically created by hashing arbitrary data to a curve point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Input<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
+    ///
+    /// This maps arbitrary input data to a curve point using the suite's hash-to-curve function.
+    /// Returns `None` if the data cannot be mapped to a valid curve point.
     pub fn new(data: &[u8]) -> Option<Self> {
         S::data_to_point(data).map(Input)
     }
 
     /// Construct from inner affine point.
+    ///
+    /// This allows creating an input from an existing curve point.
     pub fn from(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
 
 /// VRF output point generic over the cipher suite.
+///
+/// This represents the output of the VRF evaluation, which is a point on the elliptic curve.
+/// The output can be hashed to produce a deterministic byte string for applications
+/// requiring uniform randomness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Output<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Output<S> {
     /// Construct from inner affine point.
+    ///
+    /// This allows creating an output from an existing curve point.
     pub fn from(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 
-    /// Hash using `[Suite::point_to_hash]`.
+    /// Hash the output point to produce a deterministic byte string.
+    ///
+    /// This converts the elliptic curve point to a uniform byte string using
+    /// the suite's point-to-hash function. The resulting bytes can be used
+    /// as pseudorandom values for applications.
     pub fn hash(&self) -> HashOutput<S> {
         S::point_to_hash(&self.0)
     }
