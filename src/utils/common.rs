@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
@@ -94,7 +94,7 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
 /// # Parameters
 ///
 /// * `data` - The input data to hash to a curve point
-///    (defined to be `salt || alpha` according to RFC-9381)
+///   (defined to be `salt || alpha` according to RFC-9381)
 /// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC-9380
 ///
 /// # Returns
@@ -113,7 +113,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
