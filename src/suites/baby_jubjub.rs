@@ -1,4 +1,4 @@
-//! `ECVRF Baby-JubJub SHA-512 Try and Increment H2C` suite.
+//! ECVRF Baby-JubJub SHA-512 TAI suite
 //!
 //! Configuration:
 //!

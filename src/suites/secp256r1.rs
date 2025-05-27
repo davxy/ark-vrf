@@ -1,4 +1,4 @@
-//! `ECVRF-P256-SHA256-TAI` suite.
+//! # ECVRF P256 SHA-256 TAI suite
 //!
 //! Configuration (RFC-9381):
 //!
