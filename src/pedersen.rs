@@ -1,37 +1,30 @@
 //! # Pedersen-VRF
 //!
-//! The Pedersen VRF extends the IETF scheme with key-hiding properties
-//! using Pedersen commitments.
+//! Implementation of a key-hiding VRF scheme using Pedersen commitments as described in
+//! [BCHSV23](https://eprint.iacr.org/2023/002).
 //!
-//! ## Usage
-//!
-//! ### Prove
+//! This scheme extends the IETF VRF by adding key privacy through blinding factors,
+//! allowing verification without revealing which specific public key was used.
 //!
 //! ```rust,ignore
+//! // Key generation
+//! let secret = Secret::<MySuite>::from_seed(b"seed");
+//! let public = secret.public();
+//!
+//! // Proving
 //! use ark_vrf::pedersen::Prover;
+//! let input = Input::from(my_data);
+//! let output = secret.output(input);
+//! let (proof, blinding) = secret.prove(input, output, aux_data);
 //!
-//! // Generate a proof with a blinding factor
-//! let (proof, blinding_factor) = secret.prove(input, output, aux_data);
-//!
-//! // The proof includes a commitment to the public key
-//! let key_commitment = proof.key_commitment();
-//! ```
-//!
-//! ### Verify
-//!
-//! ```rust,ignore
+//! // Verification
 //! use ark_vrf::pedersen::Verifier;
-//!
-//! // Verify without knowing which specific public key was used.
-//! // Verifiers that the secret key used to generate `output` is the same as
-//! // the secret key used to generate `proof.key_commitment()`.
 //! let result = Public::verify(input, output, aux_data, &proof);
-//! assert!(result.is_ok());
 //!
-//! assert_eq!(
-//!     proof.key_commitment(),
-//!     (public.0 + S::BLINDING_BASE * blinding_factor).into()
-//! );
+//! // Verify the proof was created using a specific public key
+//! // This requires knowledge of the blinding factor
+//! let expected_commitment = (public.0 + MySuite::BLINDING_BASE * blinding).into_affine();
+//! assert_eq!(proof.key_commitment(), expected_commitment);
 //! ```
 
 use crate::ietf::IetfSuite;
@@ -68,7 +61,14 @@ pub trait PedersenSuite: IetfSuite {
     }
 }
 
-/// Pedersen proof.
+/// Pedersen VRF proof.
+///
+/// Zero-knowledge proof with key-hiding properties:
+/// - `pk_com`: Commitment to the public key (Y_b = x·G + b·B)
+/// - `r`: Nonce commitment for the generator (R = k·G + k_b·B)
+/// - `ok`: Nonce commitment for the input point (O_k = k·I)
+/// - `s`: Response scalar for the secret key
+/// - `sb`: Response scalar for the blinding factor
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: PedersenSuite> {
     pk_com: AffinePoint<S>,
@@ -85,8 +85,20 @@ impl<S: PedersenSuite> Proof<S> {
     }
 }
 
+/// Trait for types that can generate Pedersen VRF proofs.
+///
+/// Implementors can create zero-knowledge proofs that a VRF output
+/// is correctly derived from an input using their secret key,
+/// while hiding the specific public key used.
 pub trait Prover<S: PedersenSuite> {
-    /// Generate a proof for the given input/output and user additional data.
+    /// Generate a proof for the given input/output and additional data.
+    ///
+    /// Creates a zero-knowledge proof binding the input, output, and additional data
+    /// to a commitment of the prover's public key rather than the key itself.
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - VRF output point (γ = x·H)
+    /// * `ad` - Additional data to bind to the proof
     ///
     /// Returns the proof together with the associated blinding factor.
     fn prove(
@@ -97,11 +109,24 @@ pub trait Prover<S: PedersenSuite> {
     ) -> (Proof<S>, ScalarField<S>);
 }
 
+/// Trait for entities that can verify Pedersen VRF proofs.
+///
+/// Implementors can verify that a VRF output is correctly derived
+/// from an input using a committed public key.
 pub trait Verifier<S: PedersenSuite> {
-    /// Verify a proof for the given input/output and user additional data.
+    /// Verify a proof for the given input/output and additional data.
     ///
-    /// Verifiers that the secret key used to generate `output` is the same as
-    /// the secret key used to generate `proof.key_commitment()`.
+    /// Verifies the cryptographic relationship between input, output, and proof
+    /// without requiring knowledge of which specific public key was used.
+    /// Confirms that the secret key used to generate the output is the same as
+    /// the one committed to in the proof.
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - Claimed VRF output point
+    /// * `ad` - Additional data bound to the proof
+    /// * `proof` - The proof to verify
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         input: Input<S>,
         output: Output<S>,
@@ -191,7 +216,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};

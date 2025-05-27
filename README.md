@@ -112,7 +112,7 @@ _Prove_
 use ark_vrf::pedersen::Prover;
 
 // Generate a proof with a blinding factor
-let (proof, blinding_factor) = secret.prove(input, output, aux_data);
+let (proof, blinding) = secret.prove(input, output, aux_data);
 
 // The proof includes a commitment to the public key
 let key_commitment = proof.key_commitment();
@@ -128,10 +128,10 @@ use ark_vrf::pedersen::Verifier;
 let result = Public::verify(input, output, aux_data, &proof);
 assert!(result.is_ok());
 
-assert_eq!(
-    proof.key_commitment(),
-    (public.0 + S::BLINDING_BASE * blinding_factor).into()
-);
+// Verify the proof was created using a specific public key
+// This requires knowledge of the blinding factor
+let expected_commitment = (public.0 + MySuite::BLINDING_BASE * blinding).into_affine();
+assert_eq!(proof.key_commitment(), expected_commitment);
 ```
 
 ### Ring-VRF
