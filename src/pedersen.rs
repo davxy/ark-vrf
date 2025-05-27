@@ -6,6 +6,8 @@
 //! This scheme extends the IETF VRF by adding key privacy through blinding factors,
 //! allowing verification without revealing which specific public key was used.
 //!
+//! ## Usage Example
+//!
 //! ```rust,ignore
 //! // Key generation
 //! let secret = Secret::<MySuite>::from_seed(b"seed");

@@ -6,6 +6,8 @@
 //! The extension specification is available at:
 //! <https://github.com/davxy/bandersnatch-vrf-spec>
 //!
+//! ## Usage Example
+//!
 //! ```rust,ignore
 //! // Key generation
 //! let secret = Secret::<MySuite>::from_seed(b"seed");

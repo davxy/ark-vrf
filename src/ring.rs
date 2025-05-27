@@ -1,79 +1,41 @@
-//! # Ring VRF.
+//! # Ring VRF
 //!
-//! The Ring VRF provides anonymity within a set of public keys using
-//! zero-knowledge proofs.
+//! Implementation of a zero-knowledge VRF scheme providing signer anonymity within a set of
+//! public keys, based on [BCHSV23](https://eprint.iacr.org/2023/002).
 //!
 //! This module is gated by the `ring` feature.
 //!
-//! ## Usage
-//!
-//! ### Ring Parameters
+//! ## Usage Example
 //!
 //! ```rust,ignore
+//! // Ring setup
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
 //!
-//! // Construct an example ring with dummy keys
+//! // Create a ring of public keys
 //! let mut ring = (0..RING_SIZE)
 //!     .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
 //!     .collect::<Vec<_>>();
-//!     
-//! // Patch the ring with the public key of the prover
 //! ring[prover_key_index] = public.0;
 //!
-//! // Any key can be replaced with the padding point
-//! ring[0] = RingProofParams::padding_point();
-//!
-//! // Create parameters for the ring proof system
-//! // These parameters are reusable across multiple proofs
+//! // Initialize ring parameters
 //! let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
-//! ```
 //!
-//! ### Prove
-//!
-//! ```rust,ignore
+//! // Proving
 //! use ark_vrf::ring::Prover;
-//!
-//! // Create a prover key specific to this ring
 //! let prover_key = params.prover_key(&ring);
-//!
-//! // Create a prover instance for the specific position in the ring
 //! let prover = params.prover(prover_key, prover_key_index);
-//!
-//! // Generate a zero-knowledge proof that:
-//! // 1. The prover knows a secret key for one of the public keys in the ring
-//! // 2. That secret key was used to generate the VRF output
 //! let proof = secret.prove(input, output, aux_data, &prover);
-//! ```
 //!
-//! ### Verify
-//!
-//! ```rust,ignore
+//! // Verification
 //! use ark_vrf::ring::Verifier;
-//!
-//! // Create a verifier key for this ring
 //! let verifier_key = params.verifier_key(&ring);
-//!
-//! // Create a verifier instance
 //! let verifier = params.verifier(verifier_key);
-//!
-//! // Verify the proof - this confirms that:
-//! // 1. The proof was created by someone who knows a secret key in the ring
-//! // 2. The VRF output is correct for the given input
-//! // But it does NOT reveal which ring member created the proof
 //! let result = Public::verify(input, output, aux_data, &proof, &verifier);
-//! assert!(result.is_ok());
-//! ```
 //!
-//! #### Verifier key from commitment
-//!
-//! ```rust,ignore
-//! // For efficiency, a commitment to the ring can be shared
-//! let ring_commitment = params.verifier_key().commitment();
-//!
-//! // A verifier can reconstruct the verifier key from just the commitment
-//! // without needing the full ring of public keys
-//! let verifier_key = params.verifier_key_from_commitment(ring_commitment);
+//! // Efficient verification with commitment
+//! let ring_commitment = verifier_key.commitment();
+//! let reconstructed_key = params.verifier_key_from_commitment(ring_commitment);
 //! ```
 
 use crate::*;
@@ -189,6 +151,10 @@ pub type RingVerifier<S> =
 pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 
 /// Ring VRF proof.
+///
+/// Two-part zero-knowledge proof with signer anonymity:
+/// - `pedersen_proof`: Key commitment and VRF correctness proof
+/// - `ring_proof`: Membership proof binding the commitment to the ring
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite>
 where
@@ -200,7 +166,10 @@ where
     pub ring_proof: RingBareProof<S>,
 }
 
-/// Ring VRF prover.
+/// Trait for types that can generate Ring VRF proofs.
+///
+/// Implementors can create anonymous proofs that a VRF output
+/// is correctly derived using a secret key from a ring of public keys.
 pub trait Prover<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -208,6 +177,15 @@ where
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Generate a proof for the given input/output and additional data.
+    ///
+    /// Creates a zero-knowledge proof that:
+    /// 1. The prover knows a secret key for one of the ring's public keys
+    /// 2. That secret key was used to compute the VRF output
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - VRF output point
+    /// * `ad` - Additional data to bind to the proof
+    /// * `prover` - Ring prover instance for the specific ring position
     fn prove(
         &self,
         input: Input<S>,
@@ -217,14 +195,30 @@ where
     ) -> Proof<S>;
 }
 
-/// Ring VRF verifier.
+/// Trait for entities that can verify Ring VRF proofs.
+///
+/// Implementors can verify anonymous proofs that a VRF output
+/// was derived using a secret key from a ring of public keys.
 pub trait Verifier<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
     CurveConfig<S>: TECurveConfig,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    /// Verify a proof for the given input/output and user additional data.
+    /// Verify a proof for the given input/output and additional data.
+    ///
+    /// Verifies that:
+    /// 1. The proof was created by a member of the ring
+    /// 2. The VRF output is correct for the given input
+    /// 3. The additional data matches what was used during proving
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - Claimed VRF output point
+    /// * `ad` - Additional data bound to the proof
+    /// * `sig` - The proof to verify
+    /// * `verifier` - Ring verifier instance for the specific ring
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         input: Input<S>,
         output: Output<S>,
@@ -281,9 +275,11 @@ where
     }
 }
 
-/// Ring proof full parameters.
+/// Ring proof parameters.
 ///
-/// Wraps [`PcsParams`] and [`PiopParams`].
+/// Contains the cryptographic parameters needed for ring proof generation and verification:
+/// - `pcs`: Polynomial Commitment Scheme parameters (KZG setup)
+/// - `piop`: Polynomial Interactive Oracle Proof parameters
 #[derive(Clone)]
 pub struct RingProofParams<S: RingSuite>
 where
@@ -317,19 +313,18 @@ where
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    /// Construct new ring proof params suitable for the given ring size.
+    /// Construct deterministic ring proof params for the given ring size.
     ///
-    /// Calls into [`RingProofParams::from_rand`] with a `ChaCha20Rng` seeded with `seed`.
+    /// Creates parameters using a deterministic `ChaCha20Rng` seeded with `seed`.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
         use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
         Self::from_rand(ring_size, &mut rng)
     }
 
-    /// Construct a new random ring context suitable for the given ring size.
+    /// Construct random ring proof params for the given ring size.
     ///
-    /// Calls into [`RingProofParams::from_pcs_params`] with randomly generated [`PcsParams`]
-    /// large enough to be used for the given `ring_size`.
+    /// Generates a new KZG setup with sufficient degree to support the specified ring size.
     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let max_degree = pcs_domain_size::<S>(ring_size) - 1;
@@ -337,18 +332,19 @@ where
         Self::from_pcs_params(ring_size, pcs_params).expect("PCS params is correct")
     }
 
-    /// Construct a new random ring context suitable for the given [`PcsParams`].
+    /// Construct ring proof params from existing KZG setup.
     ///
-    /// Fails if the domain representable via the supplied `PcsParams` is not sufficiently
-    /// large for the given `ring_size`.
+    /// Creates parameters using an existing KZG setup, truncating if larger than needed
+    /// or returning an error if the setup is insufficient for the specified ring size.
     ///
-    /// If the domain size of `PcsParams` exceeds the required limit, the extra items are truncated.
+    /// * `ring_size` - Maximum number of keys in the ring
+    /// * `pcs_params` - KZG setup parameters
     pub fn from_pcs_params(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
         let pcs_domain_size = pcs_domain_size::<S>(ring_size);
         if pcs_params.powers_in_g1.len() < pcs_domain_size || pcs_params.powers_in_g2.len() < 2 {
             return Err(Error::InvalidData);
         }
-        // Keep only the required powers of tau.
+        // Keep only the required powers of tau
         pcs_params.powers_in_g1.truncate(pcs_domain_size);
         pcs_params.powers_in_g2.truncate(2);
         let piop_domain_size = piop_domain_size::<S>(ring_size);
@@ -364,18 +360,21 @@ where
         self.piop.keyset_part_size
     }
 
-    /// Construct [`RingProverKey`] for the given ring.
+    /// Create a prover key for the given ring of public keys.
     ///
-    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    /// Indexes the ring and prepares the cryptographic material needed for proving.
+    /// If the ring exceeds the maximum supported size, excess keys are ignored.
+    ///
+    /// * `pks` - Array of public keys forming the ring
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> RingProverKey<S> {
         let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
         ring_proof::index(&self.pcs, &self.piop, &pks).0
     }
 
-    /// Construct [`RingProver`] from [`RingProverKey`] for the prover implied by `key_index`.
+    /// Create a prover instance for a specific position in the ring.
     ///
-    /// Key index is the prover index within the `pks` sequence passed to construct the
-    /// [`RingProverKey`] via the `prover_key` method.
+    /// * `prover_key` - Ring prover key created with `prover_key()`
+    /// * `key_index` - Position of the prover's public key in the original ring
     pub fn prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         RingProver::<S>::init(
             prover_key,
@@ -385,20 +384,23 @@ where
         )
     }
 
-    /// Construct a `RingVerifierKey` instance for the given ring.
+    /// Create a verifier key for the given ring of public keys.
     ///
-    /// Note: if `pks.len() > self.max_ring_size()` the extra keys in the tail are ignored.
+    /// Indexes the ring and prepares the cryptographic material needed for verification.
+    /// If the ring exceeds the maximum supported size, excess keys are ignored.
+    ///
+    /// * `pks` - Array of public keys forming the ring
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> RingVerifierKey<S> {
         let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
         ring_proof::index(&self.pcs, &self.piop, &pks).1
     }
 
-    /// Construct `RingVerifierKey` instance for the ring previously committed.
+    /// Create a verifier key from a precomputed ring commitment.
     ///
-    /// The `RingCommitment` instance can be obtained via the `VerifierKey::commitment()` method.
+    /// Allows efficient reconstruction of a verifier key without needing the full ring.
+    /// The commitment can be obtained from an existing verifier key via `commitment()`.
     ///
-    /// This allows to quickly reconstruct the verifier key without having to recompute the
-    /// keys commitment.
+    /// * `commitment` - Precomputed commitment to the ring of public keys
     pub fn verifier_key_from_commitment(
         &self,
         commitment: RingCommitment<S>,
@@ -407,10 +409,10 @@ where
         RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs.raw_vk())
     }
 
-    /// Builder for incremental construction of the verifier key.
+    /// Create a builder for incremental construction of the verifier key.
     ///
-    /// This also returns a `RingBuilderPcsParams` which may be used to append new key items
-    /// to the `RingVerifierKeyBuilder` instance its tne `SrsLookup` implementation.
+    /// Returns a builder and associated PCS parameters that can be used to
+    /// construct a verifier key by adding public keys in batches.
     pub fn verifier_key_builder(&self) -> (RingVerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
@@ -421,7 +423,9 @@ where
         (builder, builder_pcs_params)
     }
 
-    /// Construct `RingVerifier` from `RingVerifierKey`.
+    /// Create a verifier instance from a verifier key.
+    ///
+    /// * `verifier_key` - Ring verifier key created with `verifier_key()`
     pub fn verifier(&self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
@@ -430,13 +434,14 @@ where
         )
     }
 
-    /// Constructs a `RingVerifier` from `RingVerifierKey` without no `RingProofParams`.
+    /// Create a verifier instance without requiring the full parameters.
     ///
-    /// While this approach is slightly less efficient than using pre-constructed `RingProofParams`,
-    /// as some parameters need to be computed on-the-fly, it is beneficial in memory or
-    /// storage constrained environments. This avoids the need to retain the full `RingProofParams` for
-    /// ring signature verification. Instead, the `VerifierKey` contains only the essential information
-    /// needed to verify ring proofs.
+    /// Creates a verifier using only the verifier key and ring size, computing
+    /// necessary parameters on-the-fly. This is more memory efficient but slightly
+    /// less computationally efficient than using the full parameters.
+    ///
+    /// * `verifier_key` - Ring verifier key
+    /// * `ring_size` - Size of the ring used to create the verifier key
     pub fn verifier_no_context(
         verifier_key: RingVerifierKey<S>,
         ring_size: usize,
@@ -529,7 +534,10 @@ type PartialRingCommitment<S> =
 
 type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
-/// Ring verifier key builder.
+/// Builder for incremental construction of ring verifier keys.
+///
+/// Allows constructing a verifier key by adding public keys in batches,
+/// which is useful for large rings or memory-constrained environments.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
@@ -544,7 +552,9 @@ where
 pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
 pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 
-/// Lagrangian form SRS entries lookup.
+/// Trait for accessing Structured Reference String entries in Lagrangian basis.
+///
+/// Provides access to precomputed SRS elements needed for efficient ring operations.
 pub trait SrsLookup<S: RingSuite>
 where
     BaseField<S>: ark_ff::PrimeField,
@@ -586,7 +596,10 @@ where
     CurveConfig<S>: TECurveConfig + Clone,
     AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
-    /// Construct an empty ring verifier key builder.
+    /// Create a new empty ring verifier key builder.
+    ///
+    /// * `params` - Ring proof parameters
+    /// * `lookup` - SRS lookup implementation for accessing precomputed values
     pub fn new(params: &RingProofParams<S>, lookup: impl SrsLookup<S>) -> Self {
         use ring_proof::pcs::PcsParams;
         let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
@@ -596,21 +609,19 @@ where
         RingVerifierKeyBuilder { partial, raw_vk }
     }
 
-    /// Free public key slots.
+    /// Get the number of remaining slots available in the ring.
     #[inline(always)]
     pub fn free_slots(&self) -> usize {
         self.partial.max_keys - self.partial.curr_keys
     }
 
-    /// Append a new member to the ring verifier key.
+    /// Add public keys to the ring being built.
     ///
-    /// If the `pks` length is greater than the number of available slots in the ring
-    /// then an error is returned with the available slots count.
+    /// * `pks` - Public keys to add to the ring
+    /// * `lookup` - SRS lookup implementation for accessing precomputed values
     ///
-    /// If the available free slots are not sufficient to append `pks` sequence, the
-    /// number of available slots are returned in the error variant.
-    /// If the supplied `lookup` returns `None`, then an error with `usize::MAX` is
-    /// returned.
+    /// Returns `Ok(())` if keys were added successfully, or `Err(available_slots)`
+    /// if there's not enough space. Returns `Err(usize::MAX)` if SRS lookup fails.
     pub fn append(
         &mut self,
         pks: &[AffinePoint<S>],
@@ -634,7 +645,7 @@ where
         Ok(())
     }
 
-    /// Build verifier key.
+    /// Complete the building process and create the verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
         RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
     }
