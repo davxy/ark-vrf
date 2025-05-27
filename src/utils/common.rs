@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     AffineRepr,
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
@@ -113,7 +113,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
