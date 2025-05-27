@@ -1,7 +1,13 @@
+//! Common cryptographic utility functions.
+//!
+//! This module provides implementations of various cryptographic operations
+//! used throughout the VRF schemes, including hashing, challenge generation,
+//! and hash-to-curve algorithms.
+
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
@@ -9,12 +15,17 @@ use digest::{Digest, FixedOutputReset};
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
-// Generic hash wrapper.
+/// Generic hash wrapper.
+///
+/// Computes a hash of the provided data using the specified hash function.
 pub fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
     H::new().chain_update(data).finalize()
 }
 
 /// Generic HMAC wrapper.
+///
+/// Computes an HMAC of the provided data using the specified key and hash function.
+/// Used for deterministic nonce generation in RFC-6979.
 #[cfg(feature = "rfc-6979")]
 fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
     use hmac::{Mac, SimpleHmac};
@@ -29,7 +40,8 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 /// Try-And-Increment (TAI) method as defined by RFC 9381 section 5.4.1.1.
 ///
 /// Implements ECVRF_encode_to_curve in a simple and generic way that works
-/// for any elliptic curve.
+/// for any elliptic curve. This method iteratively attempts to hash the input
+/// with an incrementing counter until a valid curve point is found.
 ///
 /// To use this algorithm, hash length MUST be at least equal to the field length.
 ///
@@ -39,6 +51,15 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 ///
 /// May systematically fail if `Suite::Hasher` output is not sufficient to
 /// construct a point according to the `Suite::Codec` in use.
+///
+/// # Parameters
+///
+/// * `data` - The input data to hash to a curve point
+///
+/// # Returns
+///
+/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
+/// * `None` - If no valid point could be found after 256 attempts
 pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
 
@@ -64,10 +85,22 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
 /// Elligator2 method as defined by RFC-9380 and further refined in RFC-9381 section 5.4.1.2.
 ///
 /// Implements ECVRF_encode_to_curve using one of the several hash-to-curve options defined
-/// in RFC-9380.  The specific choice of the hash-to-curve option (called the Suite ID in RFC-9380)
+/// in RFC-9380. This method provides a constant-time hash-to-curve implementation that is
+/// more secure against side-channel attacks than the Try-And-Increment method.
+///
+/// The specific choice of the hash-to-curve option (called the Suite ID in RFC-9380)
 /// is given by the h2c_suite_ID_string parameter.
 ///
-/// The input `data` is defined to be `salt || alpha` according to the `RFC-9281`.
+/// # Parameters
+///
+/// * `data` - The input data to hash to a curve point
+///    (defined to be `salt || alpha` according to RFC-9381)
+/// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC-9380
+///
+/// # Returns
+///
+/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
+/// * `None` - If the hash-to-curve operation fails
 #[allow(unused)]
 pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(
     data: &[u8],
@@ -80,7 +113,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -96,6 +129,24 @@ where
 }
 
 /// Challenge generation according to RFC-9381 section 5.4.3.
+///
+/// Generates a challenge scalar by hashing a sequence of curve points and additional data.
+/// This is used in the Schnorr-like signature scheme for VRF proofs.
+///
+/// The function follows the procedure specified in RFC-9381:
+/// 1. Start with a domain separator and suite ID
+/// 2. Append the encoded form of each provided point
+/// 3. Append the additional data
+/// 4. Hash the result and interpret it as a scalar
+///
+/// # Parameters
+///
+/// * `pts` - Array of curve points to include in the challenge
+/// * `ad` - Additional data to bind to the challenge
+///
+/// # Returns
+///
+/// A scalar field element derived from the hash of the inputs
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
     const DOM_SEP_START: u8 = 0x02;
     const DOM_SEP_END: u8 = 0x00;
@@ -111,6 +162,9 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
 
 /// Point to a hash according to RFC-9381 section 5.2.
 ///
+/// Converts an elliptic curve point to a hash value, following the procedure in RFC-9381.
+/// This is used to derive the final VRF output bytes from the VRF output point.
+///
 /// According to the RFC, the input point `pt` should be multiplied by the cofactor
 /// before being hashed. However, in typical usage, the hashed point is the result
 /// of a scalar multiplication on a point produced by the `Suite::data_to_point`
@@ -123,9 +177,14 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
 /// purpose of multiplying by the cofactor is as a safeguard against potential issues
 /// with an incorrect implementation of `data_to_point`.
 ///
-/// Since multiplying by the cofactor changes the point being hashed, this step is
-/// made optional to accommodate scenarios where strict compliance with the RFC's
-/// prescribed procedure is not required.
+/// # Parameters
+///
+/// * `pt` - The elliptic curve point to hash
+/// * `mul_by_cofactor` - Whether to multiply the point by the cofactor before hashing
+///
+/// # Returns
+///
+/// A hash value derived from the encoded point
 pub fn point_to_hash_rfc_9381<S: Suite>(
     pt: &AffinePoint<S>,
     mul_by_cofactor: bool,
@@ -146,9 +205,20 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// Nonce generation according to RFC-9381 section 5.4.2.2.
 ///
 /// This procedure is based on section 5.1.6 of RFC 8032: "Edwards-Curve Digital
-/// Signature Algorithm (EdDSA)".
+/// Signature Algorithm (EdDSA)". It generates a deterministic nonce by hashing
+/// the secret key and input point together.
 ///
-/// The algorithm generate the nonce value in a deterministic pseudorandom fashion.
+/// The deterministic generation ensures that the same nonce is never used twice
+/// with the same secret key for different inputs, which is critical for security.
+///
+/// # Parameters
+///
+/// * `sk` - The secret scalar key
+/// * `input` - The input point
+///
+/// # Returns
+///
+/// A scalar field element to be used as a nonce
 ///
 /// # Panics
 ///
@@ -175,7 +245,17 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 /// the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature
 /// Algorithm (ECDSA)".
 ///
-/// The algorithm generate the nonce value in a deterministic pseudorandom fashion.
+/// It generates a deterministic nonce using HMAC-based extraction, which provides
+/// strong security guarantees against nonce reuse or biased nonce generation.
+///
+/// # Parameters
+///
+/// * `sk` - The secret scalar key
+/// * `input` - The input point
+///
+/// # Returns
+///
+/// A scalar field element to be used as a nonce
 #[cfg(feature = "rfc-6979")]
 pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S>
 where

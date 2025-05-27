@@ -1,20 +1,31 @@
-//! Common utilities
+//! # Common utilities
+//!
+//! This module provides cryptographic utility functions and curve mappings used
+//! throughout the VRF implementations.
 
 pub mod common;
 pub mod te_sw_map;
 
-/// Standard procedures.
+/// Standard cryptographic procedures.
+///
+/// Includes hash functions, challenge generation, and point-to-hash conversions
+/// following RFC-9381 and other standards.
 pub use common::*;
-/// Twisted Edwards to Short Weierstrass mapping.
+
+/// Twisted Edwards to Short Weierstrass curve mapping.
+///
+/// Provides bidirectional mappings between different curve representations,
+/// allowing operations to be performed in the most convenient form.
 pub use te_sw_map::*;
 
 /// Point scalar multiplication with optional secret splitting.
 ///
-/// Secret scalar split into the sum of two scalars, which randomly mutate but
-/// retain the same sum. Incurs 2x penalty in scalar multiplications, but provides
-/// side channel defenses.
+/// When the `secret-split` feature is enabled, this macro splits the secret scalar
+/// into the sum of two randomly generated scalars that retain the same sum. This
+/// technique provides side-channel resistance at the cost of doubling the number
+/// of scalar multiplications.
 ///
-/// Note: actual secret splitting is enabled via the `secret-split` feature.
+/// Without the feature enabled, it performs a standard scalar multiplication.
 mod secret_split {
     #[cfg(feature = "secret-split")]
     #[doc(hidden)]
