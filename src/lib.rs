@@ -1,35 +1,21 @@
 //! # Elliptic Curve VRF-AD
 //!
-//! This library provides flexible and efficient implementations of Verifiable
-//! Random Functions with Additional Data (VRF-AD), a cryptographic construct
-//! that augments a standard VRF scheme by incorporating auxiliary information
-//! into its signature.
+//! Implementations of Verifiable Random Functions with Additional Data (VRF-AD)
+//! based on elliptic curve cryptography. Built on the [Arkworks](https://github.com/arkworks-rs)
+//! framework with configurable cryptographic parameters.
 //!
-//! It leverages the [Arkworks](https://github.com/arkworks-rs) framework and
-//! supports customization of scheme parameters.
+//! VRF-AD extends standard VRF constructions by binding auxiliary data to the proof,
+//! providing stronger contextual security guarantees.
 //!
-//! ## What is a VRF?
+//! ## Schemes
 //!
-//! A Verifiable Random Function (VRF) is a cryptographic primitive that maps inputs
-//! to verifiable pseudorandom outputs. Key properties include:
+//! - **IETF VRF**: ECVRF implementation compliant with [RFC9381](https://datatracker.ietf.org/doc/rfc9381)
 //!
-//! - **Uniqueness**: For a given input and private key, there is exactly one valid output
-//! - **Verifiability**: Anyone with the public key can verify that an output is correct
-//! - **Pseudorandomness**: Without the private key, outputs appear random and unpredictable
-//! - **Collision resistance**: Finding inputs that map to the same output is computationally infeasible
+//! - **Pedersen VRF**: Key-hiding VRF using Pedersen commitments as described in
+//!   [BCHSV23](https://eprint.iacr.org/2023/002)
 //!
-//! ## Supported Schemes
-//!
-//! - **IETF VRF**: Complies with ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381).
-//!   This is a standardized VRF implementation suitable for most applications requiring
-//!   verifiable randomness.
-//!
-//! - **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
-//!   Extends the basic VRF with key-hiding properties using Pedersen commitments,
-//!
-//! - **Ring VRF**: A zero-knowledge-based scheme inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
-//!   Provides signer anonymity within a set of public keys (a "ring"), allowing
-//!   verification that a ring member created the proof without revealing which specific member.
+//! - **Ring VRF**: Zero-knowledge VRF with signer anonymity within a key set, based on
+//!   [BCHSV23](https://eprint.iacr.org/2023/002)
 //!
 //! ### Specifications
 //!
@@ -46,26 +32,19 @@
 //! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
 //! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Pedersen, and Ring VRF.
 //!
-//! ## Basic Usage
+//! ## Usage
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
 //!
-//! // Create a secret key from a seed
 //! let secret = Secret::from_seed(b"example seed");
-//!
-//! // Derive the corresponding public key
 //! let public = secret.public();
-//!
-//! // Create an input by hashing data to a curve point
 //! let input = Input::new(b"example input").unwrap();
-//!
-//! // Compute the VRF output (gamma point)
 //! let output = secret.output(input);
-//!
-//! // The VRF output can be hashed to obtain a pseudorandom byte string:
 //! let hash_bytes = output.hash();
 //! ```
+//!
+//! ### Proof Generation Schemes
 //!
 //! - [ietf] vrf proof
 //! - [pedersen] vrf proof
@@ -247,8 +226,8 @@ pub trait Suite: Copy {
 
 /// Secret key for VRF operations.
 ///
-/// This structure contains the private scalar and caches the corresponding
-/// public key. The scalar is automatically zeroized when the struct is dropped.
+/// Contains the private scalar and cached public key.
+/// Implements automatic zeroization on drop.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Secret<S: Suite> {
     // Secret scalar.
@@ -335,8 +314,7 @@ impl<S: Suite> Secret<S> {
 
 /// Public key generic over the cipher suite.
 ///
-/// This is the public component of a VRF key pair, represented as a point on an elliptic curve.
-/// It's used for verifying VRF proofs and can be safely shared publicly.
+/// Elliptic curve point representing the public component of a VRF key pair.
 #[derive(Debug, Copy, Clone, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Public<S: Suite>(pub AffinePoint<S>);
 
@@ -351,23 +329,19 @@ impl<S: Suite> Public<S> {
 
 /// VRF input point generic over the cipher suite.
 ///
-/// This represents an input to the VRF, which is a point on the elliptic curve.
-/// Typically created by hashing arbitrary data to a curve point.
+/// Elliptic curve point representing the VRF input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Input<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
     ///
-    /// This maps arbitrary input data to a curve point using the suite's hash-to-curve function.
-    /// Returns `None` if the data cannot be mapped to a valid curve point.
+    /// Maps arbitrary data to a curve point via hash-to-curve.
     pub fn new(data: &[u8]) -> Option<Self> {
         S::data_to_point(data).map(Input)
     }
 
     /// Construct from inner affine point.
-    ///
-    /// This allows creating an input from an existing curve point.
     pub fn from(value: AffinePoint<S>) -> Self {
         Self(value)
     }
@@ -375,9 +349,7 @@ impl<S: Suite> Input<S> {
 
 /// VRF output point generic over the cipher suite.
 ///
-/// This represents the output of the VRF evaluation, which is a point on the elliptic curve.
-/// The output can be hashed to produce a deterministic byte string for applications
-/// requiring uniform randomness.
+/// Elliptic curve point representing the VRF output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Output<S: Suite>(pub AffinePoint<S>);
 
@@ -389,11 +361,7 @@ impl<S: Suite> Output<S> {
         Self(value)
     }
 
-    /// Hash the output point to produce a deterministic byte string.
-    ///
-    /// This converts the elliptic curve point to a uniform byte string using
-    /// the suite's point-to-hash function. The resulting bytes can be used
-    /// as pseudorandom values for applications.
+    /// Hash the output point to a deterministic byte string.
     pub fn hash(&self) -> HashOutput<S> {
         S::point_to_hash(&self.0)
     }
@@ -428,7 +396,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use suites::testing::{Input, Secret};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {

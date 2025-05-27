@@ -1,38 +1,25 @@
-//! ### IETF-VRF
+//! # IETF-VRF
 //!
-//! The IETF VRF scheme follows [RFC-9381](https://datatracker.ietf.org/doc/rfc9381)
-//! and provides a standardized approach to verifiable random functions.
+//! Implementation of the ECVRF scheme defined in [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
+//! extended to support binding additional data to the proof.
 //!
-//! The implementation extends RFC-9381 to allow to sign additional user data together
-//! with the VRF input. Refer to <https://github.com/davxy/bandersnatch-vrf-spec> for
-//! specification extension details.
-//!
-//! ## Usage
-//!
-//! ### Prove
+//! The extension specification is available at:
+//! <https://github.com/davxy/bandersnatch-vrf-spec>
 //!
 //! ```rust,ignore
-//! use ark_vrf::ietf::Prover;
+//! // Key generation
+//! let secret = Secret::<MySuite>::from_seed(b"seed");
+//! let public = secret.public();
 //!
-//! // Generate a proof that binds the input, output, and auxiliary data
+//! // Proving
+//! use ark_vrf::ietf::Prover;
+//! let input = Input::from(my_data);
+//! let output = secret.output(input);
 //! let proof = secret.prove(input, output, aux_data);
 //!
-//! // The proof can be serialized for transmission
-//! let serialized_proof = proof.serialize_compressed();
-//! ```
-//!
-//! ### Verify
-//!
-//! ```rust,ignore
+//! // Verification
 //! use ark_vrf::ietf::Verifier;
-//!
-//! // Verify the proof against the public key
 //! let result = public.verify(input, output, aux_data, &proof);
-//! assert!(result.is_ok());
-//!
-//! // Verification will fail if any parameter is modified
-//! let tampered_output = secret.output(Input::new(b"different input").unwrap());
-//! assert!(public.verify(input, tampered_output, aux_data, &proof).is_err());
 //! ```
 
 use super::*;
@@ -42,6 +29,10 @@ pub trait IetfSuite: Suite {}
 impl<T> IetfSuite for T where T: Suite {}
 
 /// IETF VRF proof.
+///
+/// Schnorr-based proof of correctness for a VRF evaluation:
+/// - `c`: Challenge scalar derived from public parameters
+/// - `s`: Response scalar satisfying the verification equation
 #[derive(Debug, Clone)]
 pub struct Proof<S: IetfSuite> {
     pub c: ScalarField<S>,
@@ -102,13 +93,38 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
     }
 }
 
+/// Trait for types that can generate VRF proofs.
+///
+/// Implementors can create cryptographic proofs that a VRF output
+/// is correctly derived from an input using their secret key.
 pub trait Prover<S: IetfSuite> {
-    /// Generate a proof for the given input/output and user additional data.
+    /// Generate a proof for the given input/output and additional data.
+    ///
+    /// Creates a non-interactive zero-knowledge proof binding the input, output,
+    /// and additional data to the prover's public key.
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - VRF output point (γ = x·H)
+    /// * `ad` - Additional data to bind to the proof
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
+/// Trait for entities that can verify VRF proofs.
+///
+/// Implementors can verify that a VRF output is correctly derived
+/// from an input using a specific public key.
 pub trait Verifier<S: IetfSuite> {
-    /// Verify a proof for the given input/output and user additional data.
+    /// Verify a proof for the given input/output and additional data.
+    ///
+    /// Verifies the cryptographic relationship between input, output, and proof
+    /// under the verifier's public key.
+    ///
+    /// * `input` - VRF input point
+    /// * `output` - Claimed VRF output point
+    /// * `aux` - Additional data bound to the proof
+    /// * `proof` - The proof to verify
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
         input: Input<S>,
@@ -119,6 +135,16 @@ pub trait Verifier<S: IetfSuite> {
 }
 
 impl<S: IetfSuite> Prover<S> for Secret<S> {
+    /// Implements the IETF VRF proving algorithm.
+    ///
+    /// This follows the procedure specified in RFC-9381 section 5.1, with extensions
+    /// to support binding additional data to the proof:
+    ///
+    /// 1. Generate a deterministic nonce `k` based on the secret key and input
+    /// 2. Compute nonce commitments `k_b` and `k_h`
+    /// 3. Compute the challenge `c` using all public values, nonce commitments and the
+    ///    additional data
+    /// 4. Compute the response `s = k + c * secret`
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let k = S::nonce(&self.scalar, input);
 
@@ -135,6 +161,16 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
 }
 
 impl<S: IetfSuite> Verifier<S> for Public<S> {
+    /// Implements the IETF VRF verification algorithm.
+    ///
+    /// This follows the procedure specified in RFC-9381 section 5.3, with extensions
+    /// to support verifying additional data bound to the proof:
+    ///
+    /// 1. Compute `u = s*G - c*Y` where G is the generator and Y is the public key
+    /// 2. Compute `v = s*H - c*O` where H is the input point and O is the output point
+    /// 3. Recompute the expected challenge `c_exp` using all public values, `u`, `v` and
+    ///    the additional data
+    /// 4. Verify that `c_exp == c` from the proof
     fn verify(
         &self,
         input: Input<S>,
