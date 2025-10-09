@@ -4,9 +4,9 @@
 //! allowing operations to be performed in the most convenient form for a given task.
 
 use ark_ec::{
-    CurveConfig,
     short_weierstrass::{Affine as SWAffine, SWCurveConfig},
     twisted_edwards::{Affine as TEAffine, MontCurveConfig, TECurveConfig},
+    CurveConfig,
 };
 use ark_ff::{Field, One};
 use ark_std::borrow::Cow;
@@ -81,7 +81,7 @@ pub trait SWMapping<C: SWCurveConfig> {
     ///
     /// Returns a borrowed slice if no conversion is needed, or an owned
     /// vector if conversion is required.
-    fn to_sw_slice(slice: &[Self]) -> Cow<[SWAffine<C>]>
+    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]>
     where
         Self: Sized;
 }
@@ -98,7 +98,7 @@ impl<C: SWCurveConfig> SWMapping<C> for SWAffine<C> {
     }
 
     #[inline(always)]
-    fn to_sw_slice(slice: &[Self]) -> Cow<[SWAffine<C>]> {
+    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]> {
         Cow::Borrowed(slice)
     }
 }
@@ -115,7 +115,7 @@ impl<C: MapConfig> SWMapping<C> for TEAffine<C> {
     }
 
     #[inline(always)]
-    fn to_sw_slice(slice: &[Self]) -> Cow<[SWAffine<C>]> {
+    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]> {
         let pks;
         #[cfg(feature = "parallel")]
         {
@@ -145,7 +145,7 @@ pub trait TEMapping<C: TECurveConfig> {
     ///
     /// Returns a borrowed slice if no conversion is needed, or an owned
     /// vector if conversion is required.
-    fn to_te_slice(slice: &[Self]) -> Cow<[TEAffine<C>]>
+    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]>
     where
         Self: Sized;
 }
@@ -162,7 +162,7 @@ impl<C: TECurveConfig> TEMapping<C> for TEAffine<C> {
     }
 
     #[inline(always)]
-    fn to_te_slice(slice: &[Self]) -> Cow<[TEAffine<C>]> {
+    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]> {
         Cow::Borrowed(slice)
     }
 }
@@ -179,7 +179,7 @@ impl<C: MapConfig> TEMapping<C> for SWAffine<C> {
     }
 
     #[inline(always)]
-    fn to_te_slice(slice: &[Self]) -> Cow<[TEAffine<C>]> {
+    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]> {
         let pks;
         #[cfg(feature = "parallel")]
         {
