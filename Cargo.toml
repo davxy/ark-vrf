@@ -70,7 +70,11 @@ parallel = [
   "w3f-ring-proof?/parallel",
   "rayon",
 ]
-asm = [ "ark-ff/asm", "w3f-ring-proof?/asm" ]
+asm = [
+  "ark-ff/asm",
+  "w3f-ring-proof?/asm",
+  "sha2/asm"
+]
 # Deterministic, no-zk, ring-proof (unsafe)
 test-vectors = [ "w3f-ring-proof?/test-vectors" ]
 
