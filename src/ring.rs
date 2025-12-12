@@ -266,9 +266,7 @@ pub struct RingProofParams<S: RingSuite> {
     pub piop: PiopParams<S>,
 }
 
-pub(crate) fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
-where
-{
+pub(crate) fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S> {
     PiopParams::<S>::setup(
         ring_proof::Domain::new(domain_size, true),
         S::BLINDING_BASE.into_te(),
