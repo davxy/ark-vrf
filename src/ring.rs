@@ -96,11 +96,9 @@ const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> usize 
 /// All required bounds are expressed directly on the associated type for better ergonomics.
 pub trait RingSuite:
     PedersenSuite<
-        Affine: AffineRepr<
-            BaseField: ark_ff::PrimeField,
-            Config: TECurveConfig + Clone,
-        > + TEMapping<<Self::Affine as AffineRepr>::Config>,
-    >
+    Affine: AffineRepr<BaseField: ark_ff::PrimeField, Config: TECurveConfig + Clone>
+                + TEMapping<<Self::Affine as AffineRepr>::Config>,
+>
 {
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
@@ -218,9 +216,7 @@ pub trait Verifier<S: RingSuite> {
     ) -> Result<(), Error>;
 }
 
-impl<S: RingSuite> Prover<S> for Secret<S>
-where
-{
+impl<S: RingSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
         input: Input<S>,
@@ -239,9 +235,7 @@ where
     }
 }
 
-impl<S: RingSuite> Verifier<S> for Public<S>
-where
-{
+impl<S: RingSuite> Verifier<S> for Public<S> {
     fn verify(
         input: Input<S>,
         output: Output<S>,
@@ -265,9 +259,7 @@ where
 /// - `pcs`: Polynomial Commitment Scheme parameters (KZG setup)
 /// - `piop`: Polynomial Interactive Oracle Proof parameters
 #[derive(Clone)]
-pub struct RingProofParams<S: RingSuite>
-where
-{
+pub struct RingProofParams<S: RingSuite> {
     /// PCS parameters.
     pub pcs: PcsParams<S>,
     /// PIOP parameters.
@@ -285,9 +277,7 @@ where
     )
 }
 
-impl<S: RingSuite> RingProofParams<S>
-where
-{
+impl<S: RingSuite> RingProofParams<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
     /// Creates parameters using a deterministic `ChaCha20Rng` seeded with `seed`.
@@ -438,9 +428,7 @@ where
     }
 }
 
-impl<S: RingSuite> CanonicalSerialize for RingProofParams<S>
-where
-{
+impl<S: RingSuite> CanonicalSerialize for RingProofParams<S> {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         mut writer: W,
@@ -454,9 +442,7 @@ where
     }
 }
 
-impl<S: RingSuite> CanonicalDeserialize for RingProofParams<S>
-where
-{
+impl<S: RingSuite> CanonicalDeserialize for RingProofParams<S> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,
@@ -475,9 +461,7 @@ where
     }
 }
 
-impl<S: RingSuite> ark_serialize::Valid for RingProofParams<S>
-where
-{
+impl<S: RingSuite> ark_serialize::Valid for RingProofParams<S> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.pcs.check()
     }
@@ -501,9 +485,7 @@ type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RingVerifierKeyBuilder<S: RingSuite>
-where
-{
+pub struct RingVerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
     raw_vk: RawVerifierKey<S>,
 }
@@ -514,9 +496,7 @@ pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 /// Trait for accessing Structured Reference String entries in Lagrangian basis.
 ///
 /// Provides access to precomputed SRS elements needed for efficient ring operations.
-pub trait SrsLookup<S: RingSuite>
-where
-{
+pub trait SrsLookup<S: RingSuite> {
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
 
@@ -529,9 +509,7 @@ where
     }
 }
 
-impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S>
-where
-{
+impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>> {
         if range.end > self.0.len() {
             return None;
@@ -540,9 +518,7 @@ where
     }
 }
 
-impl<S: RingSuite> RingVerifierKeyBuilder<S>
-where
-{
+impl<S: RingSuite> RingVerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
     /// * `params` - Ring proof parameters
