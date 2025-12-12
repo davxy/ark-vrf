@@ -663,11 +663,7 @@ pub(crate) mod testing {
     }
 
     #[allow(unused)]
-    pub fn prove_verify<S: RingSuite>()
-    where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-    {
+    pub fn prove_verify<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
         let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
 
@@ -703,9 +699,7 @@ pub(crate) mod testing {
     #[allow(unused)]
     pub fn padding_check<S: RingSuite>()
     where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>> + CheckPoint,
+        AffinePoint<S>: CheckPoint,
     {
         // Check that point has been computed using the magic spell.
         assert_eq!(S::PADDING, S::data_to_point(PADDING_SEED).unwrap());
@@ -717,9 +711,7 @@ pub(crate) mod testing {
     #[allow(unused)]
     pub fn accumulator_base_check<S: RingSuite>()
     where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>> + FindAccumulatorBase<S> + CheckPoint,
+        AffinePoint<S>: FindAccumulatorBase<S> + CheckPoint,
     {
         // Check that point has been computed using the magic spell.
         assert_eq!(
@@ -734,11 +726,7 @@ pub(crate) mod testing {
     }
 
     #[allow(unused)]
-    pub fn verifier_key_builder<S: RingSuite>()
-    where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-    {
+    pub fn verifier_key_builder<S: RingSuite>() {
         use crate::testing::{random_val, random_vec};
 
         let rng = &mut ark_std::test_rng();
@@ -814,11 +802,7 @@ pub(crate) mod testing {
         };
     }
 
-    pub trait RingSuiteExt: RingSuite + crate::testing::SuiteExt
-    where
-        BaseField<Self>: ark_ff::PrimeField,
-        CurveConfig<Self>: TECurveConfig + Clone,
-    {
+    pub trait RingSuiteExt: RingSuite + crate::testing::SuiteExt {
         const SRS_FILE: &str;
 
         fn params() -> &'static RingProofParams<Self>;
@@ -847,22 +831,14 @@ pub(crate) mod testing {
         }
     }
 
-    pub struct TestVector<S: RingSuite>
-    where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-    {
+    pub struct TestVector<S: RingSuite> {
         pub pedersen: pedersen::testing::TestVector<S>,
         pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
         pub ring_pks_com: RingCommitment<S>,
         pub ring_proof: RingBareProof<S>,
     }
 
-    impl<S: RingSuite> core::fmt::Debug for TestVector<S>
-    where
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
-    {
+    impl<S: RingSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
                 .field("pedersen", &self.pedersen)
@@ -874,8 +850,6 @@ pub(crate) mod testing {
     impl<S> common::TestVectorTrait for TestVector<S>
     where
         S: RingSuiteExt + std::fmt::Debug + 'static,
-        BaseField<S>: ark_ff::PrimeField,
-        CurveConfig<S>: TECurveConfig + Clone,
     {
         fn name() -> String {
             S::suite_name() + "_ring"
