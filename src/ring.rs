@@ -91,11 +91,16 @@ const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> usize 
 }
 
 /// Ring suite.
-pub trait RingSuite: PedersenSuite
-where
-    BaseField<Self>: ark_ff::PrimeField,
-    CurveConfig<Self>: TECurveConfig,
-    AffinePoint<Self>: TEMapping<CurveConfig<Self>>,
+///
+/// This trait provides the cryptographic primitives needed for ring VRF signatures.
+/// All required bounds are expressed directly on the associated type for better ergonomics.
+pub trait RingSuite:
+    PedersenSuite<
+        Affine: AffineRepr<
+            BaseField: ark_ff::PrimeField,
+            Config: TECurveConfig + Clone,
+        > + TEMapping<<Self::Affine as AffineRepr>::Config>,
+    >
 {
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
@@ -156,12 +161,7 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
 /// - `ring_proof`: Membership proof binding the commitment to the ring
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<S: RingSuite>
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
-{
+pub struct Proof<S: RingSuite> {
     pub pedersen_proof: PedersenProof<S>,
     pub ring_proof: RingBareProof<S>,
 }
@@ -170,12 +170,7 @@ where
 ///
 /// Implementors can create anonymous proofs that a VRF output
 /// is correctly derived using a secret key from a ring of public keys.
-pub trait Prover<S: RingSuite>
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
-{
+pub trait Prover<S: RingSuite> {
     /// Generate a proof for the given input/output and additional data.
     ///
     /// Creates a zero-knowledge proof that:
@@ -199,12 +194,7 @@ where
 ///
 /// Implementors can verify anonymous proofs that a VRF output
 /// was derived using a secret key from a ring of public keys.
-pub trait Verifier<S: RingSuite>
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
-{
+pub trait Verifier<S: RingSuite> {
     /// Verify a proof for the given input/output and additional data.
     ///
     /// Verifies that:
@@ -230,9 +220,6 @@ where
 
 impl<S: RingSuite> Prover<S> for Secret<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn prove(
         &self,
@@ -254,9 +241,6 @@ where
 
 impl<S: RingSuite> Verifier<S> for Public<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn verify(
         input: Input<S>,
@@ -283,9 +267,6 @@ where
 #[derive(Clone)]
 pub struct RingProofParams<S: RingSuite>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// PCS parameters.
     pub pcs: PcsParams<S>,
@@ -295,9 +276,6 @@ where
 
 pub(crate) fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     PiopParams::<S>::setup(
         ring_proof::Domain::new(domain_size, true),
@@ -309,9 +287,6 @@ where
 
 impl<S: RingSuite> RingProofParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Construct deterministic ring proof params for the given ring size.
     ///
@@ -465,9 +440,6 @@ where
 
 impl<S: RingSuite> CanonicalSerialize for RingProofParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
@@ -484,9 +456,6 @@ where
 
 impl<S: RingSuite> CanonicalDeserialize for RingProofParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
@@ -508,9 +477,6 @@ where
 
 impl<S: RingSuite> ark_serialize::Valid for RingProofParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.pcs.check()
@@ -522,11 +488,7 @@ where
 /// Basically the SRS in Lagrangian form.
 /// Can be constructed via the `PcsParams::ck_with_lagrangian()` method.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RingBuilderPcsParams<S: RingSuite>(pub Vec<G1Affine<S>>)
-where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>;
+pub struct RingBuilderPcsParams<S: RingSuite>(pub Vec<G1Affine<S>>);
 
 // Under construction ring commitment.
 type PartialRingCommitment<S> =
@@ -541,9 +503,6 @@ type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RingVerifierKeyBuilder<S: RingSuite>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     partial: PartialRingCommitment<S>,
     raw_vk: RawVerifierKey<S>,
@@ -557,9 +516,6 @@ pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 /// Provides access to precomputed SRS elements needed for efficient ring operations.
 pub trait SrsLookup<S: RingSuite>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
@@ -567,9 +523,6 @@ where
 impl<S: RingSuite, F> SrsLookup<S> for F
 where
     F: Fn(Range<usize>) -> Option<Vec<G1Affine<S>>>,
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>> {
         self(range)
@@ -578,9 +531,6 @@ where
 
 impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>> {
         if range.end > self.0.len() {
@@ -592,9 +542,6 @@ where
 
 impl<S: RingSuite> RingVerifierKeyBuilder<S>
 where
-    BaseField<S>: ark_ff::PrimeField,
-    CurveConfig<S>: TECurveConfig + Clone,
-    AffinePoint<S>: TEMapping<CurveConfig<S>>,
 {
     /// Create a new empty ring verifier key builder.
     ///
@@ -744,7 +691,6 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         let rng = &mut ark_std::test_rng();
         let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
@@ -816,7 +762,6 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         use crate::testing::{random_val, random_vec};
 
@@ -897,7 +842,6 @@ pub(crate) mod testing {
     where
         BaseField<Self>: ark_ff::PrimeField,
         CurveConfig<Self>: TECurveConfig + Clone,
-        AffinePoint<Self>: TEMapping<CurveConfig<Self>>,
     {
         const SRS_FILE: &str;
 
@@ -931,7 +875,6 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         pub pedersen: pedersen::testing::TestVector<S>,
         pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
@@ -943,7 +886,6 @@ pub(crate) mod testing {
     where
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_struct("TestVector")
@@ -958,7 +900,6 @@ pub(crate) mod testing {
         S: RingSuiteExt + std::fmt::Debug + 'static,
         BaseField<S>: ark_ff::PrimeField,
         CurveConfig<S>: TECurveConfig + Clone,
-        AffinePoint<S>: TEMapping<CurveConfig<S>>,
     {
         fn name() -> String {
             S::suite_name() + "_ring"
