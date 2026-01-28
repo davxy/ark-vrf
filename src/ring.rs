@@ -114,7 +114,7 @@ pub trait RingSuite:
 }
 
 /// KZG Polinomial Commitment Scheme.
-pub type Pcs<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
+pub type Kzg<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
 /// KZG commitment.
 pub type PcsCommitment<S> =
@@ -135,23 +135,29 @@ pub type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
 
 /// Ring prover key.
-pub type RingProverKey<S> = ring_proof::ProverKey<BaseField<S>, Pcs<S>, TEAffine<CurveConfig<S>>>;
+pub type RingProverKey<S> = ring_proof::ProverKey<BaseField<S>, Kzg<S>, TEAffine<CurveConfig<S>>>;
 
 /// Ring verifier key.
-pub type RingVerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Pcs<S>>;
+pub type RingVerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Kzg<S>>;
 
 /// Ring prover.
-pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Pcs<S>, CurveConfig<S>>;
+pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Kzg<S>, CurveConfig<S>>;
 
 /// Ring verifier.
 pub type RingVerifier<S> =
-    ring_proof::ring_verifier::RingVerifier<BaseField<S>, Pcs<S>, CurveConfig<S>>;
+    ring_proof::ring_verifier::RingVerifier<BaseField<S>, Kzg<S>, CurveConfig<S>>;
+
+pub type RingBatchVerifier<S> = ring_proof::ring_verifier::KzgBatchVerifier<
+    <S as RingSuite>::Pairing,
+    CurveConfig<S>,
+    ring_proof::ArkTranscript,
+>;
 
 /// Raw ring proof.
 ///
 /// This is the primitive ring proof used in conjunction with Pedersen proof to
 /// construct the actual ring vrf proof [`Proof`].
-pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Pcs<S>>;
+pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 
 /// Ring VRF proof.
 ///
@@ -216,6 +222,46 @@ pub trait Verifier<S: RingSuite> {
     ) -> Result<(), Error>;
 }
 
+pub struct BatchItem<S: RingSuite> {
+    ad: Vec<u8>,
+    input: Input<S>,
+    output: Output<S>,
+    proof: Proof<S>,
+}
+
+pub struct BatchVerifier<S: RingSuite> {
+    batch: RingBatchVerifier<S>,
+}
+
+impl<S: RingSuite> BatchVerifier<S> {
+    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
+        Self {
+            batch: ring_verifier.kzg_batch_verifier(),
+        }
+    }
+
+    pub fn push(&mut self, item: BatchItem<S>) -> Result<(), Error> {
+        use pedersen::Verifier as PedersenVerifier;
+        <Public<S> as PedersenVerifier<S>>::verify(
+            item.input,
+            item.output,
+            item.ad,
+            &item.proof.pedersen_proof,
+        )?;
+        let key_commitment = item.proof.pedersen_proof.key_commitment().into_te();
+        self.batch.push(item.proof.ring_proof, key_commitment);
+        Ok(())
+    }
+
+    pub fn verify(&self) -> Result<(), Error> {
+        if self.batch.verify() {
+            Ok(())
+        } else {
+            Err(Error::VerificationFailure)
+        }
+    }
+}
+
 impl<S: RingSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
@@ -240,13 +286,13 @@ impl<S: RingSuite> Verifier<S> for Public<S> {
         input: Input<S>,
         output: Output<S>,
         ad: impl AsRef<[u8]>,
-        sig: &Proof<S>,
+        proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
-        <Self as PedersenVerifier<S>>::verify(input, output, ad, &sig.pedersen_proof)?;
-        let key_commitment = sig.pedersen_proof.key_commitment().into_te();
-        if !verifier.verify(sig.ring_proof.clone(), key_commitment) {
+        <Self as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
         Ok(())
@@ -291,7 +337,7 @@ impl<S: RingSuite> RingProofParams<S> {
     pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let max_degree = pcs_domain_size::<S>(ring_size) - 1;
-        let pcs_params = Pcs::<S>::setup(max_degree, rng);
+        let pcs_params = Kzg::<S>::setup(max_degree, rng);
         Self::from_pcs_params(ring_size, pcs_params).expect("PCS params is correct")
     }
 
@@ -692,6 +738,9 @@ pub(crate) mod testing {
         let verifier = params.verifier(verifier_key);
         let result = Public::verify(input, output, b"foo", &proof, &verifier);
         assert!(result.is_ok());
+
+        // let result = Public::verify_batch(input, output, b"foo", &proof, &verifier);
+        // assert!(result.is_ok());
     }
 
     #[allow(unused)]
