@@ -222,13 +222,6 @@ pub trait Verifier<S: RingSuite> {
     ) -> Result<(), Error>;
 }
 
-pub struct BatchItem<S: RingSuite> {
-    ad: Vec<u8>,
-    input: Input<S>,
-    output: Output<S>,
-    proof: Proof<S>,
-}
-
 pub struct BatchVerifier<S: RingSuite> {
     batch: RingBatchVerifier<S>,
 }
@@ -240,16 +233,17 @@ impl<S: RingSuite> BatchVerifier<S> {
         }
     }
 
-    pub fn push(&mut self, item: BatchItem<S>) -> Result<(), Error> {
+    pub fn push(
+        &mut self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
-        <Public<S> as PedersenVerifier<S>>::verify(
-            item.input,
-            item.output,
-            item.ad,
-            &item.proof.pedersen_proof,
-        )?;
-        let key_commitment = item.proof.pedersen_proof.key_commitment().into_te();
-        self.batch.push(item.proof.ring_proof, key_commitment);
+        <Public<S> as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        self.batch.push(proof.ring_proof.clone(), key_commitment);
         Ok(())
     }
 
@@ -726,21 +720,26 @@ pub(crate) mod testing {
             ring_size
         );
 
+        let ad = b"foo";
+
         let prover_idx = 3;
         let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
         pks[prover_idx] = public.0;
 
         let prover_key = params.prover_key(&pks);
         let prover = params.prover(prover_key, prover_idx);
-        let proof = secret.prove(input, output, b"foo", &prover);
+        let proof = secret.prove(input, output, ad, &prover);
 
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
-        let result = Public::verify(input, output, b"foo", &proof, &verifier);
+        let result = Public::verify(input, output, ad, &proof, &verifier);
         assert!(result.is_ok());
 
-        // let result = Public::verify_batch(input, output, b"foo", &proof, &verifier);
-        // assert!(result.is_ok());
+        // TODO: multiple proofs batching...
+        let mut batch = BatchVerifier::<S>::new(verifier);
+        batch.push(input, output, ad, &proof).unwrap();
+        let result = batch.verify();
+        assert!(result.is_ok());
     }
 
     #[allow(unused)]
