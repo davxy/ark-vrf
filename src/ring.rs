@@ -879,7 +879,7 @@ pub(crate) mod testing {
 
             assert!(piop_dom.is_power_of_two());
             // piop should satisfy: 3 * piop + 1 <= pcs
-            assert!(3 * piop_dom + 1 <= pcs_dom_size);
+            assert!(3 * piop_dom < pcs_dom_size);
             // but 3 * (2 * piop) + 1 > pcs (piop is maximal)
             assert!(3 * (2 * piop_dom) + 1 > pcs_dom_size);
             // max_ring should map back to this piop
