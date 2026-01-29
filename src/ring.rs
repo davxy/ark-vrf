@@ -196,11 +196,36 @@ pub struct BatchVerifier<S: RingSuite> {
     batch: RingBatchVerifier<S>,
 }
 
+pub struct PreparedBatchItem<S: RingSuite> {
+    inner: ring_proof::ring_verifier::PreparedBatchItem<S::Pairing, CurveConfig<S>>,
+}
+
 impl<S: RingSuite> BatchVerifier<S> {
     pub fn new(ring_verifier: RingVerifier<S>) -> Self {
         Self {
             batch: ring_verifier.kzg_batch_verifier(),
         }
+    }
+
+    pub fn prepare(
+        &self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<PreparedBatchItem<S>, Error> {
+        use pedersen::Verifier as PedersenVerifier;
+        <Public<S> as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let inner = self.batch.prepare(proof.ring_proof.clone(), key_commitment);
+        Ok(PreparedBatchItem { inner })
+    }
+
+    pub fn push2(&mut self, item: PreparedBatchItem<S>) {
+        self.batch
+            .push2(w3f_ring_proof::ring_verifier::BatchItem::Prepared(
+                item.inner,
+            ));
     }
 
     pub fn push(
@@ -708,6 +733,7 @@ pub(crate) mod testing {
         short_weierstrass::{Affine as SWAffine, SWCurveConfig},
         twisted_edwards::{Affine as TEAffine, TECurveConfig},
     };
+    use ark_std::rand::seq::SliceRandom;
 
     pub const TEST_RING_SIZE: usize = 8;
 
@@ -850,13 +876,32 @@ pub(crate) mod testing {
         // Empty batch
         let res = batch_verifier.verify();
         assert!(res.is_ok());
+
         // Prove incrementally constructed batches
-        for (i, item) in batch.iter().enumerate() {
+        for item in batch.iter() {
             let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
             assert!(res.is_ok());
             let res = batch_verifier.verify();
             assert!(res.is_ok());
         }
+
+        let start = std::time::Instant::now();
+        for item in batch.iter() {
+            let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
+            assert!(res.is_ok());
+        }
+        let res = batch_verifier.verify();
+        println!("Unprepared batch verification: {:?}", start.elapsed());
+
+        // AI: I want to do parallel iteration of batch. And push the stuff using batch_verifier.push2
+        let start = std::time::Instant::now();
+        let prepared = batch
+            .iter()
+            .map(|item| batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof));
+        prepared.for_each(|p| batch_verifier.push(input, output, ad, proof));
+        assert!(res.is_ok());
+        let res = batch_verifier.verify();
+        println!("Unprepared batch verification: {:?}", start.elapsed());
     }
 
     #[allow(unused)]
