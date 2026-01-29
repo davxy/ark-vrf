@@ -573,9 +573,10 @@ macro_rules! ring_suite_types {
 ///
 /// The ring proof system operates with three related size parameters:
 ///
-/// 1. `ring_size`: Number of public keys in the ring (user-facing parameter, min capacity)
-/// 2. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
-/// 3. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
+/// 1. `min_ring_size`: Number of keys that the ring should accomodate (user-facing parameter)
+/// 2. `max_ring_size`: Max number of keys that the ring can accomodate
+/// 3. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
+/// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
 ///
 /// Relationships:
 ///   piop_domain_size = (ring_size + PIOP_OVERHEAD).next_power_of_two()
@@ -592,6 +593,17 @@ macro_rules! ring_suite_types {
 /// and pcs_domain_size=1537.
 pub mod dom_utils {
     use super::*;
+
+    /// Returns the actual ring capacity for a given minimum size requirement.
+    ///
+    /// Because domain sizes round up to powers of 2, allocating for `min_ring_size`
+    /// keys typically provides capacity for more. This function returns that actual
+    /// capacity: the largest ring size that uses the same domain as `min_ring_size`.
+    ///
+    /// Always returns a value `>= min_ring_size`.
+    pub const fn max_ring_size<S: Suite>(min_ring_size: usize) -> usize {
+        max_ring_size_from_piop_domain_size::<S>(piop_domain_size::<S>(min_ring_size))
+    }
 
     /// PIOP overhead: accounts for 3 ZK blinding points + 1 internal point + scalar field bits.
     pub const fn piop_overhead<S: Suite>() -> usize {
@@ -822,66 +834,56 @@ pub(crate) mod testing {
     pub fn domain_size_conversions<S: RingSuite>() {
         let overhead = piop_overhead::<S>();
 
-        for ring_size in [1, 10, 200, 300, 500, 1000, 2000] {
-            let piop_dom = piop_domain_size::<S>(ring_size);
-            let pcs_dom = pcs_domain_size::<S>(ring_size);
-            let max_ring_size = max_ring_size_from_piop_domain_size::<S>(piop_dom);
+        for ring_size in [1, 10, 200, 300, 500, 1000, 2000, 10000] {
+            let piop_dom_size = piop_domain_size::<S>(ring_size);
+            let pcs_dom_size = pcs_domain_size::<S>(ring_size);
+            let max_ring_size = max_ring_size_from_piop_domain_size::<S>(piop_dom_size);
 
-            // piop_domain_size is a power of 2
-            assert!(piop_dom.is_power_of_two(),);
+            assert!(piop_dom_size.is_power_of_two());
+            assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
+
             // piop_domain_size must fit ring_size + overhead
-            assert!(piop_dom >= ring_size + overhead,);
+            assert!(piop_dom_size >= ring_size + overhead);
             // piop_domain_size is the smallest power of 2 that fits
-            assert!(piop_dom / 2 < ring_size + overhead,);
-            // pcs_domain_size = 3 * piop_domain_size + 1 invariant
-            assert_eq!(pcs_dom, 3 * piop_dom + 1,);
-            // max_ring should map back to same piop_domain
-            assert_eq!(piop_domain_size::<S>(max_ring_size), piop_dom,);
-
+            assert!(piop_dom_size / 2 < ring_size + overhead);
+            // piop_dom_size is sufficient for max_ring_size
+            assert_eq!(piop_dom_size, piop_domain_size::<S>(max_ring_size));
             // ring_size <= max_ring_size for the computed domain
-            assert!(ring_size <= max_ring_size,);
+            assert!(ring_size <= max_ring_size);
 
-            // Round-trip: piop -> pcs -> piop
-            let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom);
-            assert_eq!(
-                piop_dom, piop_dom_rt,
-                "piop -> pcs -> piop round-trip failed"
-            );
+            // max_ring_size() helper equivalence
+            assert_eq!(dom_utils::max_ring_size::<S>(ring_size), max_ring_size);
+            // max_ring_size() is idempotent
+            assert_eq!(dom_utils::max_ring_size::<S>(max_ring_size), max_ring_size);
 
-            // Round-trip: pcs -> piop -> pcs
+            // Round-trip
+            let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
+            assert_eq!(piop_dom_size, piop_dom_rt);
             let pcs_dom_rt = pcs_domain_size_from_piop_domain_size(piop_dom_rt);
-            assert_eq!(pcs_dom, pcs_dom_rt, "pcs -> piop -> pcs round-trip failed");
+            assert_eq!(pcs_dom_size, pcs_dom_rt);
 
-            // Round-trip: ring -> pcs -> max_ring (max_ring >= ring)
-            let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom);
+            let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
             assert_eq!(max_ring_size, max_ring_from_pcs);
 
             // max_ring + 1 should require a larger piop domain
             let next_piop = piop_domain_size::<S>(max_ring_size + 1);
-            assert!(
-                next_piop > piop_dom,
-                "max_ring + 1 should require larger piop domain"
-            );
+            assert!(next_piop > piop_dom_size,);
+            assert!(next_piop.is_power_of_two());
         }
 
         // Test inverse with arbitrary PCS values (not necessarily properly constructed)
         // The inverse function should recover the largest valid piop that fits
-        for pcs_dom in [1 << 11, 1 << 12, 1 << 14, 1 << 16] {
-            let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom);
-            let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom);
+        for pcs_dom_size in [1 << 11, 1 << 12, 1 << 14, 1 << 16] {
+            let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
+            let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
 
-            // piop recovered from pcs should be a power of 2
             assert!(piop_dom.is_power_of_two());
-
             // piop should satisfy: 3 * piop + 1 <= pcs
-            assert!(3 * piop_dom + 1 <= pcs_dom);
-
+            assert!(3 * piop_dom + 1 <= pcs_dom_size);
             // but 3 * (2 * piop) + 1 > pcs (piop is maximal)
-            assert!(3 * (2 * piop_dom) + 1 > pcs_dom);
-
+            assert!(3 * (2 * piop_dom) + 1 > pcs_dom_size);
             // max_ring should map back to this piop
             assert_eq!(piop_domain_size::<S>(max_ring), piop_dom);
-
             // max_ring + 1 should require larger piop
             assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
         }
