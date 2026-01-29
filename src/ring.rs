@@ -711,6 +711,8 @@ pub(crate) mod testing {
 
     pub const TEST_RING_SIZE: usize = 8;
 
+    const MAX_AD_LEN: usize = 100;
+
     fn find_complement_point<C: SWCurveConfig>() -> SWAffine<C> {
         use ark_ff::{One, Zero};
         assert!(!C::cofactor_is_one());
@@ -760,6 +762,33 @@ pub(crate) mod testing {
         }
     }
 
+    struct BatchItem<S: RingSuite> {
+        input: Input<S>,
+        output: Output<S>,
+        ad: Vec<u8>,
+        proof: Proof<S>,
+    }
+
+    impl<S: RingSuite> BatchItem<S> {
+        fn new(
+            secret: &Secret<S>,
+            prover: &RingProver<S>,
+            rng: &mut dyn ark_std::rand::RngCore,
+        ) -> Self {
+            let input = Input::from(common::random_val(Some(rng)));
+            let output = secret.output(input);
+            let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
+            let ad = common::random_vec(ad_len, Some(rng));
+            let proof = secret.prove(input, output, &ad, prover);
+            Self {
+                input,
+                output,
+                ad,
+                proof,
+            }
+        }
+    }
+
     #[allow(unused)]
     pub fn prove_verify<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
@@ -767,29 +796,21 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from(common::random_val(Some(rng)));
-        let output = secret.output(input);
 
-        let ring_size = params.max_ring_size();
-
-        let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
-        let ad = common::random_vec(ad_len, Some(rng));
-
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
         let prover_idx = 3;
-        let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
         pks[prover_idx] = public.0;
 
         let prover_key = params.prover_key(&pks);
         let prover = params.prover(prover_key, prover_idx);
-        let proof = secret.prove(input, output, &ad, &prover);
+
+        let item = BatchItem::<S>::new(&secret, &prover, rng);
 
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
-        let result = Public::verify(input, output, ad, &proof, &verifier);
+        let result = Public::verify(item.input, item.output, &item.ad, &item.proof, &verifier);
         assert!(result.is_ok());
     }
-
-    const MAX_AD_LEN: usize = 100;
 
     #[allow(unused)]
     pub fn prove_verify_batch<S: RingSuite>() {
@@ -807,22 +828,22 @@ pub(crate) mod testing {
         // Build verifier from the complete ring
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
+        // Pre-built provers (lazily populated)
+        let mut provers: Vec<Option<RingProver<S>>> = std::iter::repeat_with(|| None)
+            .take(TEST_RING_SIZE)
+            .collect();
 
         // Generate proofs for each secret
-        let batch: Vec<_> = (0..BATCH_SIZE)
-            .map(|_| {
-                let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
-                let secret = &secrets[prover_idx];
-                let input = Input::from(common::random_val(Some(rng)));
-                let output = secret.output(input);
-                let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
-                let ad = common::random_vec(ad_len, Some(rng));
+        let mut batch = Vec::with_capacity(BATCH_SIZE);
+        for _ in 0..BATCH_SIZE {
+            let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
+            let prover = provers[prover_idx].get_or_insert_with(|| {
                 let prover_key = params.prover_key(&pks);
-                let prover = params.prover(prover_key, prover_idx);
-                let proof = secret.prove(input, output, &ad, &prover);
-                (input, output, ad, proof)
-            })
-            .collect();
+                params.prover(prover_key, prover_idx)
+            });
+            let item = BatchItem::<S>::new(&secrets[prover_idx], prover, rng);
+            batch.push(item);
+        }
 
         // Batch verify all proofs
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
@@ -830,8 +851,8 @@ pub(crate) mod testing {
         let res = batch_verifier.verify();
         assert!(res.is_ok());
         // Prove incrementally constructed batches
-        for (i, (input, output, ad, proof)) in batch.iter().enumerate() {
-            let res = batch_verifier.push(*input, *output, ad, proof);
+        for (i, item) in batch.iter().enumerate() {
+            let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
             assert!(res.is_ok());
             let res = batch_verifier.verify();
             assert!(res.is_ok());
