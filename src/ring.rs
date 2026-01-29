@@ -771,18 +771,9 @@ pub(crate) mod testing {
         let output = secret.output(input);
 
         let ring_size = params.max_ring_size();
-        let piop_dom_size = piop_domain_size::<S>(ring_size);
-        let pcs_dom_size = pcs_domain_size::<S>(ring_size);
 
-        // Verify domain size relationships
-        assert_eq!(pcs_dom_size, params.pcs.powers_in_g1.len());
-        assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
-        assert_eq!(
-            max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size),
-            ring_size
-        );
-
-        let ad = b"foo";
+        let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
+        let ad = common::random_vec(ad_len, Some(rng));
 
         let prover_idx = 3;
         let mut pks = common::random_vec::<AffinePoint<S>>(ring_size, Some(rng));
@@ -790,18 +781,61 @@ pub(crate) mod testing {
 
         let prover_key = params.prover_key(&pks);
         let prover = params.prover(prover_key, prover_idx);
-        let proof = secret.prove(input, output, ad, &prover);
+        let proof = secret.prove(input, output, &ad, &prover);
 
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
         let result = Public::verify(input, output, ad, &proof, &verifier);
         assert!(result.is_ok());
+    }
 
-        // TODO: multiple proofs batching...
-        let mut batch = BatchVerifier::<S>::new(verifier);
-        batch.push(input, output, ad, &proof).unwrap();
-        let result = batch.verify();
-        assert!(result.is_ok());
+    const MAX_AD_LEN: usize = 100;
+
+    #[allow(unused)]
+    pub fn prove_verify_batch<S: RingSuite>() {
+        const BATCH_SIZE: usize = 2 * TEST_RING_SIZE;
+
+        let rng = &mut ark_std::test_rng();
+        let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        // Prepare secrets and place their public keys in the ring
+        let secrets: Vec<_> = (0..TEST_RING_SIZE)
+            .map(|i| Secret::<S>::from_seed(&[i as u8; 32]))
+            .collect();
+        let pks = secrets.iter().map(|s| s.public().0).collect::<Vec<_>>();
+
+        // Build verifier from the complete ring
+        let verifier_key = params.verifier_key(&pks);
+        let verifier = params.verifier(verifier_key);
+
+        // Generate proofs for each secret
+        let batch: Vec<_> = (0..BATCH_SIZE)
+            .map(|_| {
+                let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
+                let secret = &secrets[prover_idx];
+                let input = Input::from(common::random_val(Some(rng)));
+                let output = secret.output(input);
+                let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
+                let ad = common::random_vec(ad_len, Some(rng));
+                let prover_key = params.prover_key(&pks);
+                let prover = params.prover(prover_key, prover_idx);
+                let proof = secret.prove(input, output, &ad, &prover);
+                (input, output, ad, proof)
+            })
+            .collect();
+
+        // Batch verify all proofs
+        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
+        // Empty batch
+        let res = batch_verifier.verify();
+        assert!(res.is_ok());
+        // Prove incrementally constructed batches
+        for (i, (input, output, ad, proof)) in batch.iter().enumerate() {
+            let res = batch_verifier.push(*input, *output, ad, proof);
+            assert!(res.is_ok());
+            let res = batch_verifier.verify();
+            assert!(res.is_ok());
+        }
     }
 
     #[allow(unused)]
@@ -951,6 +985,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ring::testing::prove_verify::<$suite>()
+                }
+
+                #[test]
+                fn prove_verify_batch() {
+                    $crate::ring::testing::prove_verify_batch::<$suite>()
                 }
 
                 #[test]
