@@ -236,11 +236,10 @@ impl<S: RingSuite> BatchVerifier<S> {
     }
 
     pub fn verify(&self) -> Result<(), Error> {
-        if self.batch.verify() {
-            Ok(())
-        } else {
-            Err(Error::VerificationFailure)
-        }
+        self.batch
+            .verify()
+            .then_some(())
+            .ok_or(Error::VerificationFailure)
     }
 }
 
