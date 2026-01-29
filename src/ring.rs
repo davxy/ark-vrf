@@ -196,9 +196,8 @@ pub struct BatchVerifier<S: RingSuite> {
     batch: RingBatchVerifier<S>,
 }
 
-pub struct PreparedBatchItem<S: RingSuite> {
-    inner: ring_proof::ring_verifier::PreparedBatchItem<S::Pairing, CurveConfig<S>>,
-}
+pub type PreparedBatchItem<S> =
+    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
 impl<S: RingSuite> BatchVerifier<S> {
     pub fn new(ring_verifier: RingVerifier<S>) -> Self {
@@ -217,15 +216,11 @@ impl<S: RingSuite> BatchVerifier<S> {
         use pedersen::Verifier as PedersenVerifier;
         <Public<S> as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        let inner = self.batch.prepare(proof.ring_proof.clone(), key_commitment);
-        Ok(PreparedBatchItem { inner })
+        Ok(self.batch.prepare(proof.ring_proof.clone(), key_commitment))
     }
 
-    pub fn push2(&mut self, item: PreparedBatchItem<S>) {
-        self.batch
-            .push2(w3f_ring_proof::ring_verifier::BatchItem::Prepared(
-                item.inner,
-            ));
+    pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
+        self.batch.push_prepared(item);
     }
 
     pub fn push(
@@ -235,10 +230,8 @@ impl<S: RingSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        use pedersen::Verifier as PedersenVerifier;
-        <Public<S> as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        self.batch.push(proof.ring_proof.clone(), key_commitment);
+        let prepared = self.prepare(input, output, ad, proof)?;
+        self.push_prepared(prepared);
         Ok(())
     }
 
@@ -733,7 +726,6 @@ pub(crate) mod testing {
         short_weierstrass::{Affine as SWAffine, SWCurveConfig},
         twisted_edwards::{Affine as TEAffine, TECurveConfig},
     };
-    use ark_std::rand::seq::SliceRandom;
 
     pub const TEST_RING_SIZE: usize = 8;
 
@@ -840,7 +832,9 @@ pub(crate) mod testing {
 
     #[allow(unused)]
     pub fn prove_verify_batch<S: RingSuite>() {
-        const BATCH_SIZE: usize = 2 * TEST_RING_SIZE;
+        use rayon::prelude::*;
+
+        const BATCH_SIZE: usize = 100; // 3 * TEST_RING_SIZE;
 
         let rng = &mut ark_std::test_rng();
         let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
@@ -853,23 +847,22 @@ pub(crate) mod testing {
 
         // Build verifier from the complete ring
         let verifier_key = params.verifier_key(&pks);
-        let verifier = params.verifier(verifier_key);
-        // Pre-built provers (lazily populated)
-        let mut provers: Vec<Option<RingProver<S>>> = std::iter::repeat_with(|| None)
-            .take(TEST_RING_SIZE)
+        let verifier = params.verifier(verifier_key.clone());
+        // Pre-build all provers (needed for parallel batch construction)
+        let prover_key = params.prover_key(&pks);
+        let provers: Vec<RingProver<S>> = (0..TEST_RING_SIZE)
+            .into_par_iter()
+            .map(|i| params.prover(prover_key.clone(), i))
             .collect();
 
-        // Generate proofs for each secret
-        let mut batch = Vec::with_capacity(BATCH_SIZE);
-        for _ in 0..BATCH_SIZE {
-            let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
-            let prover = provers[prover_idx].get_or_insert_with(|| {
-                let prover_key = params.prover_key(&pks);
-                params.prover(prover_key, prover_idx)
-            });
-            let item = BatchItem::<S>::new(&secrets[prover_idx], prover, rng);
-            batch.push(item);
-        }
+        // Generate proofs for each secret in parallel
+        let batch: Vec<_> = (0..BATCH_SIZE)
+            .into_par_iter()
+            .map_init(ark_std::test_rng, |rng, _| {
+                let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
+                BatchItem::<S>::new(&secrets[prover_idx], &provers[prover_idx], rng)
+            })
+            .collect();
 
         // Batch verify all proofs
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
@@ -885,23 +878,44 @@ pub(crate) mod testing {
             assert!(res.is_ok());
         }
 
-        let start = std::time::Instant::now();
-        for item in batch.iter() {
-            let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
-            assert!(res.is_ok());
-        }
-        let res = batch_verifier.verify();
-        println!("Unprepared batch verification: {:?}", start.elapsed());
+        println!("Batch size = {BATCH_SIZE}");
 
-        // AI: I want to do parallel iteration of batch. And push the stuff using batch_verifier.push2
+        println!("============================================================");
+
+        let verifier = params.verifier(verifier_key.clone());
+        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
         let start = std::time::Instant::now();
-        let prepared = batch
-            .iter()
-            .map(|item| batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof));
-        prepared.for_each(|p| batch_verifier.push(input, output, ad, proof));
-        assert!(res.is_ok());
-        let res = batch_verifier.verify();
-        println!("Unprepared batch verification: {:?}", start.elapsed());
+        common::timed("Proofs push", || {
+            for item in batch.iter() {
+                let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
+                assert!(res.is_ok());
+            }
+        });
+        common::timed("Unprepared batch verification", || batch_verifier.verify());
+        println!("Total time: {:?}", start.elapsed());
+
+        println!("============================================================");
+
+        let verifier = params.verifier(verifier_key.clone());
+        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
+        let start = std::time::Instant::now();
+        let prepared = common::timed("Proofs prepare", || {
+            batch
+                .par_iter()
+                .map(|item| {
+                    batch_verifier
+                        .prepare(item.input, item.output, &item.ad, &item.proof)
+                        .unwrap()
+                })
+                .collect::<Vec<_>>()
+        });
+        common::timed("Proofs push prepared", || {
+            prepared
+                .into_iter()
+                .for_each(|p| batch_verifier.push_prepared(p))
+        });
+        common::timed("Prepared batch verification", || batch_verifier.verify());
+        println!("Total time: {:?}", start.elapsed());
     }
 
     #[allow(unused)]
