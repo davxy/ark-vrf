@@ -60,36 +60,6 @@ pub const ACCUMULATOR_BASE_SEED: &[u8] =
 pub const PADDING_SEED: &[u8] =
     b"umbra quae vacuum implet ab animabus perditis relictum inter tenebras resonans";
 
-/// Max ring size that can be managed with the given PCS domain size.
-pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(pcs_domain_size: usize) -> usize {
-    let piop_domain_size = piop_domain_size_from_pcs_domain_size(pcs_domain_size);
-    max_ring_size_from_piop_domain_size::<S>(piop_domain_size)
-}
-
-/// PCS domain size required to manage the given ring size.
-// This is the size required by the prover, verifier can just use piop_domain_size
-pub const fn pcs_domain_size<S: Suite>(ring_size: usize) -> usize {
-    3 * piop_domain_size::<S>(ring_size) + 1
-}
-
-/// Max ring size that can be managed with the given PIOP domain size.
-const fn max_ring_size_from_piop_domain_size<S: Suite>(piop_domain_size: usize) -> usize {
-    piop_domain_size - (4 + ScalarField::<S>::MODULUS_BIT_SIZE as usize)
-}
-
-/// PIOP domain size required to manage the given ring size.
-///
-/// Next power of two after accouting for 3 ZK + 1 extra point used internally.
-const fn piop_domain_size<S: Suite>(ring_size: usize) -> usize {
-    (ring_size + 4 + ScalarField::<S>::MODULUS_BIT_SIZE as usize).next_power_of_two()
-}
-
-/// A properly constructed PCS domain has size equal to 3*piop_domain_size+1,
-/// with piop_domain_size a power of 2.
-const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> usize {
-    1 << ((pcs_domain_size - 1) / 3).ilog2()
-}
-
 /// Ring suite.
 ///
 /// This trait provides the cryptographic primitives needed for ring VRF signatures.
@@ -599,6 +569,96 @@ macro_rules! ring_suite_types {
     };
 }
 
+/// Domain size conversion utilities
+///
+/// The ring proof system operates with three related size parameters:
+///
+/// 1. `min_ring_size`: Number of keys that the ring should accomodate (user-facing parameter)
+/// 2. `max_ring_size`: Max number of keys that the ring can accomodate
+/// 3. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
+/// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
+///
+/// Relationships:
+///   piop_domain_size = (ring_size + PIOP_OVERHEAD).next_power_of_two()
+///   pcs_domain_size  = 3 * piop_domain_size + 1
+///   max_ring_size    = piop_domain_size - PIOP_OVERHEAD
+///
+/// where PIOP_OVERHEAD = 4 + MODULUS_BIT_SIZE accounts for:
+///   - 3 points for zero-knowledge blinding
+///   - 1 extra point used internally by the PIOP
+///   - MODULUS_BIT_SIZE bits for blinding factor
+///
+/// Note: Multiple ring sizes map to the same domain sizes due to power-of-2 rounding.
+/// For example, ring sizes 1-254 (with 254-bit scalar) all map to piop_domain_size=512
+/// and pcs_domain_size=1537.
+pub mod dom_utils {
+    use super::*;
+
+    /// Returns the actual ring capacity for a given minimum size requirement.
+    ///
+    /// Because domain sizes round up to powers of 2, allocating for `min_ring_size`
+    /// keys typically provides capacity for more. This function returns that actual
+    /// capacity: the largest ring size that uses the same domain as `min_ring_size`.
+    ///
+    /// Always returns a value `>= min_ring_size`.
+    pub const fn max_ring_size<S: Suite>(min_ring_size: usize) -> usize {
+        max_ring_size_from_piop_domain_size::<S>(piop_domain_size::<S>(min_ring_size))
+    }
+
+    /// PIOP overhead: accounts for 3 ZK blinding points + 1 internal point + scalar field bits.
+    pub const fn piop_overhead<S: Suite>() -> usize {
+        4 + ScalarField::<S>::MODULUS_BIT_SIZE as usize
+    }
+
+    /// PIOP domain size required to support the given ring size.
+    ///
+    /// Returns the smallest power of 2 that can accommodate `min_ring_capactity` members.
+    /// This is the domain size used for polynomial operations in the ring proof and
+    /// already accounts for the PIOP overhead.
+    pub const fn piop_domain_size<S: Suite>(min_ring_capacity: usize) -> usize {
+        (min_ring_capacity + piop_overhead::<S>()).next_power_of_two()
+    }
+
+    /// Maximum ring size supported by a given PIOP domain size.
+    ///
+    /// Returns the largest ring that fits in the domain.
+    pub const fn max_ring_size_from_piop_domain_size<S: Suite>(piop_domain_size: usize) -> usize {
+        piop_domain_size - piop_overhead::<S>()
+    }
+
+    /// PCS domain size required to support the given ring size.
+    ///
+    /// Returns `3 * piop_domain_size + 1`. This is the number of G1 elements required
+    /// in the SRS (powers of tau) for the prover. The verifier only needs the PIOP domain size.
+    pub const fn pcs_domain_size<S: Suite>(min_ring_size: usize) -> usize {
+        pcs_domain_size_from_piop_domain_size(piop_domain_size::<S>(min_ring_size))
+    }
+
+    /// PCS domain size for a given PIOP domain size.
+    ///
+    /// Returns `3 * piop_domain_size + 1`.
+    pub const fn pcs_domain_size_from_piop_domain_size(piop_domain_size: usize) -> usize {
+        3 * piop_domain_size + 1
+    }
+
+    /// PIOP domain size extracted from a PCS domain size.
+    ///
+    /// Recovers the PIOP domain size from a PCS domain size. The ilog2 ensures we get
+    /// a valid power of 2 even if the input wasn't properly constructed.
+    pub const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> usize {
+        1 << ((pcs_domain_size - 1) / 3).ilog2()
+    }
+
+    /// Maximum ring size supported by a given PCS domain size.
+    ///
+    /// Composes `piop_domain_size_from_pcs_domain_size` and `max_ring_size_from_piop_domain_size`.
+    pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(pcs_domain_size: usize) -> usize {
+        let piop_domain_size = piop_domain_size_from_pcs_domain_size(pcs_domain_size);
+        max_ring_size_from_piop_domain_size::<S>(piop_domain_size)
+    }
+}
+use dom_utils::*;
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -671,10 +731,12 @@ pub(crate) mod testing {
         let output = secret.output(input);
 
         let ring_size = params.max_ring_size();
+        let piop_dom_size = piop_domain_size::<S>(ring_size);
         let pcs_dom_size = pcs_domain_size::<S>(ring_size);
-        assert_eq!(pcs_dom_size, params.pcs.powers_in_g1.len());
-        assert_eq!(pcs_dom_size / 3, piop_domain_size::<S>(ring_size));
 
+        // Verify domain size relationships
+        assert_eq!(pcs_dom_size, params.pcs.powers_in_g1.len());
+        assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
         assert_eq!(
             max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size),
             ring_size
@@ -769,6 +831,69 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
+    pub fn domain_size_conversions<S: RingSuite>() {
+        let overhead = piop_overhead::<S>();
+
+        for ring_size in [1, 10, 200, 300, 500, 1000, 2000, 10000] {
+            let piop_dom_size = piop_domain_size::<S>(ring_size);
+            let pcs_dom_size = pcs_domain_size::<S>(ring_size);
+            let max_ring_size = max_ring_size_from_piop_domain_size::<S>(piop_dom_size);
+
+            assert!(piop_dom_size.is_power_of_two());
+            assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
+
+            // piop_domain_size must fit ring_size + overhead
+            assert!(piop_dom_size >= ring_size + overhead);
+            // piop_domain_size is the smallest power of 2 that fits
+            assert!(piop_dom_size / 2 < ring_size + overhead);
+            // piop_dom_size is sufficient for max_ring_size
+            assert_eq!(piop_dom_size, piop_domain_size::<S>(max_ring_size));
+            // ring_size <= max_ring_size for the computed domain
+            assert!(ring_size <= max_ring_size);
+
+            // max_ring_size() helper equivalence
+            assert_eq!(dom_utils::max_ring_size::<S>(ring_size), max_ring_size);
+            // max_ring_size() is idempotent
+            assert_eq!(dom_utils::max_ring_size::<S>(max_ring_size), max_ring_size);
+
+            // Round-trip
+            let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
+            assert_eq!(piop_dom_size, piop_dom_rt);
+            let pcs_dom_rt = pcs_domain_size_from_piop_domain_size(piop_dom_rt);
+            assert_eq!(pcs_dom_size, pcs_dom_rt);
+
+            let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
+            assert_eq!(max_ring_size, max_ring_from_pcs);
+
+            // max_ring + 1 should require a larger piop domain
+            let next_piop = piop_domain_size::<S>(max_ring_size + 1);
+            assert!(next_piop > piop_dom_size,);
+            assert!(next_piop.is_power_of_two());
+        }
+
+        // Test inverse with arbitrary PCS values (not necessarily properly constructed)
+        // The inverse function should recover the largest valid piop that fits
+        for pcs_dom_size in [1 << 11, 1 << 12, 1 << 14, 1 << 16] {
+            let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
+            let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
+
+            assert!(piop_dom.is_power_of_two());
+            // piop should satisfy: 3 * piop + 1 <= pcs
+            assert!(3 * piop_dom < pcs_dom_size);
+            // but 3 * (2 * piop) + 1 > pcs (piop is maximal)
+            assert!(3 * (2 * piop_dom) + 1 > pcs_dom_size);
+            // max_ring should map back to this piop
+            assert_eq!(piop_domain_size::<S>(max_ring), piop_dom);
+            // max_ring + 1 should require larger piop
+            assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
+        }
+
+        // Edge case: ring_size = 0 (degenerate but shouldn't panic)
+        let piop_zero = piop_domain_size::<S>(0);
+        assert!(piop_zero.is_power_of_two());
+        assert_eq!(piop_zero, overhead.next_power_of_two());
+    }
+
     #[macro_export]
     macro_rules! ring_suite_tests {
         ($suite:ty) => {
@@ -793,6 +918,11 @@ pub(crate) mod testing {
                 #[test]
                 fn verifier_key_builder() {
                     $crate::ring::testing::verifier_key_builder::<$suite>()
+                }
+
+                #[test]
+                fn domain_size_conversions() {
+                    $crate::ring::testing::domain_size_conversions::<$suite>()
                 }
 
                 $crate::test_vectors!($crate::ring::testing::TestVector<$suite>);
