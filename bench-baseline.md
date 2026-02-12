@@ -33,3 +33,18 @@ Features: `bandersnatch`, `ring` (no `parallel`, no `asm`)
 | ring_vk_builder_create | 376.80 ms | 1.578 s   | 3.652 s   |
 | ring_vk_builder_append | 18.68 ms  | 50.45 ms  | 95.06 ms  |
 | ring_vk_builder_finalize | 83.7 ns | 83.2 ns   | 75.1 ns   |
+
+## Notes
+
+- VRF scalar multiplication cost dominates: each mul is ~95 us. IETF prove (~2 muls)
+  at 219 us, IETF verify (~4 muls) at 382 us, Pedersen prove (~5 muls) at 577 us,
+  Pedersen verify (~6 muls) at 539 us are all consistent with this.
+- `ring_verify` is roughly constant across ring sizes (~4.5-4.9 ms) since verification
+  cost depends on the PIOP domain size, which stays the same for all three sizes tested
+  (they all round up to the same power-of-two domain).
+- `ring_prove` scales linearly with ring size: 168 ms at n=255, 543 ms at n=1023,
+  1.01 s at n=2047.
+- `ring_vk_builder_create` is the most expensive operation (up to 3.7 s at n=2047).
+  This is the Lagrangian SRS computation.
+- `ring_vk_builder_finalize` and `ring_vk_from_commitment` are essentially free
+  (sub-100 ns).
