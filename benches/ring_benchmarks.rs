@@ -151,7 +151,7 @@ struct BatchItem {
     proof: RingProof,
 }
 
-const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32];
+const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 fn batch_benches(c: &mut Criterion) {
     let setup = make_ring_setup(1023);
@@ -305,7 +305,7 @@ fn batch_benches(c: &mut Criterion) {
 // Default sample_size is 100, which is too slow for ring operations that
 // take seconds per iteration. Use 10 samples to keep total bench time reasonable.
 criterion_group! {
-    name = benches;
+    name = ring_benches_group;
     config = Criterion::default().sample_size(10);
     targets = ring_benches,
 }
@@ -316,5 +316,4 @@ criterion_group! {
     targets = batch_benches,
 }
 
-criterion_main!(batch_benches_group);
-// criterion_main!(benches, batch_benches_group);
+criterion_main!(batch_benches_group, ring_benches_group);
