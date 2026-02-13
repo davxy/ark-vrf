@@ -833,39 +833,34 @@ pub(crate) mod testing {
     pub fn prove_verify_batch<S: RingSuite>() {
         use rayon::prelude::*;
 
-        const BATCH_SIZE: usize = 100; // 3 * TEST_RING_SIZE;
+        const BATCH_SIZE: usize = 3 * TEST_RING_SIZE;
 
         let rng = &mut ark_std::test_rng();
         let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
 
-        // Prepare secrets and place their public keys in the ring
-        let secrets: Vec<_> = (0..TEST_RING_SIZE)
-            .map(|i| Secret::<S>::from_seed(&[i as u8; 32]))
-            .collect();
-        let pks = secrets.iter().map(|s| s.public().0).collect::<Vec<_>>();
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
 
-        // Build verifier from the complete ring
-        let verifier_key = params.verifier_key(&pks);
-        let verifier = params.verifier(verifier_key.clone());
-        // Pre-build all provers (needed for parallel batch construction)
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx = 3;
+        pks[prover_idx] = public.0;
+
         let prover_key = params.prover_key(&pks);
-        let provers: Vec<RingProver<S>> = (0..TEST_RING_SIZE)
-            .into_par_iter()
-            .map(|i| params.prover(prover_key.clone(), i))
-            .collect();
+        let prover = params.prover(prover_key, prover_idx);
 
-        // Generate proofs for each secret in parallel
+        // Generate proofs in parallel
         let batch: Vec<_> = (0..BATCH_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
-                let prover_idx = common::random_val::<usize>(Some(rng)) % TEST_RING_SIZE;
-                BatchItem::<S>::new(&secrets[prover_idx], &provers[prover_idx], rng)
+                BatchItem::<S>::new(&secret, &prover, rng)
             })
             .collect();
 
+        let verifier_key = params.verifier_key(&pks);
+        let verifier = params.verifier(verifier_key);
+
         // Batch verify all proofs
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
-        // Empty batch
         let res = batch_verifier.verify();
         assert!(res.is_ok());
 
@@ -881,7 +876,8 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier = params.verifier(verifier_key.clone());
+        let verifier_key = params.verifier_key(&pks);
+        let verifier = params.verifier(verifier_key);
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
         let start = std::time::Instant::now();
         common::timed("Proofs push", || {
@@ -895,7 +891,8 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier = params.verifier(verifier_key.clone());
+        let verifier_key = params.verifier_key(&pks);
+        let verifier = params.verifier(verifier_key);
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
         let start = std::time::Instant::now();
         let prepared = common::timed("Proofs prepare", || {
