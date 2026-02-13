@@ -79,10 +79,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Check version bump
+        id: version
+        run: |
+          current=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          main=$(git show origin/main:Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ "$current" != "$main" ]; then
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install toolchain
+        if: steps.version.outputs.bumped == 'true'
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
       - name: Publish dry-run
+        if: steps.version.outputs.bumped == 'true'
         run: cargo publish --dry-run
