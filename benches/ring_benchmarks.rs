@@ -80,7 +80,10 @@ fn ring_benches(c: &mut Criterion) {
             .secret
             .prove(setup.input, setup.output, b"ad", &prover);
         let verifier_key = setup.params.verifier_key(&setup.ring);
-        let verifier = setup.params.verifier(verifier_key.clone());
+        let commitment = verifier_key.commitment();
+        let verifier = setup
+            .params
+            .verifier(setup.params.clone_verifier_key(&verifier_key));
 
         c.benchmark_group("bandersnatch/ring_verify")
             .bench_with_input(id.clone(), &n, |b, _| {
@@ -98,10 +101,12 @@ fn ring_benches(c: &mut Criterion) {
 
         c.benchmark_group("bandersnatch/ring_verifier_from_key")
             .bench_with_input(id.clone(), &n, |b, _| {
-                b.iter(|| setup.params.verifier(black_box(verifier_key.clone())));
+                b.iter(|| {
+                    setup
+                        .params
+                        .verifier(black_box(setup.params.clone_verifier_key(&verifier_key)))
+                });
             });
-
-        let commitment = verifier_key.commitment();
 
         c.benchmark_group("bandersnatch/ring_vk_from_commitment")
             .bench_with_input(id.clone(), &n, |b, _| {
