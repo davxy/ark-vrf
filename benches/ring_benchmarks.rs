@@ -260,8 +260,12 @@ fn batch_benches(c: &mut Criterion) {
                         let prepared = batch_items[..batch_size]
                             .iter()
                             .map(|item| {
-                                batch_verifier
-                                    .prepare(item.input, item.output, &item.ad, &item.proof)
+                                batch_verifier.prepare(
+                                    item.input,
+                                    item.output,
+                                    &item.ad,
+                                    &item.proof,
+                                )
                             })
                             .collect::<Vec<_>>();
                         let vk = setup.params.clone_verifier_key(&verifier_key);

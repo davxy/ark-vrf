@@ -222,7 +222,9 @@ impl<S: RingSuite> BatchVerifier<S> {
     ) -> PreparedBatchItem<S> {
         let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        let ring = self.ring_batch.prepare(proof.ring_proof.clone(), key_commitment);
+        let ring = self
+            .ring_batch
+            .prepare(proof.ring_proof.clone(), key_commitment);
         PreparedBatchItem { ring, pedersen }
     }
 
@@ -911,9 +913,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| {
-                    batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof)
-                })
+                .map(|item| batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof))
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
