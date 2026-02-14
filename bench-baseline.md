@@ -122,3 +122,24 @@ The sequential pipeline benefits most: prepare drops from ~490 us/proof to ~48 u
 while the additional MSM cost in verify (~12 ms at n=256) is much smaller than the
 savings. The parallel pipeline sees less net gain since prepare was already cheap
 when parallelized, and the verify increase slightly offsets the savings.
+
+### Batch Verify Scaling
+
+The `batch_verify` step scales sublinearly in the number of proofs:
+
+| n   | batch_verify | per-proof |
+|----:|-----------:|----------:|
+|   1 |    3.27 ms |  3.27 ms  |
+|   2 |    4.43 ms |  2.22 ms  |
+|   4 |    5.95 ms |  1.49 ms  |
+|   8 |    8.14 ms |  1.02 ms  |
+|  16 |   12.1 ms  |  0.76 ms  |
+|  32 |   19.95 ms |  0.62 ms  |
+|  64 |   31.67 ms |  0.49 ms  |
+| 128 |   56.9 ms  |  0.44 ms  |
+| 256 |   93.2 ms  |  0.36 ms  |
+
+Amortized cost per proof drops from 3.27 ms (n=1) to 0.36 ms (n=256), roughly 9x.
+Two factors contribute: the fixed-cost ring multi-pairing base (~2.9 ms) amortized
+across all proofs, and the MSM itself which scales as O(n / log n) via
+Pippenger/bucket methods rather than O(n).
