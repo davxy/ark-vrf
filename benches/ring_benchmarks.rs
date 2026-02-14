@@ -219,8 +219,7 @@ fn batch_benches(c: &mut Criterion) {
                     },
                     |mut bv| {
                         for item in &batch_items[..batch_size] {
-                            bv.push(item.input, item.output, &item.ad, &item.proof)
-                                .unwrap();
+                            bv.push(item.input, item.output, &item.ad, &item.proof);
                         }
                     },
                     BatchSize::LargeInput,
@@ -234,9 +233,7 @@ fn batch_benches(c: &mut Criterion) {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
                         .map(|item| {
-                            batch_verifier
-                                .prepare(item.input, item.output, &item.ad, &item.proof)
-                                .unwrap()
+                            batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof)
                         })
                         .collect();
                 });
@@ -249,9 +246,7 @@ fn batch_benches(c: &mut Criterion) {
                     let _: Vec<_> = batch_items[..batch_size]
                         .par_iter()
                         .map(|item| {
-                            batch_verifier
-                                .prepare(item.input, item.output, &item.ad, &item.proof)
-                                .unwrap()
+                            batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof)
                         })
                         .collect();
                 });
@@ -267,7 +262,6 @@ fn batch_benches(c: &mut Criterion) {
                             .map(|item| {
                                 batch_verifier
                                     .prepare(item.input, item.output, &item.ad, &item.proof)
-                                    .unwrap()
                             })
                             .collect::<Vec<_>>();
                         let vk = setup.params.clone_verifier_key(&verifier_key);
@@ -290,8 +284,7 @@ fn batch_benches(c: &mut Criterion) {
             let verifier = setup.params.verifier(vk);
             let mut bv = BatchVerifier::new(verifier);
             for item in &batch_items[..batch_size] {
-                bv.push(item.input, item.output, &item.ad, &item.proof)
-                    .unwrap();
+                bv.push(item.input, item.output, &item.ad, &item.proof);
             }
 
             c.benchmark_group("bandersnatch/batch_verify")

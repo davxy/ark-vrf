@@ -31,6 +31,7 @@
 
 use crate::ietf::IetfSuite;
 use crate::*;
+use ark_ec::VariableBaseMSM;
 
 /// Magic spell for [`PedersenSuite::BLINDING_BASE`] generation in built-in implementations.
 ///
@@ -84,6 +85,187 @@ impl<S: PedersenSuite> Proof<S> {
     /// Get public key commitment from proof.
     pub fn key_commitment(&self) -> AffinePoint<S> {
         self.pk_com
+    }
+}
+
+/// Deferred Pedersen verification data for batch verification.
+///
+/// Captures all the information needed to verify a single Pedersen proof,
+/// allowing multiple proofs to be verified together via a single MSM.
+pub struct BatchEntry<S: PedersenSuite> {
+    c: ScalarField<S>,
+    input: AffinePoint<S>,
+    output: AffinePoint<S>,
+    pk_com: AffinePoint<S>,
+    r: AffinePoint<S>,
+    ok: AffinePoint<S>,
+    s: ScalarField<S>,
+    sb: ScalarField<S>,
+}
+
+/// Batch verifier for Pedersen VRF proofs.
+///
+/// Collects multiple proofs and verifies them together via a single
+/// multi-scalar multiplication.
+pub struct BatchVerifier<S: PedersenSuite> {
+    items: Vec<BatchEntry<S>>,
+}
+
+impl<S: PedersenSuite> Default for BatchVerifier<S> {
+    fn default() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+impl<S: PedersenSuite> BatchVerifier<S> {
+    /// Create a new empty batch verifier.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Prepare a proof for batch verification.
+    ///
+    /// Computes the challenge and packages all data needed for deferred
+    /// verification. This is cheap (one hash, no scalar multiplications)
+    /// and can be done in parallel.
+    pub fn prepare(
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> BatchEntry<S> {
+        let c = S::challenge(
+            &[&proof.pk_com, &input.0, &output.0, &proof.r, &proof.ok],
+            ad.as_ref(),
+        );
+        BatchEntry {
+            c,
+            input: input.0,
+            output: output.0,
+            pk_com: proof.pk_com,
+            r: proof.r,
+            ok: proof.ok,
+            s: proof.s,
+            sb: proof.sb,
+        }
+    }
+
+    /// Push a previously prepared entry into the batch.
+    pub fn push_prepared(&mut self, entry: BatchEntry<S>) {
+        self.items.push(entry);
+    }
+
+    /// Prepare and push a proof in one step.
+    pub fn push(
+        &mut self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) {
+        let entry = Self::prepare(input, output, ad, proof);
+        self.push_prepared(entry);
+    }
+
+    /// Batch-verify multiple Pedersen proofs using a single multi-scalar multiplication.
+    ///
+    /// For each proof i, two equations are checked with independent random scalars
+    /// t_i (eq1) and u_i (eq2):
+    ///   Eq1: O_i*c_i + Ok_i == I_i*s_i
+    ///   Eq2: Yb_i*c_i + R_i == G*s_i + B*sb_i
+    ///
+    /// The random linear combination yields a (5N + 2)-point MSM.
+    ///
+    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    pub fn verify(&self) -> Result<(), Error> {
+        let entries = &self.items;
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let n = entries.len();
+
+        // Generate deterministic random scalars from entry data.
+        // Hash all entries into a seed, then use ChaCha20Rng to sample 2N scalars.
+        let mut hasher = S::Hasher::new();
+        let mut buf = Vec::new();
+        for e in entries {
+            buf.clear();
+            S::Codec::point_encode_into(&e.input, &mut buf);
+            S::Codec::point_encode_into(&e.output, &mut buf);
+            S::Codec::point_encode_into(&e.pk_com, &mut buf);
+            S::Codec::point_encode_into(&e.r, &mut buf);
+            S::Codec::point_encode_into(&e.ok, &mut buf);
+            S::Codec::scalar_encode_into(&e.s, &mut buf);
+            S::Codec::scalar_encode_into(&e.sb, &mut buf);
+            S::Codec::scalar_encode_into(&e.c, &mut buf);
+            hasher.update(&buf);
+        }
+        let hash = hasher.finalize();
+        let mut seed = [0u8; 32];
+        let copy_len = hash.len().min(32);
+        seed[..copy_len].copy_from_slice(&hash[..copy_len]);
+
+        use ark_std::rand::SeedableRng;
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+
+        // Sample 2N random scalars (t_i for eq1, u_i for eq2)
+        let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
+            .map(|_| {
+                use ark_std::UniformRand;
+                let t = ScalarField::<S>::rand(&mut rng);
+                let u = ScalarField::<S>::rand(&mut rng);
+                (t, u)
+            })
+            .collect();
+
+        // Build MSM: 5N per-proof points + 2 shared bases (G, B)
+        let mut bases = Vec::with_capacity(5 * n + 2);
+        let mut scalars = Vec::with_capacity(5 * n + 2);
+
+        let mut g_scalar = ScalarField::<S>::zero();
+        let mut b_scalar = ScalarField::<S>::zero();
+
+        for (e, (t, u)) in entries.iter().zip(random_scalars.iter()) {
+            let tc = *t * e.c;
+            let uc = *u * e.c;
+
+            // Eq1: t_i*c_i*O_i + t_i*Ok_i - t_i*s_i*I_i = 0
+            bases.push(e.output);
+            scalars.push(tc);
+
+            bases.push(e.ok);
+            scalars.push(*t);
+
+            bases.push(e.input);
+            scalars.push(-(*t * e.s));
+
+            // Eq2: u_i*c_i*Yb_i + u_i*R_i - u_i*s_i*G - u_i*sb_i*B = 0
+            bases.push(e.pk_com);
+            scalars.push(uc);
+
+            bases.push(e.r);
+            scalars.push(*u);
+
+            // Accumulate shared base scalars
+            g_scalar -= *u * e.s;
+            b_scalar -= *u * e.sb;
+        }
+
+        // Shared bases: G and B
+        bases.push(S::generator());
+        scalars.push(g_scalar);
+
+        bases.push(S::BLINDING_BASE);
+        scalars.push(b_scalar);
+
+        let result = <AffinePoint<S> as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
+
+        if !result.is_zero() {
+            return Err(Error::VerificationFailure);
+        }
+
+        Ok(())
     }
 }
 
@@ -221,7 +403,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -238,6 +420,45 @@ pub(crate) mod testing {
             proof.key_commitment(),
             (secret.public().0 + S::BLINDING_BASE * blinding).into()
         );
+    }
+
+    pub fn batch_verify<S: PedersenSuite>() {
+        use pedersen::{BatchVerifier, Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let input = Input::from(random_val(None));
+        let output = secret.output(input);
+
+        let (proof1, _) = secret.prove(input, output, b"foo");
+        let (proof2, _) = secret.prove(input, output, b"bar");
+
+        // Single-proof verification still works.
+        assert!(Public::verify(input, output, b"foo", &proof1).is_ok());
+        assert!(Public::verify(input, output, b"bar", &proof2).is_ok());
+
+        // Batch using push.
+        let mut batch = BatchVerifier::new();
+        batch.push(input, output, b"foo", &proof1);
+        batch.push(input, output, b"bar", &proof2);
+        assert!(batch.verify().is_ok());
+
+        // Batch using prepare + push_prepared.
+        let mut batch = BatchVerifier::new();
+        let entry1 = BatchVerifier::prepare(input, output, b"foo", &proof1);
+        let entry2 = BatchVerifier::prepare(input, output, b"bar", &proof2);
+        batch.push_prepared(entry1);
+        batch.push_prepared(entry2);
+        assert!(batch.verify().is_ok());
+
+        // Empty batch is ok.
+        let batch = BatchVerifier::<S>::new();
+        assert!(batch.verify().is_ok());
+
+        // Bad additional data should fail.
+        let mut batch = BatchVerifier::new();
+        batch.push(input, output, b"foo", &proof1);
+        batch.push(input, output, b"wrong", &proof2);
+        assert!(batch.verify().is_err());
     }
 
     pub fn blinding_base_check<S: PedersenSuite>()
@@ -262,6 +483,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::pedersen::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn batch_verify() {
+                    $crate::pedersen::testing::batch_verify::<$suite>();
                 }
 
                 #[test]
