@@ -1,9 +1,9 @@
-use ark_std::{rand::SeedableRng, UniformRand};
+use ark_std::{UniformRand, rand::SeedableRng};
 use ark_vrf::{
     ring::{BatchVerifier, Prover, Verifier},
     suites::bandersnatch::*,
 };
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];

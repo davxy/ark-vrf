@@ -57,7 +57,12 @@ fn bench_ietf_verify(c: &mut Criterion) {
     c.bench_function("bandersnatch/ietf_verify", |b| {
         b.iter(|| {
             public
-                .verify(black_box(input), black_box(output), b"ad", black_box(&proof))
+                .verify(
+                    black_box(input),
+                    black_box(output),
+                    b"ad",
+                    black_box(&proof),
+                )
                 .unwrap()
         });
     });
@@ -85,7 +90,13 @@ fn bench_pedersen_verify(c: &mut Criterion) {
 
     c.bench_function("bandersnatch/pedersen_verify", |b| {
         b.iter(|| {
-            Public::verify(black_box(input), black_box(output), b"ad", black_box(&proof)).unwrap()
+            Public::verify(
+                black_box(input),
+                black_box(output),
+                b"ad",
+                black_box(&proof),
+            )
+            .unwrap()
         });
     });
 }
@@ -103,9 +114,7 @@ fn bench_nonce_generation(c: &mut Criterion) {
     let input = make_input();
 
     c.bench_function("bandersnatch/nonce_generation", |b| {
-        b.iter(|| {
-            BandersnatchSha512Ell2::nonce(black_box(&secret.scalar), black_box(input))
-        });
+        b.iter(|| BandersnatchSha512Ell2::nonce(black_box(&secret.scalar), black_box(input)));
     });
 }
 
@@ -120,7 +129,13 @@ fn bench_challenge_generation(c: &mut Criterion) {
     c.bench_function("bandersnatch/challenge_generation", |b| {
         b.iter(|| {
             BandersnatchSha512Ell2::challenge(
-                black_box(&[&secret.public().0, &input.0, &output.0, &generator, &generator]),
+                black_box(&[
+                    &secret.public().0,
+                    &input.0,
+                    &output.0,
+                    &generator,
+                    &generator,
+                ]),
                 b"ad",
             )
         });

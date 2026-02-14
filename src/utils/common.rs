@@ -68,11 +68,11 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
 
     let prefix = S::Hasher::new()
         .chain_update(S::SUITE_ID)
-        .chain_update(&[DOM_SEP_FRONT])
+        .chain_update([DOM_SEP_FRONT])
         .chain_update(data);
 
     for ctr in 0..=255u8 {
-        let hash = prefix.clone().chain_update(&[ctr, DOM_SEP_BACK]).finalize();
+        let hash = prefix.clone().chain_update([ctr, DOM_SEP_BACK]).finalize();
         if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
@@ -153,7 +153,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     const DOM_SEP_END: u8 = 0x00;
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update(&[DOM_SEP_START]);
+    hasher.update([DOM_SEP_START]);
     let mut pt_buf = Vec::new();
     for p in pts {
         pt_buf.clear();
@@ -161,7 +161,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
         hasher.update(&pt_buf);
     }
     hasher.update(ad);
-    hasher.update(&[DOM_SEP_END]);
+    hasher.update([DOM_SEP_END]);
     let hash = hasher.finalize();
     ScalarField::<S>::from_be_bytes_mod_order(&hash[..S::CHALLENGE_LEN])
 }
@@ -204,11 +204,11 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
     };
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update(&[DOM_SEP_START]);
+    hasher.update([DOM_SEP_START]);
     let mut pt_buf = Vec::new();
     S::Codec::point_encode_into(&pt, &mut pt_buf);
     hasher.update(&pt_buf);
-    hasher.update(&[DOM_SEP_END]);
+    hasher.update([DOM_SEP_END]);
     hasher.finalize()
 }
 
