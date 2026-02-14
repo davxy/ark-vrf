@@ -16,16 +16,16 @@ Criterion: `--quick` mode
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| key_from_seed          | 91.0 us  |
-| hash_to_curve          | 73.5 us  |
-| vrf_output             | 84.9 us  |
-| output_hash            | 430.0 ns |
-| nonce_generation       | 4.14 us  |
-| challenge_generation   | 1.93 us  |
-| ietf_prove             | 177.4 us |
-| ietf_verify            | 381.9 us |
-| pedersen_prove         | 469.7 us |
-| pedersen_verify        | 438.8 us |
+| key_from_seed          | 83.6 us  |
+| hash_to_curve          | 73.6 us  |
+| vrf_output             | 82.7 us  |
+| output_hash            | 411.4 ns |
+| nonce_generation       | 2.38 us  |
+| challenge_generation   | 1.02 us  |
+| ietf_prove             | 175.9 us |
+| ietf_verify            | 354.0 us |
+| pedersen_prove         | 466.9 us |
+| pedersen_verify        | 451.7 us |
 
 ## Ring Operations
 

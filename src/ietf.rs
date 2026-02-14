@@ -150,8 +150,10 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let k = S::nonce(&self.scalar, input);
 
-        let k_b = smul!(S::generator(), k).into_affine();
-        let k_h = smul!(input.0, k).into_affine();
+        let k_b = smul!(S::generator(), k);
+        let k_h = smul!(input.0, k);
+        let norms = CurveGroup::normalize_batch(&[k_b, k_h]);
+        let (k_b, k_h) = (norms[0], norms[1]);
 
         let c = S::challenge(
             &[&self.public.0, &input.0, &output.0, &k_b, &k_h],
@@ -182,13 +184,10 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         let Proof { c, s } = proof;
 
-        let s_b = S::generator() * s;
-        let c_y = self.0 * c;
-        let u = (s_b - c_y).into_affine();
-
-        let s_h = input.0 * s;
-        let c_o = output.0 * c;
-        let v = (s_h - c_o).into_affine();
+        let u = S::generator() * s - self.0 * c;
+        let v = input.0 * s - output.0 * c;
+        let norms = CurveGroup::normalize_batch(&[u, v]);
+        let (u, v) = (norms[0], norms[1]);
 
         let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], aux.as_ref());
         (&c_exp == c)

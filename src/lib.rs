@@ -158,7 +158,7 @@ pub trait Suite: Copy {
     /// Overarching hasher.
     ///
     /// Used wherever an hash is required: nonce, challenge, MAC, etc.
-    type Hasher: Digest;
+    type Hasher: Digest + Clone;
 
     /// Overarching codec.
     ///
