@@ -154,15 +154,18 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
         let bb = smul!(S::BLINDING_BASE, blinding);
-        let pk_com = (xg + bb).into_affine();
+        let pk_com = xg + bb;
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
         let kbb = smul!(S::BLINDING_BASE, kb);
-        let r = (kg + kbb).into_affine();
+        let r = kg + kbb;
 
         // Ok = k*I
-        let ok = smul!(input.0, k).into_affine();
+        let ok = smul!(input.0, k);
+
+        let norms = CurveGroup::normalize_batch(&[pk_com, r, ok]);
+        let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad.as_ref());

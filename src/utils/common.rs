@@ -66,12 +66,13 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
     const DOM_SEP_FRONT: u8 = 0x01;
     const DOM_SEP_BACK: u8 = 0x00;
 
-    let mut buf = [S::SUITE_ID, &[DOM_SEP_FRONT], data, &[0x00, DOM_SEP_BACK]].concat();
-    let ctr_pos = buf.len() - 2;
+    let prefix = S::Hasher::new()
+        .chain_update(S::SUITE_ID)
+        .chain_update([DOM_SEP_FRONT])
+        .chain_update(data);
 
-    for ctr in 0..=255 {
-        buf[ctr_pos] = ctr;
-        let hash = hash::<S::Hasher>(&buf);
+    for ctr in 0..=255u8 {
+        let hash = prefix.clone().chain_update([ctr, DOM_SEP_BACK]).finalize();
         if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
@@ -150,14 +151,19 @@ where
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
     const DOM_SEP_START: u8 = 0x02;
     const DOM_SEP_END: u8 = 0x00;
-    let mut buf = [S::SUITE_ID, &[DOM_SEP_START]].concat();
-    pts.iter().for_each(|p| {
-        S::Codec::point_encode_into(p, &mut buf);
-    });
-    buf.extend_from_slice(ad);
-    buf.push(DOM_SEP_END);
-    let hash = &hash::<S::Hasher>(&buf)[..S::CHALLENGE_LEN];
-    ScalarField::<S>::from_be_bytes_mod_order(hash)
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([DOM_SEP_START]);
+    let mut pt_buf = Vec::new();
+    for p in pts {
+        pt_buf.clear();
+        S::Codec::point_encode_into(p, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+    hasher.update(ad);
+    hasher.update([DOM_SEP_END]);
+    let hash = hasher.finalize();
+    ScalarField::<S>::from_be_bytes_mod_order(&hash[..S::CHALLENGE_LEN])
 }
 
 /// Point to a hash according to RFC-9381 section 5.2.
@@ -192,14 +198,18 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
     use ark_std::borrow::Cow::*;
     const DOM_SEP_START: u8 = 0x03;
     const DOM_SEP_END: u8 = 0x00;
-    let mut buf = [S::SUITE_ID, &[DOM_SEP_START]].concat();
     let pt = match mul_by_cofactor {
         false => Borrowed(pt),
         true => Owned(pt.mul_by_cofactor()),
     };
-    S::Codec::point_encode_into(&pt, &mut buf);
-    buf.push(DOM_SEP_END);
-    hash::<S::Hasher>(&buf)
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([DOM_SEP_START]);
+    let mut pt_buf = Vec::new();
+    S::Codec::point_encode_into(&pt, &mut pt_buf);
+    hasher.update(&pt_buf);
+    hasher.update([DOM_SEP_END]);
+    hasher.finalize()
 }
 
 /// Nonce generation according to RFC-9381 section 5.4.2.2.
@@ -229,14 +239,16 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
         "Suite::Hasher output is required to be >= 64 bytes"
     );
 
-    let raw = codec::scalar_encode::<S>(sk);
-    let sk_hash = &hash::<S::Hasher>(&raw)[32..];
+    let sk_buf = codec::scalar_encode::<S>(sk);
+    let sk_hash = hash::<S::Hasher>(&sk_buf);
 
-    let raw = codec::point_encode::<S>(input);
-    let v = [sk_hash, &raw[..]].concat();
-    let h = &hash::<S::Hasher>(&v)[..];
+    let pt_buf = codec::point_encode::<S>(input);
+    let h = S::Hasher::new()
+        .chain_update(&sk_hash[32..])
+        .chain_update(&pt_buf)
+        .finalize();
 
-    S::Codec::scalar_decode(h)
+    S::Codec::scalar_decode(&h)
 }
 
 /// Nonce generation according to RFC 9381 section 5.4.2.1.

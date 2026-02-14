@@ -399,6 +399,13 @@ impl<S: RingSuite> RingProofParams<S> {
         RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs.raw_vk())
     }
 
+    /// Clone a verifier key by reconstructing it from its commitment.
+    ///
+    /// Workaround for upstream `RingVerifierKey` not implementing `Clone`.
+    pub fn clone_verifier_key(&self, verifier_key: &RingVerifierKey<S>) -> RingVerifierKey<S> {
+        self.verifier_key_from_commitment(verifier_key.commitment())
+    }
+
     /// Create a builder for incremental construction of the verifier key.
     ///
     /// Returns a builder and associated PCS parameters that can be used to
