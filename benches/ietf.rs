@@ -1,37 +1,34 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+#[macro_use]
+mod bench_utils;
 
-use ark_vrf::suites::bandersnatch::*;
+use ark_vrf::{Input, Secret};
+use bench_utils::BenchInfo;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-fn make_input() -> Input {
-    Input::new(b"bench input data").unwrap()
-}
-
-fn make_secret() -> Secret {
-    Secret::from_seed(b"bench secret seed")
-}
-
-fn bench_ietf_prove(c: &mut Criterion) {
+fn bench_ietf_prove<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf::Prover;
 
-    let secret = make_secret();
-    let input = make_input();
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input);
 
-    c.bench_function("bandersnatch/ietf_prove", |b| {
+    let name = format!("{}/ietf_prove", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(input), black_box(output), b"ad"));
     });
 }
 
-fn bench_ietf_verify(c: &mut Criterion) {
+fn bench_ietf_verify<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf::{Prover, Verifier};
 
-    let secret = make_secret();
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
     let public = secret.public();
-    let input = make_input();
+    let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input);
     let proof = secret.prove(input, output, b"ad");
 
-    c.bench_function("bandersnatch/ietf_verify", |b| {
+    let name = format!("{}/ietf_verify", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
         b.iter(|| {
             public
                 .verify(
@@ -45,6 +42,16 @@ fn bench_ietf_verify(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_ietf_prove, bench_ietf_verify,);
+fn bench_ietf_suite<S: BenchInfo>(c: &mut Criterion) {
+    S::print_info();
+    bench_ietf_prove::<S>(c);
+    bench_ietf_verify::<S>(c);
+}
+
+fn bench_ietf(c: &mut Criterion) {
+    for_each_suite!(c, bench_ietf_suite);
+}
+
+criterion_group!(benches, bench_ietf);
 
 criterion_main!(benches);

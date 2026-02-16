@@ -1,80 +1,52 @@
-use ark_std::{UniformRand, rand::SeedableRng};
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+#[macro_use]
+mod bench_utils;
 
-use ark_vrf::suites::bandersnatch::*;
-use ark_vrf::{Suite, utils};
+use ark_std::{rand::SeedableRng, UniformRand};
+use ark_vrf::{AffinePoint, Input, Secret};
+use bench_utils::BenchInfo;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-fn make_input() -> Input {
-    Input::new(b"bench input data").unwrap()
-}
-
-fn make_secret() -> Secret {
-    Secret::from_seed(b"bench secret seed")
-}
-
-fn bench_key_from_seed(c: &mut Criterion) {
-    c.bench_function("bandersnatch/key_from_seed", |b| {
-        b.iter(|| Secret::from_seed(black_box(b"bench secret seed")));
+fn bench_key_from_seed<S: BenchInfo>(c: &mut Criterion) {
+    let name = format!("{}/key_from_seed", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| Secret::<S>::from_seed(black_box(b"bench secret seed")));
     });
 }
 
-fn bench_key_from_scalar(c: &mut Criterion) {
-    let secret = make_secret();
-    c.bench_function("bandersnatch/key_from_scalar", |b| {
-        b.iter(|| Secret::from_scalar(black_box(secret.scalar)));
+fn bench_key_from_scalar<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let name = format!("{}/key_from_scalar", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| Secret::<S>::from_scalar(black_box(secret.scalar)));
     });
 }
 
-fn bench_vrf_output(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
-    c.bench_function("bandersnatch/vrf_output", |b| {
+fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let input = Input::<S>::new(b"bench input data").unwrap();
+    let name = format!("{}/vrf_output", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
         b.iter(|| secret.output(black_box(input)));
     });
 }
 
-// --- utils::common ---
-
-fn bench_hash_sha512(c: &mut Criterion) {
-    c.bench_function("bandersnatch/hash_sha512", |b| {
-        b.iter(|| {
-            utils::hash::<sha2::Sha512>(black_box(b"bench input data"));
-        });
+fn bench_data_to_point<S: BenchInfo>(c: &mut Criterion) {
+    let name = format!("{}/data_to_point", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| S::data_to_point(black_box(b"bench input data")).unwrap());
     });
 }
 
-fn bench_hash_to_curve_ell2_rfc_9380(c: &mut Criterion) {
-    c.bench_function("bandersnatch/hash_to_curve_ell2_rfc_9380", |b| {
-        b.iter(|| {
-            utils::hash_to_curve_ell2_rfc_9380::<BandersnatchSha512Ell2>(
-                black_box(b"bench input data"),
-                b"Bandersnatch_XMD:SHA-512_ELL2_RO_",
-            )
-            .unwrap()
-        });
-    });
-}
-
-fn bench_hash_to_curve_tai_rfc_9381(c: &mut Criterion) {
-    c.bench_function("bandersnatch/hash_to_curve_tai_rfc_9381", |b| {
-        b.iter(|| {
-            utils::hash_to_curve_tai_rfc_9381::<BandersnatchSha512Ell2>(black_box(
-                b"bench input data",
-            ))
-            .unwrap()
-        });
-    });
-}
-
-fn bench_challenge_rfc_9381(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
+fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input);
-    let generator = BandersnatchSha512Ell2::generator();
+    let generator = S::generator();
 
-    c.bench_function("bandersnatch/challenge_rfc_9381", |b| {
+    let name = format!("{}/challenge", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
         b.iter(|| {
-            utils::challenge_rfc_9381::<BandersnatchSha512Ell2>(
+            S::challenge(
                 black_box(&[
                     &secret.public().0,
                     &input.0,
@@ -88,103 +60,87 @@ fn bench_challenge_rfc_9381(c: &mut Criterion) {
     });
 }
 
-fn bench_point_to_hash_rfc_9381(c: &mut Criterion) {
+fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let point = AffinePoint::rand(&mut rng);
+    let point = AffinePoint::<S>::rand(&mut rng);
 
-    c.bench_function("bandersnatch/point_to_hash_rfc_9381", |b| {
-        b.iter(|| {
-            utils::point_to_hash_rfc_9381::<BandersnatchSha512Ell2>(black_box(&point), false)
-        });
+    let name = format!("{}/point_to_hash", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| S::point_to_hash(black_box(&point)));
     });
 }
 
-fn bench_nonce_rfc_8032(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
+fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let input = Input::<S>::new(b"bench input data").unwrap();
 
-    c.bench_function("bandersnatch/nonce_rfc_8032", |b| {
-        b.iter(|| {
-            utils::nonce_rfc_8032::<BandersnatchSha512Ell2>(
-                black_box(&secret.scalar),
-                black_box(&input.0),
-            )
-        });
+    let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
+    c.bench_function(&name, |b| {
+        b.iter(|| S::nonce(black_box(&secret.scalar), black_box(input)));
     });
 }
 
-fn bench_nonce_rfc_6979(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
-
-    c.bench_function("bandersnatch/nonce_rfc_6979", |b| {
-        b.iter(|| {
-            utils::nonce_rfc_6979::<BandersnatchSha512Ell2>(
-                black_box(&secret.scalar),
-                black_box(&input.0),
-            )
-        });
-    });
-}
-
-// --- codec ---
-
-fn bench_point_encode(c: &mut Criterion) {
+fn bench_point_encode<S: BenchInfo>(c: &mut Criterion) {
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let point = AffinePoint::rand(&mut rng);
+    let point = AffinePoint::<S>::rand(&mut rng);
 
-    c.bench_function("bandersnatch/point_encode", |b| {
-        b.iter(|| ark_vrf::codec::point_encode::<BandersnatchSha512Ell2>(black_box(&point)));
+    let name = format!("{}/point_encode", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| ark_vrf::codec::point_encode::<S>(black_box(&point)));
     });
 }
 
-fn bench_point_decode(c: &mut Criterion) {
+fn bench_point_decode<S: BenchInfo>(c: &mut Criterion) {
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let point = AffinePoint::rand(&mut rng);
-    let encoded = ark_vrf::codec::point_encode::<BandersnatchSha512Ell2>(&point);
+    let point = AffinePoint::<S>::rand(&mut rng);
+    let encoded = ark_vrf::codec::point_encode::<S>(&point);
 
-    c.bench_function("bandersnatch/point_decode", |b| {
-        b.iter(|| {
-            ark_vrf::codec::point_decode::<BandersnatchSha512Ell2>(black_box(&encoded)).unwrap()
-        });
+    let name = format!("{}/point_decode", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| ark_vrf::codec::point_decode::<S>(black_box(&encoded)).unwrap());
     });
 }
 
-fn bench_scalar_encode(c: &mut Criterion) {
-    let secret = make_secret();
+fn bench_scalar_encode<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
 
-    c.bench_function("bandersnatch/scalar_encode", |b| {
-        b.iter(|| {
-            ark_vrf::codec::scalar_encode::<BandersnatchSha512Ell2>(black_box(&secret.scalar))
-        });
+    let name = format!("{}/scalar_encode", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| ark_vrf::codec::scalar_encode::<S>(black_box(&secret.scalar)));
     });
 }
 
-fn bench_scalar_decode(c: &mut Criterion) {
-    let secret = make_secret();
-    let encoded = ark_vrf::codec::scalar_encode::<BandersnatchSha512Ell2>(&secret.scalar);
+fn bench_scalar_decode<S: BenchInfo>(c: &mut Criterion) {
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let encoded = ark_vrf::codec::scalar_encode::<S>(&secret.scalar);
 
-    c.bench_function("bandersnatch/scalar_decode", |b| {
-        b.iter(|| ark_vrf::codec::scalar_decode::<BandersnatchSha512Ell2>(black_box(&encoded)));
+    let name = format!("{}/scalar_decode", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| ark_vrf::codec::scalar_decode::<S>(black_box(&encoded)));
     });
 }
 
-criterion_group!(
-    benches,
-    bench_key_from_seed,
-    bench_key_from_scalar,
-    bench_vrf_output,
-    bench_hash_sha512,
-    bench_hash_to_curve_ell2_rfc_9380,
-    bench_hash_to_curve_tai_rfc_9381,
-    bench_challenge_rfc_9381,
-    bench_point_to_hash_rfc_9381,
-    bench_nonce_rfc_8032,
-    bench_nonce_rfc_6979,
-    bench_point_encode,
-    bench_point_decode,
-    bench_scalar_encode,
-    bench_scalar_decode,
-);
+// All common benchmarks for a single suite.
+fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
+    S::print_info();
+    bench_key_from_seed::<S>(c);
+    bench_key_from_scalar::<S>(c);
+    bench_vrf_output::<S>(c);
+    bench_data_to_point::<S>(c);
+    bench_challenge::<S>(c);
+    bench_point_to_hash::<S>(c);
+    bench_nonce::<S>(c);
+    bench_point_encode::<S>(c);
+    bench_point_decode::<S>(c);
+    bench_scalar_encode::<S>(c);
+    bench_scalar_decode::<S>(c);
+}
+
+fn bench_common(c: &mut Criterion) {
+    // Per-suite benchmarks.
+    for_each_suite!(c, bench_common_suite);
+}
+
+criterion_group!(benches, bench_common);
 
 criterion_main!(benches);

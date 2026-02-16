@@ -1,9 +1,10 @@
 quick := ""
+suites := "full"
 _flags := if quick != "" { "-- --quick" } else { "" }
 
 [private]
 _bench name:
-    cargo bench --bench {{name}} --features bandersnatch,ring,rfc-6979 --manifest-path ../Cargo.toml {{_flags}}
+    cargo bench --bench {{name}} --features {{suites}} --manifest-path ../Cargo.toml {{_flags}}
 
 common: (_bench "common")
 
