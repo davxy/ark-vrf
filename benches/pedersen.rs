@@ -1,10 +1,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{rand::SeedableRng, UniformRand};
-use ark_vrf::{pedersen::PedersenSuite, AffinePoint, Input, Public, Secret};
+use ark_std::{UniformRand, rand::SeedableRng};
+use ark_vrf::{AffinePoint, Input, Public, Secret, pedersen::PedersenSuite};
 use bench_utils::BenchInfo;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;

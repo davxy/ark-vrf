@@ -3,7 +3,7 @@ mod bench_utils;
 
 use ark_vrf::{Input, Secret};
 use bench_utils::BenchInfo;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_ietf_prove<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf::Prover;
