@@ -186,19 +186,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let n = entries.len();
 
         // Generate deterministic random scalars from entry data.
-        // Hash all entries into a seed, then use ChaCha20Rng to sample 2N scalars.
+        // Hash (c, s, sb) per entry into a seed, then use ChaCha20Rng to sample 2N scalars.
+        // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
+        // response scalars s and sb need to be included separately.
         let mut hasher = S::Hasher::new();
         let mut buf = Vec::new();
         for e in entries {
             buf.clear();
-            S::Codec::point_encode_into(&e.input, &mut buf);
-            S::Codec::point_encode_into(&e.output, &mut buf);
-            S::Codec::point_encode_into(&e.pk_com, &mut buf);
-            S::Codec::point_encode_into(&e.r, &mut buf);
-            S::Codec::point_encode_into(&e.ok, &mut buf);
+            S::Codec::scalar_encode_into(&e.c, &mut buf);
             S::Codec::scalar_encode_into(&e.s, &mut buf);
             S::Codec::scalar_encode_into(&e.sb, &mut buf);
-            S::Codec::scalar_encode_into(&e.c, &mut buf);
             hasher.update(&buf);
         }
         let hash = hasher.finalize();
@@ -245,16 +242,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             scalars.push(*u);
 
             // Accumulate shared base scalars
-            g_scalar -= *u * e.s;
-            b_scalar -= *u * e.sb;
+            g_scalar += *u * e.s;
+            b_scalar += *u * e.sb;
         }
 
         // Shared bases: G and B
         bases.push(S::generator());
-        scalars.push(g_scalar);
+        scalars.push(-g_scalar);
 
         bases.push(S::BLINDING_BASE);
-        scalars.push(b_scalar);
+        scalars.push(-b_scalar);
 
         let result = <AffinePoint<S> as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
 
@@ -383,7 +380,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad.as_ref());
 
-        // Ok + c*O = s*I
+        // Eq1: Ok + c*O = s*I
         // Verifies that the VRF output O is correctly derived from the input I
         // using the same secret scalar x committed in the proof. Expanding the
         // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
@@ -391,7 +388,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             return Err(Error::VerificationFailure);
         }
 
-        // R + c*Yb = s*G + sb*B
+        // Eq2: R + c*Yb = s*G + sb*B
         // Verifies knowledge of both the secret key x and blinding factor b
         // committed in the public key commitment Yb = x*G + b*B. Expanding
         // s = k + c*x and sb = kb + c*b gives s*G + sb*B = R + c*Yb.

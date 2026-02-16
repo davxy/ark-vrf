@@ -42,15 +42,15 @@ Criterion: `--quick` mode
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| pedersen_prove         | 497.8 us |
-| pedersen_verify        | 483.0 us |
+| pedersen_prove         | 503.7 us |
+| pedersen_verify        | 487.9 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.08 us  | 2.11 us  | 4.23 us  | 8.47 us  | 16.7 us  | 33.5 us  | 67.1 us  | 131.9 us | 264.0 us |
-| batch_verify         | 567.9 us | 695.9 us | 897.4 us | 1.95 ms  | 2.47 ms  | 4.15 ms  | 7.16 ms  | 10.1 ms  | 18.2 ms  |
+| batch_prepare        | 1.09 us  | 2.14 us  | 4.22 us  | 7.92 us  | 15.9 us  | 32.1 us  | 67.4 us  | 133.6 us | 269.7 us |
+| batch_verify         | 539.6 us | 675.7 us | 881.4 us | 1.81 ms  | 2.52 ms  | 4.19 ms  | 7.22 ms  | 10.1 ms  | 18.2 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 
