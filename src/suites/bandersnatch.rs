@@ -145,8 +145,10 @@ pub(crate) mod tests {
     fn elligator2_hash_to_curve() {
         use crate::testing::CheckPoint;
         let raw = crate::testing::random_vec(42, None);
-        assert!(ThisSuite::data_to_point(&raw)
-            .map(|p| p.check(true).ok())
-            .is_some());
+        assert!(
+            ThisSuite::data_to_point(&raw)
+                .map(|p| p.check(true).ok())
+                .is_some()
+        );
     }
 }

@@ -1,8 +1,8 @@
-use ark_std::{rand::SeedableRng, UniformRand};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use ark_std::{UniformRand, rand::SeedableRng};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use ark_vrf::suites::bandersnatch::*;
-use ark_vrf::{utils, Suite};
+use ark_vrf::{Suite, utils};
 
 fn make_input() -> Input {
     Input::new(b"bench input data").unwrap()

@@ -1,5 +1,5 @@
-use ark_std::{rand::SeedableRng, UniformRand};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use ark_std::{UniformRand, rand::SeedableRng};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 use ark_vrf::suites::bandersnatch::*;
 
@@ -109,11 +109,7 @@ fn bench_pedersen_batch(c: &mut Criterion) {
     }
 }
 
-criterion_group!(
-    benches,
-    bench_pedersen_prove,
-    bench_pedersen_verify,
-);
+criterion_group!(benches, bench_pedersen_prove, bench_pedersen_verify,);
 
 criterion_group! {
     name = pedersen_batch_benches;
