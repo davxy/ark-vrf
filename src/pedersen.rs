@@ -227,12 +227,9 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let mut b_scalar = ScalarField::<S>::zero();
 
         for (e, (t, u)) in entries.iter().zip(random_scalars.iter()) {
-            let tc = *t * e.c;
-            let uc = *u * e.c;
-
             // Eq1: t_i*c_i*O_i + t_i*Ok_i - t_i*s_i*I_i = 0
             bases.push(e.output);
-            scalars.push(tc);
+            scalars.push(*t * e.c);
 
             bases.push(e.ok);
             scalars.push(*t);
@@ -242,7 +239,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 
             // Eq2: u_i*c_i*Yb_i + u_i*R_i - u_i*s_i*G - u_i*sb_i*B = 0
             bases.push(e.pk_com);
-            scalars.push(uc);
+            scalars.push(*u * e.c);
 
             bases.push(e.r);
             scalars.push(*u);
@@ -387,11 +384,17 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad.as_ref());
 
         // Ok + c*O = s*I
+        // Verifies that the VRF output O is correctly derived from the input I
+        // using the same secret scalar x committed in the proof. Expanding the
+        // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
         if output.0 * c + ok != input.0 * s {
             return Err(Error::VerificationFailure);
         }
 
         // R + c*Yb = s*G + sb*B
+        // Verifies knowledge of both the secret key x and blinding factor b
+        // committed in the public key commitment Yb = x*G + b*B. Expanding
+        // s = k + c*x and sb = kb + c*b gives s*G + sb*B = R + c*Yb.
         if *pk_com * c + r != S::generator() * s + S::BLINDING_BASE * sb {
             return Err(Error::VerificationFailure);
         }
@@ -403,7 +406,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
