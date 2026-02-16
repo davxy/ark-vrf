@@ -1,4 +1,5 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use ark_std::{UniformRand, rand::SeedableRng};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 use ark_vrf::suites::bandersnatch::*;
 
@@ -8,29 +9,6 @@ fn make_input() -> Input {
 
 fn make_secret() -> Secret {
     Secret::from_seed(b"bench secret seed")
-}
-
-fn bench_hash_to_curve(c: &mut Criterion) {
-    c.bench_function("bandersnatch/hash_to_curve", |b| {
-        b.iter(|| Input::new(black_box(b"bench input data")).unwrap());
-    });
-}
-
-fn bench_vrf_output(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
-    c.bench_function("bandersnatch/vrf_output", |b| {
-        b.iter(|| secret.output(black_box(input)));
-    });
-}
-
-fn bench_output_hash(c: &mut Criterion) {
-    let secret = make_secret();
-    let input = make_input();
-    let output = secret.output(input);
-    c.bench_function("bandersnatch/output_hash", |b| {
-        b.iter(|| black_box(&output).hash());
-    });
 }
 
 fn bench_ietf_prove(c: &mut Criterion) {
@@ -101,59 +79,83 @@ fn bench_pedersen_verify(c: &mut Criterion) {
     });
 }
 
-fn bench_key_generation(c: &mut Criterion) {
-    c.bench_function("bandersnatch/key_from_seed", |b| {
-        b.iter(|| Secret::from_seed(black_box(b"bench secret seed")));
-    });
+const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
+
+struct PedersenBatchItem {
+    input: Input,
+    output: Output,
+    ad: Vec<u8>,
+    proof: PedersenProof,
 }
 
-fn bench_nonce_generation(c: &mut Criterion) {
-    use ark_vrf::Suite;
+fn bench_pedersen_batch(c: &mut Criterion) {
+    use ark_vrf::pedersen::{BatchVerifier, Prover};
 
     let secret = make_secret();
-    let input = make_input();
+    let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
-    c.bench_function("bandersnatch/nonce_generation", |b| {
-        b.iter(|| BandersnatchSha512Ell2::nonce(black_box(&secret.scalar), black_box(input)));
-    });
-}
+    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let batch_items: Vec<PedersenBatchItem> = (0..max_batch_size)
+        .map(|i| {
+            let input = Input::from(AffinePoint::rand(&mut rng));
+            let output = secret.output(input);
+            let ad = format!("ad-{i}").into_bytes();
+            let (proof, _) = secret.prove(input, output, &ad);
+            PedersenBatchItem {
+                input,
+                output,
+                ad,
+                proof,
+            }
+        })
+        .collect();
 
-fn bench_challenge_generation(c: &mut Criterion) {
-    use ark_vrf::Suite;
+    for &batch_size in BATCH_SIZES {
+        let id = BenchmarkId::from_parameter(batch_size);
 
-    let secret = make_secret();
-    let input = make_input();
-    let output = secret.output(input);
-    let generator = BandersnatchSha512Ell2::generator();
+        c.benchmark_group("bandersnatch/pedersen_batch_prepare")
+            .bench_function(id.clone(), |b| {
+                b.iter(|| {
+                    let _: Vec<_> = batch_items[..batch_size]
+                        .iter()
+                        .map(|item| {
+                            BatchVerifier::<BandersnatchSha512Ell2>::prepare(
+                                item.input,
+                                item.output,
+                                &item.ad,
+                                &item.proof,
+                            )
+                        })
+                        .collect();
+                });
+            });
 
-    c.bench_function("bandersnatch/challenge_generation", |b| {
-        b.iter(|| {
-            BandersnatchSha512Ell2::challenge(
-                black_box(&[
-                    &secret.public().0,
-                    &input.0,
-                    &output.0,
-                    &generator,
-                    &generator,
-                ]),
-                b"ad",
-            )
-        });
-    });
+        {
+            let mut bv = BatchVerifier::<BandersnatchSha512Ell2>::new();
+            for item in &batch_items[..batch_size] {
+                bv.push(item.input, item.output, &item.ad, &item.proof);
+            }
+
+            c.benchmark_group("bandersnatch/pedersen_batch_verify")
+                .bench_function(id, |b| {
+                    b.iter(|| bv.verify().unwrap());
+                });
+        }
+    }
 }
 
 criterion_group!(
     benches,
-    bench_key_generation,
-    bench_hash_to_curve,
-    bench_vrf_output,
-    bench_output_hash,
-    bench_nonce_generation,
-    bench_challenge_generation,
     bench_ietf_prove,
     bench_ietf_verify,
     bench_pedersen_prove,
     bench_pedersen_verify,
 );
 
-criterion_main!(benches);
+criterion_group! {
+    name = pedersen_batch_benches;
+    config = Criterion::default().sample_size(10);
+    targets = bench_pedersen_batch,
+}
+
+criterion_main!(benches, pedersen_batch_benches);

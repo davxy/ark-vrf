@@ -1,0 +1,14 @@
+quick := ""
+_flags := if quick != "" { "-- --quick" } else { "" }
+
+[private]
+_bench name features:
+    cargo bench --bench {{name}} --features {{features}},rfc-6979 --manifest-path ../Cargo.toml {{_flags}}
+
+common: (_bench "common" "bandersnatch")
+
+vrf: (_bench "vrf_benchmarks" "bandersnatch")
+
+ring: (_bench "ring_benchmarks" "bandersnatch,ring")
+
+all: common vrf ring

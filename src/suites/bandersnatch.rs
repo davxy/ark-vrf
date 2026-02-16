@@ -72,6 +72,10 @@ impl Suite for ThisSuite {
         let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
         utils::hash_to_curve_ell2_rfc_9380::<Self>(data, h2c_suite_id)
     }
+
+    fn nonce(sk: &ScalarField, pt: Input) -> ScalarField {
+        utils::nonce_rfc_8032::<Self>(sk, &pt.0)
+    }
 }
 
 impl PedersenSuite for ThisSuite {
@@ -141,10 +145,8 @@ pub(crate) mod tests {
     fn elligator2_hash_to_curve() {
         use crate::testing::CheckPoint;
         let raw = crate::testing::random_vec(42, None);
-        assert!(
-            ThisSuite::data_to_point(&raw)
-                .map(|p| p.check(true).ok())
-                .is_some()
-        );
+        assert!(ThisSuite::data_to_point(&raw)
+            .map(|p| p.check(true).ok())
+            .is_some());
     }
 }

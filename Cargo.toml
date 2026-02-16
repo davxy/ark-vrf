@@ -40,6 +40,11 @@ rayon = { version = "1.10" }
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
+name = "common"
+harness = false
+required-features = ["bandersnatch"]
+
+[[bench]]
 name = "vrf_benchmarks"
 harness = false
 required-features = ["bandersnatch"]
