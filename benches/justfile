@@ -2,10 +2,18 @@ quick := ""
 suites := "full"
 _flags := if quick != "" { "-- --quick" } else { "" }
 
-# Print info for all enabled suites.
+[private]
+_list_raw:
+    @cargo bench --bench common --features {{suites}} --manifest-path ../Cargo.toml -- __no_match__ 2>/dev/null
+
+# Print names of all enabled suites.
 list:
     @echo "Available suites:"
-    @cargo bench --bench common --features {{suites}} --manifest-path ../Cargo.toml -- __no_match__ 2>/dev/null | grep suite_name | awk '{print "  " $2}'
+    @just suites={{suites}} _list_raw | grep suite_name | awk '{print "  " $2}'
+
+# Print detailed info for all enabled suites.
+list-ext:
+    @just suites={{suites}} _list_raw
 
 [private]
 _bench name:
