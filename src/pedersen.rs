@@ -178,12 +178,12 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
-        let entries = &self.items;
-        if entries.is_empty() {
+        let items = &self.items;
+        if items.is_empty() {
             return Ok(());
         }
 
-        let n = entries.len();
+        let n = items.len();
 
         // Generate deterministic random scalars from entry data.
         // Hash (c, s, sb) per entry into a seed, then use ChaCha20Rng to sample 2N scalars.
@@ -191,7 +191,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         // response scalars s and sb need to be included separately.
         let mut hasher = S::Hasher::new();
         let mut buf = Vec::new();
-        for e in entries {
+        for e in items {
             buf.clear();
             S::Codec::scalar_encode_into(&e.c, &mut buf);
             S::Codec::scalar_encode_into(&e.s, &mut buf);
@@ -210,9 +210,10 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
                 use ark_std::UniformRand;
-                let t = ScalarField::<S>::rand(&mut rng);
-                let u = ScalarField::<S>::rand(&mut rng);
-                (t, u)
+                (
+                    ScalarField::<S>::rand(&mut rng),
+                    ScalarField::<S>::rand(&mut rng),
+                )
             })
             .collect();
 
@@ -223,7 +224,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let mut g_scalar = ScalarField::<S>::zero();
         let mut b_scalar = ScalarField::<S>::zero();
 
-        for (e, (t, u)) in entries.iter().zip(random_scalars.iter()) {
+        for (e, (t, u)) in items.iter().zip(random_scalars.iter()) {
             // Eq1: t_i*c_i*O_i + t_i*Ok_i - t_i*s_i*I_i = 0
             bases.push(e.output);
             scalars.push(*t * e.c);
@@ -253,7 +254,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         bases.push(S::BLINDING_BASE);
         scalars.push(-b_scalar);
 
-        let result = <AffinePoint<S> as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
+        let result = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
 
         if !result.is_zero() {
             return Err(Error::VerificationFailure);
