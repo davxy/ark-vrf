@@ -45,12 +45,17 @@ harness = false
 required-features = ["bandersnatch"]
 
 [[bench]]
-name = "vrf_benchmarks"
+name = "ietf"
 harness = false
 required-features = ["bandersnatch"]
 
 [[bench]]
-name = "ring_benchmarks"
+name = "pedersen"
+harness = false
+required-features = ["bandersnatch"]
+
+[[bench]]
+name = "ring"
 harness = false
 required-features = ["bandersnatch", "ring"]
 

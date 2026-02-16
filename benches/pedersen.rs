@@ -1,5 +1,5 @@
-use ark_std::{UniformRand, rand::SeedableRng};
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use ark_std::{rand::SeedableRng, UniformRand};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use ark_vrf::suites::bandersnatch::*;
 
@@ -9,41 +9,6 @@ fn make_input() -> Input {
 
 fn make_secret() -> Secret {
     Secret::from_seed(b"bench secret seed")
-}
-
-fn bench_ietf_prove(c: &mut Criterion) {
-    use ark_vrf::ietf::Prover;
-
-    let secret = make_secret();
-    let input = make_input();
-    let output = secret.output(input);
-
-    c.bench_function("bandersnatch/ietf_prove", |b| {
-        b.iter(|| secret.prove(black_box(input), black_box(output), b"ad"));
-    });
-}
-
-fn bench_ietf_verify(c: &mut Criterion) {
-    use ark_vrf::ietf::{Prover, Verifier};
-
-    let secret = make_secret();
-    let public = secret.public();
-    let input = make_input();
-    let output = secret.output(input);
-    let proof = secret.prove(input, output, b"ad");
-
-    c.bench_function("bandersnatch/ietf_verify", |b| {
-        b.iter(|| {
-            public
-                .verify(
-                    black_box(input),
-                    black_box(output),
-                    b"ad",
-                    black_box(&proof),
-                )
-                .unwrap()
-        });
-    });
 }
 
 fn bench_pedersen_prove(c: &mut Criterion) {
@@ -146,8 +111,6 @@ fn bench_pedersen_batch(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_ietf_prove,
-    bench_ietf_verify,
     bench_pedersen_prove,
     bench_pedersen_verify,
 );

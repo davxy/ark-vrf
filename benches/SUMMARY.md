@@ -12,22 +12,47 @@ Criterion: `--quick` mode
 - OS: Arch Linux, kernel 6.18.8
 - Rust: 1.93.0 (254b59607 2026-01-19)
 
-## VRF Operations
+## Common Operations (`common.rs`)
+
+| Benchmark                    |     Time |
+|:-----------------------------|---------:|
+| key_from_seed                | 89.6 us  |
+| key_from_scalar              | 89.0 us  |
+| vrf_output                   | 91.3 us  |
+| hash_sha512                  | 264.5 ns |
+| hash_to_curve_ell2_rfc_9380  | 77.2 us  |
+| hash_to_curve_tai_rfc_9381   | 47.1 us  |
+| challenge_rfc_9381           | 1.05 us  |
+| point_to_hash_rfc_9381       | 424.9 ns |
+| nonce_rfc_8032               | 2.44 us  |
+| nonce_rfc_6979               | 8.15 us  |
+| point_encode                 | 123.7 ns |
+| point_decode                 | 15.8 us  |
+| scalar_encode                | 110.4 ns |
+| scalar_decode                | 132.5 ns |
+
+## IETF VRF Operations (`ietf.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| key_from_seed          | 83.6 us  |
-| hash_to_curve          | 73.6 us  |
-| vrf_output             | 82.7 us  |
-| output_hash            | 411.4 ns |
-| nonce_generation       | 2.38 us  |
-| challenge_generation   | 1.02 us  |
 | ietf_prove             | 175.9 us |
 | ietf_verify            | 354.0 us |
-| pedersen_prove         | 466.9 us |
-| pedersen_verify        | 451.7 us |
 
-## Ring Operations
+## Pedersen VRF Operations (`pedersen.rs`)
+
+| Benchmark              |     Time |
+|:-----------------------|---------:|
+| pedersen_prove         | 497.8 us |
+| pedersen_verify        | 483.0 us |
+
+### Batch Verification
+
+| Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
+|:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
+| batch_prepare        | 1.08 us  | 2.11 us  | 4.23 us  | 8.47 us  | 16.7 us  | 33.5 us  | 67.1 us  | 131.9 us | 264.0 us |
+| batch_verify         | 567.9 us | 695.9 us | 897.4 us | 1.95 ms  | 2.47 ms  | 4.15 ms  | 7.16 ms  | 10.1 ms  | 18.2 ms  |
+
+## Ring VRF Operations (`ring.rs`)
 
 | Benchmark              | n=255     | n=1023    | n=2047    |
 |:-----------------------|----------:|----------:|----------:|
@@ -42,7 +67,7 @@ Criterion: `--quick` mode
 | ring_vk_builder_append | 16.3 ms   | 48.7 ms   | 81.4 ms   |
 | ring_vk_builder_finalize | 97.7 ns | 105.5 ns  | 97.7 ns   |
 
-## Batch Verification (ring size = 1023)
+### Batch Verification (ring size = 1023)
 
 | Benchmark          | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:-------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|

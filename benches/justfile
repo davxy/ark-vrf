@@ -2,13 +2,15 @@ quick := ""
 _flags := if quick != "" { "-- --quick" } else { "" }
 
 [private]
-_bench name features:
-    cargo bench --bench {{name}} --features {{features}},rfc-6979 --manifest-path ../Cargo.toml {{_flags}}
+_bench name:
+    cargo bench --bench {{name}} --features bandersnatch,ring,rfc-6979 --manifest-path ../Cargo.toml {{_flags}}
 
-common: (_bench "common" "bandersnatch")
+common: (_bench "common")
 
-vrf: (_bench "vrf_benchmarks" "bandersnatch")
+ietf: (_bench "ietf")
 
-ring: (_bench "ring_benchmarks" "bandersnatch,ring")
+pedersen: (_bench "pedersen")
 
-all: common vrf ring
+ring: (_bench "ring")
+
+all: common ietf pedersen ring
