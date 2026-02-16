@@ -255,7 +255,6 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         scalars.push(-b_scalar);
 
         let result = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
-
         if !result.is_zero() {
             return Err(Error::VerificationFailure);
         }

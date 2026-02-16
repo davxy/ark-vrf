@@ -1,10 +1,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
-use ark_vrf::{AffinePoint, Input, Output, Public, Secret, pedersen::PedersenSuite};
+use ark_std::{rand::SeedableRng, UniformRand};
+use ark_vrf::{pedersen::PedersenSuite, AffinePoint, Input, Public, Secret};
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;
@@ -50,8 +50,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let batch_items: Vec<(Input<S>, Output<S>, Vec<u8>, ark_vrf::pedersen::Proof<S>)> = (0
-        ..max_batch_size)
+    let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
             let input = Input::<S>::from(AffinePoint::<S>::rand(&mut rng));
             let output = secret.output(input);
