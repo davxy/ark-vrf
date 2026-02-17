@@ -7,6 +7,7 @@ license = "MIT"
 description = "Elliptic curve VRF with additional data"
 keywords = [ "cryptography", "vrf", "ec-vrf", "ring-vrf", "zk-snark" ]
 repository = "https://github.com/davxy/ark-vrf"
+autobenches = false
 
 [dependencies]
 ark-ec = { version = "0.5", default-features = false }
@@ -40,14 +41,21 @@ rayon = { version = "1.10" }
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
-name = "vrf_benchmarks"
+name = "common"
 harness = false
-required-features = ["bandersnatch"]
 
 [[bench]]
-name = "ring_benchmarks"
+name = "ietf"
 harness = false
-required-features = ["bandersnatch", "ring"]
+
+[[bench]]
+name = "pedersen"
+harness = false
+
+[[bench]]
+name = "ring"
+harness = false
+required-features = ["ring"]
 
 [features]
 default = [ "std" ]

@@ -193,16 +193,23 @@ pub trait Verifier<S: RingSuite> {
 }
 
 pub struct BatchVerifier<S: RingSuite> {
-    batch: RingBatchVerifier<S>,
+    ring_batch: RingBatchVerifier<S>,
+    pedersen_batch: pedersen::BatchVerifier<S>,
 }
 
-pub type PreparedBatchItem<S> =
+pub type RingPreparedBatchItem<S> =
     ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+
+pub struct PreparedBatchItem<S: RingSuite> {
+    ring: RingPreparedBatchItem<S>,
+    pedersen: pedersen::BatchEntry<S>,
+}
 
 impl<S: RingSuite> BatchVerifier<S> {
     pub fn new(ring_verifier: RingVerifier<S>) -> Self {
         Self {
-            batch: ring_verifier.kzg_batch_verifier(),
+            ring_batch: ring_verifier.kzg_batch_verifier(),
+            pedersen_batch: pedersen::BatchVerifier::new(),
         }
     }
 
@@ -212,15 +219,18 @@ impl<S: RingSuite> BatchVerifier<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) -> Result<PreparedBatchItem<S>, Error> {
-        use pedersen::Verifier as PedersenVerifier;
-        <Public<S> as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
+    ) -> PreparedBatchItem<S> {
+        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        Ok(self.batch.prepare(proof.ring_proof.clone(), key_commitment))
+        let ring = self
+            .ring_batch
+            .prepare(proof.ring_proof.clone(), key_commitment);
+        PreparedBatchItem { ring, pedersen }
     }
 
     pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
-        self.batch.push_prepared(item);
+        self.pedersen_batch.push_prepared(item.pedersen);
+        self.ring_batch.push_prepared(item.ring);
     }
 
     pub fn push(
@@ -229,14 +239,14 @@ impl<S: RingSuite> BatchVerifier<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) -> Result<(), Error> {
-        let prepared = self.prepare(input, output, ad, proof)?;
+    ) {
+        let prepared = self.prepare(input, output, ad, proof);
         self.push_prepared(prepared);
-        Ok(())
     }
 
     pub fn verify(&self) -> Result<(), Error> {
-        self.batch
+        self.pedersen_batch.verify()?;
+        self.ring_batch
             .verify()
             .then_some(())
             .ok_or(Error::VerificationFailure)
@@ -873,8 +883,7 @@ pub(crate) mod testing {
 
         // Prove incrementally constructed batches
         for item in batch.iter() {
-            let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
-            assert!(res.is_ok());
+            batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
             let res = batch_verifier.verify();
             assert!(res.is_ok());
         }
@@ -889,8 +898,7 @@ pub(crate) mod testing {
         let start = std::time::Instant::now();
         common::timed("Proofs push", || {
             for item in batch.iter() {
-                let res = batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
-                assert!(res.is_ok());
+                batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
             }
         });
         common::timed("Unprepared batch verification", || batch_verifier.verify());
@@ -905,11 +913,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| {
-                    batch_verifier
-                        .prepare(item.input, item.output, &item.ad, &item.proof)
-                        .unwrap()
-                })
+                .map(|item| batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof))
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
