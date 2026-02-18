@@ -46,8 +46,8 @@ Criterion: `--quick` mode
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.09 us  | 2.10 us  | 4.19 us  | 8.31 us  | 15.7 us  | 35.6 us  | 65.6 us  | 124.5 us | 250.6 us |
-| batch_verify         | 508.7 us | 603.8 us | 772.6 us | 1.87 ms  | 2.01 ms  | 3.61 ms  | 6.05 ms  | 8.00 ms  | 14.5 ms  |
+| batch_prepare        | 1.09 us  | 2.14 us  | 4.22 us  | 7.92 us  | 15.9 us  | 32.1 us  | 67.4 us  | 133.6 us | 269.7 us |
+| batch_verify         | 504.0 us | 598.1 us | 763.6 us | 1.74 ms  | 2.13 ms  | 3.61 ms  | 6.20 ms  | 8.46 ms  | 15.8 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 
@@ -68,12 +68,12 @@ Criterion: `--quick` mode
 
 | Benchmark          | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:-------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_verifier_new | 263 us   | -        | -        | -        | -        | -        | -        | -        | -        |
-| batch_push         | 48.1 us  | 107.9 us | 215.2 us | 434.8 us | 877.1 us | 1.83 ms  | 3.49 ms  | 6.61 ms  | 13.3 ms  |
-| batch_prepare_seq  | 41.2 us  | 88.4 us  | 181.1 us | 389.0 us | 799.7 us | 1.61 ms  | 3.10 ms  | 7.39 ms  | 12.4 ms  |
-| batch_prepare_par  | 46.1 us  | 75.3 us  | 101.7 us | 162.0 us | 209.2 us | 228.8 us | 248.3 us | 406.8 us | 777.0 us |
-| batch_push_prepared| 5.1 us   | 9.6 us   | 19.4 us  | 35.4 us  | 73.4 us  | 140.7 us | 265.2 us | 547.3 us | 1.11 ms  |
-| batch_verify       | 3.82 ms  | 4.29 ms  | 5.83 ms  | 8.82 ms  | 11.8 ms  | 20.5 ms  | 30.6 ms  | 52.7 ms  | 91.5 ms  |
+| batch_verifier_new | 258 us   | -        | -        | -        | -        | -        | -        | -        | -        |
+| batch_push         | 51.8 us  | 97.4 us  | 215.8 us | 433.5 us | 826.6 us | 1.66 ms  | 3.34 ms  | 6.63 ms  | 14.4 ms  |
+| batch_prepare_seq  | 40.8 us  | 82.8 us  | 182.4 us | 361.5 us | 754.5 us | 1.53 ms  | 3.38 ms  | 6.10 ms  | 12.3 ms  |
+| batch_prepare_par  | 41.1 us  | 69.0 us  | 107.8 us | 157.9 us | 239.7 us | 248.6 us | 233.1 us | 474.0 us | 823.0 us |
+| batch_push_prepared| 5.2 us   | 10.5 us  | 19.8 us  | 39.8 us  | 69.9 us  | 171.7 us | 268.0 us | 543.2 us | 1.14 ms  |
+| batch_verify       | 3.28 ms  | 4.17 ms  | 5.48 ms  | 8.03 ms  | 12.8 ms  | 20.5 ms  | 32.7 ms  | 54.7 ms  | 89.9 ms  |
 
 ## Notes
 
@@ -103,12 +103,12 @@ verification is deferred to `verify`, where it runs as a single batched MSM usin
 random linear combination with independent random scalars per equation.
 
 The `verify` step includes both the ring batch multi-pairing and the Pedersen
-batch MSM. A linear fit gives ~3.2 ms base + ~0.34 ms per additional proof.
+batch MSM. A linear fit gives ~2.9 ms base + ~0.34 ms per additional proof.
 The ring multi-pairing marginal cost is ~0.31 ms/proof; the Pedersen MSM adds
 ~0.03 ms/proof amortized.
 
 Sequential marginal cost per proof: ~0.05 ms (prepare) + ~0.34 ms (verify) = ~0.39 ms,
-or ~8.9x cheaper than simple verification (3.49 ms). With parallel prepare, the
+or ~8.9x cheaper than simple verification (3.48 ms). With parallel prepare, the
 per-proof prepare cost drops to ~3 us at n=256, giving ~0.34 ms marginal, or ~10x
 cheaper.
 
@@ -116,15 +116,34 @@ Estimated total wall times and speedups:
 
 | n   | Simple      | Batch seq   | Batch par   | Speedup (seq) | Speedup (par) |
 |----:|------------:|------------:|------------:|--------------:|--------------:|
-|   1 |    3.77 ms  |    3.86 ms  |    3.87 ms  |         0.98x |         0.98x |
-|   2 |    7.26 ms  |    4.38 ms  |    4.36 ms  |         1.66x |         1.66x |
-|   4 |   14.24 ms  |    6.01 ms  |    5.93 ms  |         2.37x |         2.40x |
-|   8 |   28.20 ms  |    9.21 ms  |    8.98 ms  |         3.06x |         3.14x |
-|  16 |   56.12 ms  |   12.60 ms  |   12.01 ms  |         4.45x |         4.67x |
-|  32 |  111.96 ms  |   22.11 ms  |   20.73 ms  |         5.07x |         5.40x |
-|  64 |  223.64 ms  |   33.70 ms  |   30.85 ms  |         6.63x |         7.25x |
-| 128 |  447.00 ms  |   60.09 ms  |   53.11 ms  |         7.44x |         8.42x |
-| 256 |  893.72 ms  |  103.90 ms  |   92.28 ms  |         8.60x |         9.69x |
+|   1 |    3.75 ms  |    3.32 ms  |    3.31 ms  |         1.13x |         1.13x |
+|   2 |    7.23 ms  |    4.25 ms  |    4.24 ms  |         1.70x |         1.71x |
+|   4 |   14.19 ms  |    5.67 ms  |    5.59 ms  |         2.50x |         2.54x |
+|   8 |   28.11 ms  |    8.39 ms  |    8.19 ms  |         3.35x |         3.43x |
+|  16 |   55.95 ms  |   13.55 ms  |   13.04 ms  |         4.13x |         4.29x |
+|  32 |  111.63 ms  |   22.16 ms  |   20.75 ms  |         5.04x |         5.38x |
+|  64 |  223.00 ms  |   36.08 ms  |   32.93 ms  |         6.18x |         6.77x |
+| 128 |  445.70 ms  |   60.80 ms  |   55.17 ms  |         7.33x |         8.08x |
+| 256 |  891.15 ms  |  102.20 ms  |   90.72 ms  |         8.72x |         9.82x |
+
+### Effect of Batched Pedersen Verification
+
+The Pedersen batch MSM replaces N individual 5-point verifications (~452 us each)
+with a single (5N+2)-point MSM during `verify`. This shifts cost from `prepare`
+to `verify`:
+
+| Metric (n=256)   | Before      | After       | Change       |
+|:------------------|------------:|------------:|:-------------|
+| prepare_seq       | 124.2 ms    | 12.3 ms     | 10.1x faster |
+| prepare_par       | 4.30 ms     | 0.82 ms     | 5.2x faster  |
+| batch_verify      | 80.9 ms     | 89.9 ms     | 11% slower   |
+| Total (seq)       | 206.4 ms    | 102.2 ms    | 2.02x faster |
+| Total (par)       | 86.5 ms     | 90.7 ms     | ~same        |
+
+The sequential pipeline benefits most: prepare drops from ~490 us/proof to ~48 us/proof,
+while the additional MSM cost in verify (~10 ms at n=256) is much smaller than the
+savings. The parallel pipeline sees less net gain since prepare was already cheap
+when parallelized, and the verify increase slightly offsets the savings.
 
 ### Batch Verify Scaling
 
