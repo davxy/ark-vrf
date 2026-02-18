@@ -5,10 +5,23 @@ use utils::te_sw_map;
 
 use super::*;
 
+/// Byte order used by a codec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Endianness {
+    Little,
+    Big,
+}
+
+impl Endianness {
+    pub const fn is_big(self) -> bool {
+        matches!(self, Endianness::Big)
+    }
+}
+
 /// Defines points and scalars encoding format.
 pub trait Codec<S: Suite> {
-    /// Whether the codec uses big endian byte order.
-    const BIG_ENDIAN: bool;
+    /// Byte order used for encoding.
+    const ENDIANNESS: Endianness;
 
     /// Point compressed encoded length in bytes.
     const POINT_ENCODED_LEN: usize;
@@ -71,15 +84,13 @@ where
     BaseField<S>: PrimeField,
     AffinePoint<S>: CompressFlagBits,
 {
-    const BIG_ENDIAN: bool = false;
+    const ENDIANNESS: Endianness = Endianness::Little;
 
     // Arkworks compressed point encoding: base field coordinate + flag bits.
     // The formula matches arkworks' `serialized_size_with_flags`:
     // ceil((MODULUS_BIT_SIZE + FLAG_BITS) / 8).
-    const POINT_ENCODED_LEN: usize = (BaseField::<S>::MODULUS_BIT_SIZE as usize
-        + AffinePoint::<S>::FLAG_BITS as usize
-        + 7)
-        / 8;
+    const POINT_ENCODED_LEN: usize =
+        (BaseField::<S>::MODULUS_BIT_SIZE as usize + AffinePoint::<S>::FLAG_BITS as usize + 7) / 8;
     const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
@@ -110,13 +121,11 @@ where
     CurveConfig<S>: SWCurveConfig,
     AffinePoint<S>: te_sw_map::SWMapping<CurveConfig<S>>,
 {
-    const BIG_ENDIAN: bool = true;
+    const ENDIANNESS: Endianness = Endianness::Big;
 
     // SEC1 compressed point: 1 flag byte + base field element in big-endian.
-    const POINT_ENCODED_LEN: usize =
-        1 + (BaseField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
-    const SCALAR_ENCODED_LEN: usize =
-        (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
+    const POINT_ENCODED_LEN: usize = 1 + (BaseField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
+    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         use ark_ff::biginteger::BigInteger;
