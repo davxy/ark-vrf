@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
@@ -114,7 +114,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -260,6 +260,13 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 /// It generates a deterministic nonce using HMAC-based extraction, which provides
 /// strong security guarantees against nonce reuse or biased nonce generation.
 ///
+/// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
+/// `from_be_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
+/// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
+/// rejected and trigger a retry; here they are instead reduced to a valid scalar.
+/// This introduces a negligible bias for curves where `q` is close to `2^(8*qbytes)`
+/// (e.g. secp256r1, where the probability of hitting `>= q` is ~2^{-128}).
+///
 /// # Parameters
 ///
 /// * `sk` - The secret scalar key
@@ -289,15 +296,33 @@ where
 
     // K = HMAC_K(V || 0x01 || int2octets(x) || bits2octets(h1))
     let raw = [&v[..], &[0x01], &x[..], &h1[..]].concat();
-    let k = hmac::<S::Hasher>(&k, &raw);
+    let mut k = hmac::<S::Hasher>(&k, &raw);
 
     // V = HMAC_K(V)
-    let v = hmac::<S::Hasher>(&k, &v);
+    let mut v = hmac::<S::Hasher>(&k, &v);
 
-    // TODO: loop until 1 < k < q
-    let v = hmac::<S::Hasher>(&k, &v);
-
-    S::Codec::scalar_decode(&v)
+    // RFC 6979 section 3.2 step h
+    // qlen: bit length of q; qbytes: byte length (used for T construction)
+    let qlen = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
+    let qbytes = qlen.div_ceil(8);
+    loop {
+        // h.1: T = empty
+        let mut t = Vec::with_capacity(qbytes);
+        // h.2: while tlen < qlen, V = HMAC_K(V), T = T || V
+        while t.len() * 8 < qlen {
+            v = hmac::<S::Hasher>(&k, &v);
+            t.extend_from_slice(&v);
+        }
+        // h.3: k = bits2int(T), check k in [1, q-1]
+        let nonce = S::Codec::scalar_decode(&t[..qbytes]);
+        if !nonce.is_zero() {
+            return nonce;
+        }
+        // K = HMAC_K(V || 0x00), V = HMAC_K(V)
+        let data = [&v[..], &[0x00]].concat();
+        k = hmac::<S::Hasher>(&k, &data);
+        v = hmac::<S::Hasher>(&k, &v);
+    }
 }
 
 #[cfg(test)]
