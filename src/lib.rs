@@ -236,9 +236,9 @@ pub trait Suite: Copy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
-    pub scalar: ScalarField<S>,
+    pub(crate) scalar: ScalarField<S>,
     /// Cached public key.
-    pub public: Public<S>,
+    pub(crate) public: Public<S>,
 }
 
 impl<S: Suite> Drop for Secret<S> {
@@ -320,6 +320,11 @@ impl<S: Suite> Secret<S> {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
         Self::from_seed(&seed)
+    }
+
+    /// Get the secret scalar.
+    pub fn scalar(&self) -> &ScalarField<S> {
+        &self.scalar
     }
 
     /// Get the associated public key.

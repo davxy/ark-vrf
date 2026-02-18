@@ -17,7 +17,7 @@ fn bench_key_from_scalar<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let name = format!("{}/key_from_scalar", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| Secret::<S>::from_scalar(black_box(secret.scalar)));
+        b.iter(|| Secret::<S>::from_scalar(black_box(*secret.scalar())));
     });
 }
 
@@ -76,7 +76,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
     c.bench_function(&name, |b| {
-        b.iter(|| S::nonce(black_box(&secret.scalar), black_box(input)));
+        b.iter(|| S::nonce(black_box(secret.scalar()), black_box(input)));
     });
 }
 
@@ -106,13 +106,13 @@ fn bench_scalar_encode<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/scalar_encode", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::codec::scalar_encode::<S>(black_box(&secret.scalar)));
+        b.iter(|| ark_vrf::codec::scalar_encode::<S>(black_box(secret.scalar())));
     });
 }
 
 fn bench_scalar_decode<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed(b"bench secret seed");
-    let encoded = ark_vrf::codec::scalar_encode::<S>(&secret.scalar);
+    let encoded = ark_vrf::codec::scalar_encode::<S>(secret.scalar());
 
     let name = format!("{}/scalar_decode", S::SUITE_NAME);
     c.bench_function(&name, |b| {
