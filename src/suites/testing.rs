@@ -20,7 +20,10 @@ impl Suite for TestSuite {
         Self: Suite,
         Self::Codec: codec::Codec<Self>,
     {
-        let mut buf = vec![];
+        let mut buf = Vec::with_capacity(
+            <Self::Codec as codec::Codec<Self>>::SCALAR_ENCODED_LEN
+                + <Self::Codec as codec::Codec<Self>>::POINT_ENCODED_LEN,
+        );
         <Self::Codec as codec::Codec<Self>>::scalar_encode_into(sk, &mut buf);
         <Self::Codec as codec::Codec<Self>>::point_encode_into(&pt.0, &mut buf);
         let h = &hash::<Self::Hasher>(&buf)[..];
@@ -47,6 +50,7 @@ impl crate::testing::SuiteExt for TestSuite {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    codec_suite_tests!(TestSuite);
     ietf_suite_tests!(TestSuite);
     pedersen_suite_tests!(TestSuite);
 }

@@ -154,7 +154,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
     hasher.update([DOM_SEP_START]);
-    let mut pt_buf = Vec::new();
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     for p in pts {
         pt_buf.clear();
         S::Codec::point_encode_into(p, &mut pt_buf);
@@ -205,7 +205,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
     hasher.update([DOM_SEP_START]);
-    let mut pt_buf = Vec::new();
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     S::Codec::point_encode_into(&pt, &mut pt_buf);
     hasher.update(&pt_buf);
     hasher.update([DOM_SEP_END]);

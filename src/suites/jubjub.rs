@@ -108,6 +108,7 @@ pub(crate) mod tests {
 
     impl crate::testing::SuiteExt for ThisSuite {}
 
+    codec_suite_tests!(ThisSuite);
     ietf_suite_tests!(ThisSuite);
 
     pedersen_suite_tests!(ThisSuite);

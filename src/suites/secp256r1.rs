@@ -93,6 +93,7 @@ mod tests {
         }
     }
 
+    codec_suite_tests!(ThisSuite);
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
 

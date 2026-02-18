@@ -57,7 +57,7 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::NotEnoughSpace);
         }
-        let buf = if S::Codec::BIG_ENDIAN {
+        let buf = if S::Codec::ENDIANNESS.is_big() {
             &c_buf[c_buf.len() - S::CHALLENGE_LEN..]
         } else {
             &c_buf[..S::CHALLENGE_LEN]
@@ -285,7 +285,7 @@ pub mod testing {
 
         fn to_map(&self) -> common::TestVectorMap {
             let buf = codec::scalar_encode::<S>(&self.c);
-            let proof_c = if S::Codec::BIG_ENDIAN {
+            let proof_c = if S::Codec::ENDIANNESS.is_big() {
                 let len = buf.len();
                 &buf[len - S::CHALLENGE_LEN..]
             } else {
