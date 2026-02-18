@@ -25,7 +25,7 @@ supports customization of scheme parameters.
   verifiable randomness.
 
 - **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
-  Extends the basic VRF with key-hiding properties using Pedersen commitments,
+  Extends the basic VRF with key-hiding properties using Pedersen commitments.
 
 - **Ring VRF**: A zero-knowledge-based scheme inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
   Provides signer anonymity within a set of public keys (a "ring"), allowing
@@ -36,7 +36,7 @@ supports customization of scheme parameters.
 - [VRF Schemes](https://github.com/davxy/bandersnatch-vrf-spec)
 - [Ring Proof](https://github.com/davxy/ring-proof-spec)
 
-## Built-In suites
+## Built-In Suites
 
 The library conditionally includes the following pre-configured suites (see features section):
 
@@ -48,7 +48,7 @@ The library conditionally includes the following pre-configured suites (see feat
 
 ## Basic Usage
 
-```rust
+```rust,ignore
 use ark_vrf::suites::bandersnatch::*;
 
 // Create a secret key from a seed
@@ -57,19 +57,12 @@ let secret = Secret::from_seed(b"example seed");
 // Derive the corresponding public key
 let public = secret.public();
 
-// Create an input by hashing date to a curve point
-let input = Input::new(b"example input");
+// Create an input by hashing data to a curve point
+let input = Input::new(b"example input").unwrap();
 
 // Compute the VRF output (gamma point)
 let output = secret.output(input);
 
-// Optional additional data that can be bound to the proof
-let aux_data = b"optional aux data";
-```
-
-The VRF output can be hashed to obtain a pseudorandom byte string:
-
-```rust
 // Get a deterministic hash from the VRF output point
 let hash_bytes = output.hash();
 ```
@@ -80,27 +73,24 @@ The IETF VRF scheme follows [RFC-9381](https://datatracker.ietf.org/doc/rfc9381)
 and provides a standardized approach to verifiable random functions.
 
 _Prove_
-```rust
+```rust,ignore
 use ark_vrf::ietf::Prover;
 
 // Generate a proof that binds the input, output, and auxiliary data
-let proof = secret.prove(input, output, aux_data);
-
-// The proof can be serialized for transmission
-let serialized_proof = proof.to_bytes();
+let proof = secret.prove(input, output, b"aux data");
 ```
 
 _Verify_
-```rust
+```rust,ignore
 use ark_vrf::ietf::Verifier;
 
 // Verify the proof against the public key
-let result = public.verify(input, output, aux_data, &proof);
+let result = public.verify(input, output, b"aux data", &proof);
 assert!(result.is_ok());
 
 // Verification will fail if any parameter is modified
 let tampered_output = secret.output(Input::new(b"different input").unwrap());
-assert!(public.verify(input, tampered_output, aux_data, &proof).is_err());
+assert!(public.verify(input, tampered_output, b"aux data", &proof).is_err());
 ```
 
 ### Pedersen-VRF
@@ -108,38 +98,38 @@ assert!(public.verify(input, tampered_output, aux_data, &proof).is_err());
 The Pedersen VRF extends the IETF scheme with key-hiding properties using Pedersen commitments.
 
 _Prove_
-```rust
+```rust,ignore
 use ark_vrf::pedersen::Prover;
 
 // Generate a proof with a blinding factor
-let (proof, blinding) = secret.prove(input, output, aux_data);
+let (proof, blinding) = secret.prove(input, output, b"aux data");
 
 // The proof includes a commitment to the public key
 let key_commitment = proof.key_commitment();
 ```
 
 _Verify_
-```rust
+```rust,ignore
 use ark_vrf::pedersen::Verifier;
 
 // Verify without knowing which specific public key was used.
-// Verifiers that the secret key used to generate `output` is the same as
+// Verifies that the secret key used to generate `output` is the same as
 // the secret key used to generate `proof.key_commitment()`.
-let result = Public::verify(input, output, aux_data, &proof);
+let result = Public::verify(input, output, b"aux data", &proof);
 assert!(result.is_ok());
 
-// Verify the proof was created using a specific public key
-// This requires knowledge of the blinding factor
-let expected_commitment = (public.0 + MySuite::BLINDING_BASE * blinding).into_affine();
-assert_eq!(proof.key_commitment(), expected_commitment);
+// Verify the proof was created using a specific public key.
+// This requires knowledge of the blinding factor.
+let expected = (public.0 + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+assert_eq!(proof.key_commitment(), expected);
 ```
 
 ### Ring-VRF
 
 The Ring VRF provides anonymity within a set of public keys using zero-knowledge proofs.
- 
+
 _Ring construction_
-```rust
+```rust,ignore
 const RING_SIZE: usize = 100;
 let prover_key_index = 3;
 
@@ -155,12 +145,12 @@ ring[prover_key_index] = public.0;
 ring[0] = RingProofParams::padding_point();
 
 // Create parameters for the ring proof system.
-// These parameters are reusable across multiple proofs
-let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
+// These parameters are reusable across multiple proofs.
+let params = RingProofParams::from_seed(RING_SIZE, [0x42; 32]);
 ```
 
 _Prove_
-```rust
+```rust,ignore
 use ark_vrf::ring::Prover;
 
 // Create a prover key specific to this ring
@@ -172,11 +162,11 @@ let prover = params.prover(prover_key, prover_key_index);
 // Generate a zero-knowledge proof that:
 // 1. The prover knows a secret key for one of the public keys in the ring
 // 2. That secret key was used to generate the VRF output
-let proof = secret.prove(input, output, aux_data, &prover);
+let proof = secret.prove(input, output, b"aux data", &prover);
 ```
 
 _Verify_
-```rust
+```rust,ignore
 use ark_vrf::ring::Verifier;
 
 // Create a verifier key for this ring
@@ -189,13 +179,13 @@ let verifier = params.verifier(verifier_key);
 // 1. The proof was created by someone who knows a secret key in the ring
 // 2. The VRF output is correct for the given input
 // But it does NOT reveal which ring member created the proof
-let result = Public::verify(input, output, aux_data, &proof, &verifier);
+let result = Public::verify(input, output, b"aux data", &proof, &verifier);
 ```
 
 _Verifier key from commitment_
-```rust
+```rust,ignore
 // For efficiency, a commitment to the ring can be shared
-let ring_commitment = params.verifier_key().commitment();
+let ring_commitment = params.verifier_key(&ring).commitment();
 
 // A verifier can reconstruct the verifier key from just the commitment
 // without needing the full ring of public keys
