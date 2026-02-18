@@ -90,8 +90,8 @@ where
     // The formula matches arkworks' `serialized_size_with_flags`:
     // ceil((MODULUS_BIT_SIZE + FLAG_BITS) / 8).
     const POINT_ENCODED_LEN: usize =
-        (BaseField::<S>::MODULUS_BIT_SIZE as usize + AffinePoint::<S>::FLAG_BITS as usize + 7) / 8;
-    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
+        (BaseField::<S>::MODULUS_BIT_SIZE as usize + AffinePoint::<S>::FLAG_BITS as usize).div_ceil(8);
+    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize).div_ceil(8);
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         pt.serialize_compressed(buf).unwrap();
@@ -124,8 +124,8 @@ where
     const ENDIANNESS: Endianness = Endianness::Big;
 
     // SEC1 compressed point: 1 flag byte + base field element in big-endian.
-    const POINT_ENCODED_LEN: usize = 1 + (BaseField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
-    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
+    const POINT_ENCODED_LEN: usize = 1 + (BaseField::<S>::MODULUS_BIT_SIZE as usize).div_ceil(8);
+    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize).div_ceil(8);
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         use ark_ff::biginteger::BigInteger;
