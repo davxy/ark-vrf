@@ -192,67 +192,6 @@ pub trait Verifier<S: RingSuite> {
     ) -> Result<(), Error>;
 }
 
-pub struct BatchVerifier<S: RingSuite> {
-    ring_batch: RingBatchVerifier<S>,
-    pedersen_batch: pedersen::BatchVerifier<S>,
-}
-
-pub type RingPreparedBatchItem<S> =
-    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
-
-pub struct PreparedBatchItem<S: RingSuite> {
-    ring: RingPreparedBatchItem<S>,
-    pedersen: pedersen::BatchEntry<S>,
-}
-
-impl<S: RingSuite> BatchVerifier<S> {
-    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
-        Self {
-            ring_batch: ring_verifier.kzg_batch_verifier(),
-            pedersen_batch: pedersen::BatchVerifier::new(),
-        }
-    }
-
-    pub fn prepare(
-        &self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> PreparedBatchItem<S> {
-        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        let ring = self
-            .ring_batch
-            .prepare(proof.ring_proof.clone(), key_commitment);
-        PreparedBatchItem { ring, pedersen }
-    }
-
-    pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
-        self.pedersen_batch.push_prepared(item.pedersen);
-        self.ring_batch.push_prepared(item.ring);
-    }
-
-    pub fn push(
-        &mut self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
-        let prepared = self.prepare(input, output, ad, proof);
-        self.push_prepared(prepared);
-    }
-
-    pub fn verify(&self) -> Result<(), Error> {
-        self.pedersen_batch.verify()?;
-        self.ring_batch
-            .verify()
-            .then_some(())
-            .ok_or(Error::VerificationFailure)
-    }
-}
-
 impl<S: RingSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
@@ -613,6 +552,67 @@ impl<S: RingSuite> RingVerifierKeyBuilder<S> {
     /// Complete the building process and create the verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
         RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
+    }
+}
+
+pub struct BatchVerifier<S: RingSuite> {
+    ring_batch: RingBatchVerifier<S>,
+    pedersen_batch: pedersen::BatchVerifier<S>,
+}
+
+pub type RingPreparedBatchItem<S> =
+    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+
+pub struct PreparedBatchItem<S: RingSuite> {
+    ring: RingPreparedBatchItem<S>,
+    pedersen: pedersen::BatchEntry<S>,
+}
+
+impl<S: RingSuite> BatchVerifier<S> {
+    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
+        Self {
+            ring_batch: ring_verifier.kzg_batch_verifier(),
+            pedersen_batch: pedersen::BatchVerifier::new(),
+        }
+    }
+
+    pub fn prepare(
+        &self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> PreparedBatchItem<S> {
+        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let ring = self
+            .ring_batch
+            .prepare(proof.ring_proof.clone(), key_commitment);
+        PreparedBatchItem { ring, pedersen }
+    }
+
+    pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
+        self.pedersen_batch.push_prepared(item.pedersen);
+        self.ring_batch.push_prepared(item.ring);
+    }
+
+    pub fn push(
+        &mut self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) {
+        let prepared = self.prepare(input, output, ad, proof);
+        self.push_prepared(prepared);
+    }
+
+    pub fn verify(&self) -> Result<(), Error> {
+        self.pedersen_batch.verify()?;
+        self.ring_batch
+            .verify()
+            .then_some(())
+            .ok_or(Error::VerificationFailure)
     }
 }
 
