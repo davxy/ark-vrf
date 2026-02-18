@@ -50,7 +50,7 @@ Criterion: `--quick` mode
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
 | batch_prepare        | 1.09 us  | 2.14 us  | 4.22 us  | 7.92 us  | 15.9 us  | 32.1 us  | 67.4 us  | 133.6 us | 269.7 us |
-| batch_verify         | 539.6 us | 675.7 us | 881.4 us | 1.81 ms  | 2.52 ms  | 4.19 ms  | 7.22 ms  | 10.1 ms  | 18.2 ms  |
+| batch_verify         | 504.0 us | 598.1 us | 763.6 us | 1.74 ms  | 2.13 ms  | 3.61 ms  | 6.20 ms  | 8.46 ms  | 15.8 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 
@@ -76,7 +76,7 @@ Criterion: `--quick` mode
 | batch_prepare_seq  | 40.8 us  | 82.8 us  | 182.4 us | 361.5 us | 754.5 us | 1.53 ms  | 3.38 ms  | 6.10 ms  | 12.3 ms  |
 | batch_prepare_par  | 41.1 us  | 69.0 us  | 107.8 us | 157.9 us | 239.7 us | 248.6 us | 233.1 us | 474.0 us | 823.0 us |
 | batch_push_prepared| 5.2 us   | 10.5 us  | 19.8 us  | 39.8 us  | 69.9 us  | 171.7 us | 268.0 us | 543.2 us | 1.14 ms  |
-| batch_verify       | 3.27 ms  | 4.43 ms  | 5.95 ms  | 8.14 ms  | 12.1 ms  | 19.95 ms | 31.67 ms | 56.9 ms  | 93.2 ms  |
+| batch_verify       | 3.28 ms  | 4.17 ms  | 5.48 ms  | 8.03 ms  | 12.8 ms  | 20.5 ms  | 32.7 ms  | 54.7 ms  | 89.9 ms  |
 
 ## Notes
 
@@ -106,13 +106,13 @@ verification is deferred to `verify`, where it runs as a single batched MSM usin
 random linear combination with independent random scalars per equation.
 
 The `verify` step includes both the ring batch multi-pairing and the Pedersen
-batch MSM. A linear fit gives ~2.9 ms base + ~0.35 ms per additional proof.
+batch MSM. A linear fit gives ~2.9 ms base + ~0.34 ms per additional proof.
 The ring multi-pairing marginal cost is ~0.31 ms/proof; the Pedersen MSM adds
-~0.04 ms/proof amortized.
+~0.03 ms/proof amortized.
 
-Sequential marginal cost per proof: ~0.05 ms (prepare) + ~0.35 ms (verify) = ~0.40 ms,
-or ~8.7x cheaper than simple verification (3.48 ms). With parallel prepare, the
-per-proof prepare cost drops to ~3 us at n=256, giving ~0.35 ms marginal, or ~10x
+Sequential marginal cost per proof: ~0.05 ms (prepare) + ~0.34 ms (verify) = ~0.39 ms,
+or ~8.9x cheaper than simple verification (3.48 ms). With parallel prepare, the
+per-proof prepare cost drops to ~3 us at n=256, giving ~0.34 ms marginal, or ~10x
 cheaper.
 
 Estimated total wall times and speedups:
@@ -120,14 +120,14 @@ Estimated total wall times and speedups:
 | n   | Simple      | Batch seq   | Batch par   | Speedup (seq) | Speedup (par) |
 |----:|------------:|------------:|------------:|--------------:|--------------:|
 |   1 |    3.75 ms  |    3.32 ms  |    3.31 ms  |         1.13x |         1.13x |
-|   2 |    7.23 ms  |    4.53 ms  |    4.51 ms  |         1.60x |         1.60x |
-|   4 |   14.19 ms  |    6.17 ms  |    6.08 ms  |         2.30x |         2.33x |
-|   8 |   28.11 ms  |    8.57 ms  |    8.34 ms  |         3.28x |         3.37x |
-|  16 |   55.95 ms  |   12.93 ms  |   12.41 ms  |         4.33x |         4.51x |
-|  32 |  111.63 ms  |   21.61 ms  |   20.37 ms  |         5.16x |         5.48x |
-|  64 |  223.00 ms  |   35.01 ms  |   32.17 ms  |         6.37x |         6.93x |
-| 128 |  445.70 ms  |   63.55 ms  |   57.93 ms  |         7.01x |         7.69x |
-| 256 |  891.15 ms  |  107.60 ms  |   95.12 ms  |         8.28x |         9.37x |
+|   2 |    7.23 ms  |    4.25 ms  |    4.24 ms  |         1.70x |         1.71x |
+|   4 |   14.19 ms  |    5.67 ms  |    5.59 ms  |         2.50x |         2.54x |
+|   8 |   28.11 ms  |    8.39 ms  |    8.19 ms  |         3.35x |         3.43x |
+|  16 |   55.95 ms  |   13.55 ms  |   13.04 ms  |         4.13x |         4.29x |
+|  32 |  111.63 ms  |   22.16 ms  |   20.75 ms  |         5.04x |         5.38x |
+|  64 |  223.00 ms  |   36.08 ms  |   32.93 ms  |         6.18x |         6.77x |
+| 128 |  445.70 ms  |   60.80 ms  |   55.17 ms  |         7.33x |         8.08x |
+| 256 |  891.15 ms  |  102.20 ms  |   90.72 ms  |         8.72x |         9.82x |
 
 ### Effect of Batched Pedersen Verification
 
@@ -139,12 +139,12 @@ to `verify`:
 |:------------------|------------:|------------:|:-------------|
 | prepare_seq       | 124.2 ms    | 12.3 ms     | 10.1x faster |
 | prepare_par       | 4.30 ms     | 0.82 ms     | 5.2x faster  |
-| batch_verify      | 80.9 ms     | 93.2 ms     | 15% slower   |
-| Total (seq)       | 206.4 ms    | 107.6 ms    | 1.92x faster |
-| Total (par)       | 86.5 ms     | 95.1 ms     | ~same        |
+| batch_verify      | 80.9 ms     | 89.9 ms     | 11% slower   |
+| Total (seq)       | 206.4 ms    | 102.2 ms    | 2.02x faster |
+| Total (par)       | 86.5 ms     | 90.7 ms     | ~same        |
 
 The sequential pipeline benefits most: prepare drops from ~490 us/proof to ~48 us/proof,
-while the additional MSM cost in verify (~12 ms at n=256) is much smaller than the
+while the additional MSM cost in verify (~10 ms at n=256) is much smaller than the
 savings. The parallel pipeline sees less net gain since prepare was already cheap
 when parallelized, and the verify increase slightly offsets the savings.
 
@@ -154,17 +154,17 @@ The `batch_verify` step scales sublinearly in the number of proofs:
 
 | n   | batch_verify | per-proof |
 |----:|-----------:|----------:|
-|   1 |    3.27 ms |  3.27 ms  |
-|   2 |    4.43 ms |  2.22 ms  |
-|   4 |    5.95 ms |  1.49 ms  |
-|   8 |    8.14 ms |  1.02 ms  |
-|  16 |   12.1 ms  |  0.76 ms  |
-|  32 |   19.95 ms |  0.62 ms  |
-|  64 |   31.67 ms |  0.49 ms  |
-| 128 |   56.9 ms  |  0.44 ms  |
-| 256 |   93.2 ms  |  0.36 ms  |
+|   1 |    3.28 ms |  3.28 ms  |
+|   2 |    4.17 ms |  2.09 ms  |
+|   4 |    5.48 ms |  1.37 ms  |
+|   8 |    8.03 ms |  1.00 ms  |
+|  16 |   12.8 ms  |  0.80 ms  |
+|  32 |   20.5 ms  |  0.64 ms  |
+|  64 |   32.7 ms  |  0.51 ms  |
+| 128 |   54.7 ms  |  0.43 ms  |
+| 256 |   89.9 ms  |  0.35 ms  |
 
-Amortized cost per proof drops from 3.27 ms (n=1) to 0.36 ms (n=256), roughly 9x.
+Amortized cost per proof drops from 3.28 ms (n=1) to 0.35 ms (n=256), roughly 9x.
 Two factors contribute: the fixed-cost ring multi-pairing base (~2.9 ms) amortized
 across all proofs, and the MSM itself which scales as O(n / log n) via
 Pippenger/bucket methods rather than O(n).
