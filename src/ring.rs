@@ -758,7 +758,7 @@ pub mod dom_utils {
         max_ring_size_from_piop_domain_size::<S>(piop_domain_size)
     }
 }
-use dom_utils::*;
+pub use dom_utils::*;
 
 #[cfg(test)]
 pub(crate) mod testing {
