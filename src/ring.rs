@@ -836,7 +836,7 @@ pub(crate) mod testing {
             prover: &RingProver<S>,
             rng: &mut dyn ark_std::rand::RngCore,
         ) -> Self {
-            let input = Input::from(common::random_val(Some(rng)));
+            let input = Input::from_affine(common::random_val(Some(rng)));
             let output = secret.output(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
@@ -990,7 +990,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from(common::random_val(Some(rng)));
+        let input = Input::from_affine(common::random_val(Some(rng)));
         let output = secret.output(input);
 
         let ring_size = params.max_ring_size();
@@ -1191,8 +1191,8 @@ pub(crate) mod testing {
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
             let public = secret.public();
 
-            let input = Input::<S>::from(pedersen.base.h);
-            let output = Output::from(pedersen.base.gamma);
+            let input = Input::<S>::from_affine(pedersen.base.h);
+            let output = Output::from_affine(pedersen.base.gamma);
 
             let params = <S as RingSuiteExt>::params();
 
@@ -1252,8 +1252,8 @@ pub(crate) mod testing {
         fn run(&self) {
             self.pedersen.run();
 
-            let input = Input::<S>::from(self.pedersen.base.h);
-            let output = Output::from(self.pedersen.base.gamma);
+            let input = Input::<S>::from_affine(self.pedersen.base.h);
+            let output = Output::from_affine(self.pedersen.base.gamma);
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();
             assert_eq!(public.0, self.pedersen.base.pk);

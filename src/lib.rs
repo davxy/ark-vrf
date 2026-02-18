@@ -340,10 +340,8 @@ impl<S: Suite> Secret<S> {
 pub struct Public<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Public<S> {
-    /// Construct from inner affine point.
-    ///
-    /// This allows creating a public key from an existing curve point.
-    pub fn from(value: AffinePoint<S>) -> Self {
+    /// Construct from an affine point.
+    pub fn from_affine(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
@@ -361,9 +359,11 @@ impl<S: Suite> Input<S> {
     pub fn new(data: &[u8]) -> Option<Self> {
         S::data_to_point(data).map(Input)
     }
+}
 
-    /// Construct from inner affine point.
-    pub fn from(value: AffinePoint<S>) -> Self {
+impl<S: Suite> Input<S> {
+    /// Construct from an affine point.
+    pub fn from_affine(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
@@ -375,13 +375,13 @@ impl<S: Suite> Input<S> {
 pub struct Output<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Output<S> {
-    /// Construct from inner affine point.
-    ///
-    /// This allows creating an output from an existing curve point.
-    pub fn from(value: AffinePoint<S>) -> Self {
+    /// Construct from an affine point.
+    pub fn from_affine(value: AffinePoint<S>) -> Self {
         Self(value)
     }
+}
 
+impl<S: Suite> Output<S> {
     /// Hash the output point to a deterministic byte string.
     pub fn hash(&self) -> HashOutput<S> {
         S::point_to_hash(&self.0)
@@ -428,7 +428,7 @@ mod tests {
         use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
         let secret = Secret::from_seed(TEST_SEED);
-        let input = Input::from(random_val(Some(&mut rng)));
+        let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
         let expected = "71c1b2ee6e46c59e3bd0e2f0e2852b90ab56abb223180b00bd6c8ec6b11af18c";

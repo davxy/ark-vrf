@@ -428,7 +428,7 @@ pub(crate) mod testing {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from(random_val(None));
+        let input = Input::from_affine(random_val(None));
         let output = secret.output(input);
 
         let (proof, blinding) = secret.prove(input, output, b"foo");
@@ -445,7 +445,7 @@ pub(crate) mod testing {
         use pedersen::{BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from(random_val(None));
+        let input = Input::from_affine(random_val(None));
         let output = secret.output(input);
 
         let (proof1, _) = secret.prove(input, output, b"foo");
@@ -550,8 +550,8 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
-            let input = Input::<S>::from(base.h);
-            let output = Output::from(base.gamma);
+            let input = Input::<S>::from_affine(base.h);
+            let output = Output::from_affine(base.gamma);
             let secret = Secret::from_scalar(base.sk);
             let (proof, blind) = secret.prove(input, output, ad);
             Self { base, blind, proof }
@@ -611,8 +611,8 @@ pub(crate) mod testing {
 
         fn run(&self) {
             self.base.run();
-            let input = Input::<S>::from(self.base.h);
-            let output = Output::from(self.base.gamma);
+            let input = Input::<S>::from_affine(self.base.h);
+            let output = Output::from_affine(self.base.gamma);
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove(input, output, &self.base.ad);
             assert_eq!(self.blind, blind, "Blinding factor mismatch");

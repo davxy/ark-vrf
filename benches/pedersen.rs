@@ -52,7 +52,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
-            let input = Input::<S>::from(AffinePoint::<S>::rand(&mut rng));
+            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
             let output = secret.output(input);
             let ad = format!("ad-{i}").into_bytes();
             let (proof, _) = secret.prove(input, output, &ad);

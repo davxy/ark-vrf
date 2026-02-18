@@ -185,7 +185,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         .map_init(
             || rand_chacha::ChaCha20Rng::from_seed([0; 32]),
             |rng, i| {
-                let input = Input::<S>::from(AffinePoint::<S>::rand(rng));
+                let input = Input::<S>::from_affine(AffinePoint::<S>::rand(rng));
                 let output = setup.secret.output(input);
                 let ad = format!("ad-{i}").into_bytes();
                 let proof = setup.secret.prove(input, output, &ad, &prover);

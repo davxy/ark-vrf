@@ -15,7 +15,7 @@
 //!
 //! // Proving
 //! use ark_vrf::ietf::Prover;
-//! let input = Input::from(my_data);
+//! let input = Input::from_affine(my_data);
 //! let output = secret.output(input);
 //! let proof = secret.prove(input, output, aux_data);
 //!
@@ -211,7 +211,7 @@ pub mod testing {
 
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
-        let input = Input::from(common::random_val(None));
+        let input = Input::from_affine(common::random_val(None));
         let output = secret.output(input);
 
         let proof = secret.prove(input, output, b"foo");
@@ -265,8 +265,8 @@ pub mod testing {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
             // TODO: store constructed types in the vectors
-            let input = Input::from(base.h);
-            let output = Output::from(base.gamma);
+            let input = Input::from_affine(base.h);
+            let output = Output::from_affine(base.gamma);
             let sk = Secret::from_scalar(base.sk);
             let proof: Proof<S> = sk.prove(input, output, ad);
             Self {
@@ -304,8 +304,8 @@ pub mod testing {
 
         fn run(&self) {
             self.base.run();
-            let input = Input::<S>::from(self.base.h);
-            let output = Output::from(self.base.gamma);
+            let input = Input::<S>::from_affine(self.base.h);
+            let output = Output::from_affine(self.base.gamma);
             let sk = Secret::from_scalar(self.base.sk);
             let proof = sk.prove(input, output, &self.base.ad);
             assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
