@@ -26,6 +26,9 @@
 
 use super::*;
 
+/// Marker trait for suites that support the IETF VRF scheme.
+///
+/// Blanket-implemented for all types implementing [`Suite`].
 pub trait IetfSuite: Suite {}
 
 impl<T> IetfSuite for T where T: Suite {}
@@ -37,7 +40,9 @@ impl<T> IetfSuite for T where T: Suite {}
 /// - `s`: Response scalar satisfying the verification equation
 #[derive(Debug, Clone)]
 pub struct Proof<S: IetfSuite> {
+    /// Challenge scalar derived from public parameters.
     pub c: ScalarField<S>,
+    /// Response scalar satisfying the verification equation.
     pub s: ScalarField<S>,
 }
 

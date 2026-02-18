@@ -8,7 +8,9 @@
 //! ## Usage Example
 //!
 //! ```rust,ignore
-//! // Ring setup
+//! use ark_vrf::suites::bandersnatch::*;
+//! use ark_vrf::ring::Prover;
+//!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
 //!
@@ -19,19 +21,18 @@
 //! ring[prover_key_index] = public.0;
 //!
 //! // Initialize ring parameters
-//! let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
+//! let params = RingProofParams::from_seed(RING_SIZE, [0x42; 32]);
 //!
 //! // Proving
-//! use ark_vrf::ring::Prover;
 //! let prover_key = params.prover_key(&ring);
 //! let prover = params.prover(prover_key, prover_key_index);
-//! let proof = secret.prove(input, output, aux_data, &prover);
+//! let proof = secret.prove(input, output, b"aux data", &prover);
 //!
 //! // Verification
 //! use ark_vrf::ring::Verifier;
 //! let verifier_key = params.verifier_key(&ring);
 //! let verifier = params.verifier(verifier_key);
-//! let result = Public::verify(input, output, aux_data, &proof, &verifier);
+//! let result = Public::verify(input, output, b"aux data", &proof, &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -83,7 +84,7 @@ pub trait RingSuite:
     const PADDING: AffinePoint<Self>;
 }
 
-/// KZG Polinomial Commitment Scheme.
+/// KZG Polynomial Commitment Scheme.
 pub type Kzg<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
 /// KZG commitment.
@@ -117,6 +118,7 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Kzg<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Kzg<S>, CurveConfig<S>>;
 
+/// Ring proof batch verifier (KZG-based).
 pub type RingBatchVerifier<S> = ring_proof::ring_verifier::KzgBatchVerifier<
     <S as RingSuite>::Pairing,
     CurveConfig<S>,
@@ -136,7 +138,9 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// - `ring_proof`: Membership proof binding the commitment to the ring
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite> {
+    /// Pedersen VRF proof (key commitment and VRF correctness).
     pub pedersen_proof: PedersenProof<S>,
+    /// Ring membership proof binding the key commitment to the ring.
     pub ring_proof: RingBareProof<S>,
 }
 
@@ -190,67 +194,6 @@ pub trait Verifier<S: RingSuite> {
         sig: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error>;
-}
-
-pub struct BatchVerifier<S: RingSuite> {
-    ring_batch: RingBatchVerifier<S>,
-    pedersen_batch: pedersen::BatchVerifier<S>,
-}
-
-pub type RingPreparedBatchItem<S> =
-    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
-
-pub struct PreparedBatchItem<S: RingSuite> {
-    ring: RingPreparedBatchItem<S>,
-    pedersen: pedersen::BatchEntry<S>,
-}
-
-impl<S: RingSuite> BatchVerifier<S> {
-    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
-        Self {
-            ring_batch: ring_verifier.kzg_batch_verifier(),
-            pedersen_batch: pedersen::BatchVerifier::new(),
-        }
-    }
-
-    pub fn prepare(
-        &self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> PreparedBatchItem<S> {
-        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        let ring = self
-            .ring_batch
-            .prepare(proof.ring_proof.clone(), key_commitment);
-        PreparedBatchItem { ring, pedersen }
-    }
-
-    pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
-        self.pedersen_batch.push_prepared(item.pedersen);
-        self.ring_batch.push_prepared(item.ring);
-    }
-
-    pub fn push(
-        &mut self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
-        let prepared = self.prepare(input, output, ad, proof);
-        self.push_prepared(prepared);
-    }
-
-    pub fn verify(&self) -> Result<(), Error> {
-        self.pedersen_batch.verify()?;
-        self.ring_batch
-            .verify()
-            .then_some(())
-            .ok_or(Error::VerificationFailure)
-    }
 }
 
 impl<S: RingSuite> Prover<S> for Secret<S> {
@@ -420,13 +363,13 @@ impl<S: RingSuite> RingProofParams<S> {
     ///
     /// Returns a builder and associated PCS parameters that can be used to
     /// construct a verifier key by adding public keys in batches.
-    pub fn verifier_key_builder(&self) -> (RingVerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
+    pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
         let piop_domain_size = piop_domain_size::<S>(self.piop.keyset_part_size);
         let builder_key = RingBuilderKey::<S>::from_srs(&self.pcs, piop_domain_size);
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
-        let builder = RingVerifierKeyBuilder::new(self, &builder_pcs_params);
+        let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
         (builder, builder_pcs_params)
     }
 
@@ -463,7 +406,7 @@ impl<S: RingSuite> RingProofParams<S> {
     /// Get the padding point.
     ///
     /// This is a point of unknown dlog that can be used in place of any key during
-    /// ring construciton.
+    /// ring construction.
     #[inline(always)]
     pub const fn padding_point() -> AffinePoint<S> {
         S::PADDING
@@ -527,18 +470,21 @@ type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RingVerifierKeyBuilder<S: RingSuite> {
+pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
     raw_vk: RawVerifierKey<S>,
 }
 
+/// Pairing G1 affine point type.
 pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
+/// Pairing G2 affine point type.
 pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 
 /// Trait for accessing Structured Reference String entries in Lagrangian basis.
 ///
 /// Provides access to precomputed SRS elements needed for efficient ring operations.
 pub trait SrsLookup<S: RingSuite> {
+    /// Look up a range of SRS elements. Returns `None` if the range is out of bounds.
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
 
@@ -560,7 +506,7 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
     }
 }
 
-impl<S: RingSuite> RingVerifierKeyBuilder<S> {
+impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
     /// * `params` - Ring proof parameters
@@ -571,7 +517,7 @@ impl<S: RingSuite> RingVerifierKeyBuilder<S> {
         let raw_vk = params.pcs.raw_vk();
         let partial =
             PartialRingCommitment::<S>::empty(&params.piop, lookup, raw_vk.g1.into_group());
-        RingVerifierKeyBuilder { partial, raw_vk }
+        VerifierKeyBuilder { partial, raw_vk }
     }
 
     /// Get the number of remaining slots available in the ring.
@@ -616,6 +562,83 @@ impl<S: RingSuite> RingVerifierKeyBuilder<S> {
     }
 }
 
+type RingPreparedBatchItem<S> =
+    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+
+/// Pre-processed data for a single ring proof awaiting batch verification.
+pub struct BatchItem<S: RingSuite> {
+    ring: RingPreparedBatchItem<S>,
+    pedersen: pedersen::BatchItem<S>,
+}
+
+/// Batch verifier for ring VRF proofs.
+///
+/// Collects multiple ring proofs and verifies them together, amortizing the
+/// cost of pairing checks and multi-scalar multiplications.
+pub struct BatchVerifier<S: RingSuite> {
+    ring_batch: RingBatchVerifier<S>,
+    pedersen_batch: pedersen::BatchVerifier<S>,
+}
+
+impl<S: RingSuite> BatchVerifier<S> {
+    /// Create a new batch verifier from a ring verifier instance.
+    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
+        Self {
+            ring_batch: ring_verifier.kzg_batch_verifier(),
+            pedersen_batch: pedersen::BatchVerifier::new(),
+        }
+    }
+
+    /// Prepare a proof for deferred batch verification.
+    ///
+    /// Performs the cheap per-proof work (hashing, transcript setup) without
+    /// the expensive pairing and MSM checks.
+    pub fn prepare(
+        &self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> BatchItem<S> {
+        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let ring = self
+            .ring_batch
+            .prepare(proof.ring_proof.clone(), key_commitment);
+        BatchItem { ring, pedersen }
+    }
+
+    /// Push a previously prepared item into the batch.
+    pub fn push_prepared(&mut self, item: BatchItem<S>) {
+        self.pedersen_batch.push_prepared(item.pedersen);
+        self.ring_batch.push_prepared(item.ring);
+    }
+
+    /// Prepare and push a proof in one step.
+    pub fn push(
+        &mut self,
+        input: Input<S>,
+        output: Output<S>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) {
+        let prepared = self.prepare(input, output, ad, proof);
+        self.push_prepared(prepared);
+    }
+
+    /// Verify all collected proofs in a single batch.
+    ///
+    /// Checks both the Pedersen proofs (via MSM) and the ring proofs (via pairing).
+    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    pub fn verify(&self) -> Result<(), Error> {
+        self.pedersen_batch.verify()?;
+        self.ring_batch
+            .verify()
+            .then_some(())
+            .ok_or(Error::VerificationFailure)
+    }
+}
+
 /// Type aliases for the given ring suite.
 #[macro_export]
 macro_rules! ring_suite_types {
@@ -639,7 +662,11 @@ macro_rules! ring_suite_types {
         #[allow(dead_code)]
         pub type RingProof = $crate::ring::Proof<$suite>;
         #[allow(dead_code)]
-        pub type RingVerifierKeyBuilder = $crate::ring::RingVerifierKeyBuilder<$suite>;
+        pub type RingVerifierKeyBuilder = $crate::ring::VerifierKeyBuilder<$suite>;
+        #[allow(dead_code)]
+        pub type RingBatchItem = $crate::ring::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type RingBatchVerifier = $crate::ring::BatchVerifier<$suite>;
     };
 }
 

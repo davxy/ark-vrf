@@ -7,6 +7,7 @@ use super::*;
 
 /// Defines points and scalars encoding format.
 pub trait Codec<S: Suite> {
+    /// Whether the codec uses big endian byte order.
     const BIG_ENDIAN: bool;
 
     /// Point encode into the given buffer.
