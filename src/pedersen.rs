@@ -318,6 +318,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
+        use ark_std::rand::{RngCore, SeedableRng};
+
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
@@ -343,17 +345,20 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let copy_len = hash.len().min(32);
         seed[..copy_len].copy_from_slice(&hash[..copy_len]);
 
-        use ark_std::rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
 
-        // Sample 2N random scalars (t_i for eq1, u_i for eq2)
+        // Sample 2N random 128-bit scalars (t_i for eq1, u_i for eq2).
+        // 128-bit scalars are sufficient for the Schwartz-Zippel soundness argument
+        // (error probability 2^{-128}) and roughly halve the MSM cost compared to
+        // full-width field elements, since fewer doublings are needed in the
+        // Pippenger/Straus window.
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
-                use ark_std::UniformRand;
-                (
-                    ScalarField::<S>::rand(&mut rng),
-                    ScalarField::<S>::rand(&mut rng),
-                )
+                let mut buf = [0u8; 32];
+                rng.fill_bytes(&mut buf);
+                let t = ScalarField::<S>::from_le_bytes_mod_order(&buf[..16]);
+                let u = ScalarField::<S>::from_le_bytes_mod_order(&buf[16..]);
+                (t, u)
             })
             .collect();
 
