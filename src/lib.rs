@@ -421,7 +421,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use suites::testing::{Input, Secret};
-    use testing::{random_val, TEST_SEED};
+    use testing::{TEST_SEED, random_val};
 
     #[test]
     fn vrf_output_check() {
