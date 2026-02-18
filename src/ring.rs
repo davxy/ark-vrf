@@ -8,7 +8,9 @@
 //! ## Usage Example
 //!
 //! ```rust,ignore
-//! // Ring setup
+//! use ark_vrf::suites::bandersnatch::*;
+//! use ark_vrf::ring::Prover;
+//!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
 //!
@@ -19,19 +21,18 @@
 //! ring[prover_key_index] = public.0;
 //!
 //! // Initialize ring parameters
-//! let params = RingProofParams::from_seed(RING_SIZE, b"example seed");
+//! let params = RingProofParams::from_seed(RING_SIZE, [0x42; 32]);
 //!
 //! // Proving
-//! use ark_vrf::ring::Prover;
 //! let prover_key = params.prover_key(&ring);
 //! let prover = params.prover(prover_key, prover_key_index);
-//! let proof = secret.prove(input, output, aux_data, &prover);
+//! let proof = secret.prove(input, output, b"aux data", &prover);
 //!
 //! // Verification
 //! use ark_vrf::ring::Verifier;
 //! let verifier_key = params.verifier_key(&ring);
 //! let verifier = params.verifier(verifier_key);
-//! let result = Public::verify(input, output, aux_data, &proof, &verifier);
+//! let result = Public::verify(input, output, b"aux data", &proof, &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -83,7 +84,7 @@ pub trait RingSuite:
     const PADDING: AffinePoint<Self>;
 }
 
-/// KZG Polinomial Commitment Scheme.
+/// KZG Polynomial Commitment Scheme.
 pub type Kzg<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
 /// KZG commitment.
@@ -405,7 +406,7 @@ impl<S: RingSuite> RingProofParams<S> {
     /// Get the padding point.
     ///
     /// This is a point of unknown dlog that can be used in place of any key during
-    /// ring construciton.
+    /// ring construction.
     #[inline(always)]
     pub const fn padding_point() -> AffinePoint<S> {
         S::PADDING

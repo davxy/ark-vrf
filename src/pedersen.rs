@@ -9,24 +9,24 @@
 //! ## Usage Example
 //!
 //! ```rust,ignore
-//! // Key generation
-//! let secret = Secret::<MySuite>::from_seed(b"seed");
+//! use ark_vrf::suites::bandersnatch::*;
+//! use ark_vrf::pedersen::{Prover, Verifier, PedersenSuite};
+//!
+//! let secret = Secret::from_seed(b"seed");
 //! let public = secret.public();
+//! let input = Input::new(b"example input").unwrap();
+//! let output = secret.output(input);
 //!
 //! // Proving
-//! use ark_vrf::pedersen::Prover;
-//! let input = Input::from(my_data);
-//! let output = secret.output(input);
-//! let (proof, blinding) = secret.prove(input, output, aux_data);
+//! let (proof, blinding) = secret.prove(input, output, b"aux data");
 //!
 //! // Verification
-//! use ark_vrf::pedersen::Verifier;
-//! let result = Public::verify(input, output, aux_data, &proof);
+//! let result = Public::verify(input, output, b"aux data", &proof);
 //!
-//! // Verify the proof was created using a specific public key
-//! // This requires knowledge of the blinding factor
-//! let expected_commitment = (public.0 + MySuite::BLINDING_BASE * blinding).into_affine();
-//! assert_eq!(proof.key_commitment(), expected_commitment);
+//! // Verify the proof was created using a specific public key.
+//! // This requires knowledge of the blinding factor.
+//! let expected = (public.0 + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
 use crate::ietf::IetfSuite;
