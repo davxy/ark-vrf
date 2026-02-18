@@ -34,7 +34,7 @@ pub trait Codec<S: Suite> {
 
     /// Point encode.
     fn point_encode(pt: &AffinePoint<S>) -> Vec<u8> {
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(Self::POINT_ENCODED_LEN);
         Self::point_encode_into(pt, &mut buf);
         buf
     }
@@ -47,7 +47,7 @@ pub trait Codec<S: Suite> {
 
     /// Scalar encode.
     fn scalar_encode(sc: &ScalarField<S>) -> Vec<u8> {
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(Self::SCALAR_ENCODED_LEN);
         Self::scalar_encode_into(sc, &mut buf);
         buf
     }
@@ -136,7 +136,7 @@ where
             buf.push(0x00);
             return;
         }
-        let mut tmp = Vec::new();
+        let mut tmp = Vec::with_capacity(<Self as Codec<S>>::SCALAR_ENCODED_LEN);
         let sw = pt.into_sw();
 
         let is_odd = sw.y.into_bigint().is_odd();
@@ -188,7 +188,7 @@ where
     }
 
     fn scalar_encode_into(sc: &ScalarField<S>, buf: &mut Vec<u8>) {
-        let mut tmp = Vec::new();
+        let mut tmp = Vec::with_capacity(<Self as Codec<S>>::SCALAR_ENCODED_LEN);
         sc.serialize_compressed(&mut tmp).unwrap();
         tmp.reverse();
         buf.extend_from_slice(&tmp[..]);

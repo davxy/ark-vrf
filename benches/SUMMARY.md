@@ -16,24 +16,24 @@ Criterion: `--quick` mode
 
 | Benchmark                    |     Time |
 |:-----------------------------|---------:|
-| key_from_seed                | 83.8 us  |
-| key_from_scalar              | 82.3 us  |
-| vrf_output                   | 80.9 us  |
-| hash_to_curve_ell2_rfc_9380  | 74.2 us  |
-| challenge_rfc_9381           | 997 ns   |
-| point_to_hash_rfc_9381       | 414.1 ns |
-| nonce_rfc_8032               | 2.42 us  |
-| point_encode                 | 140.7 ns |
-| point_decode                 | 15.9 us  |
-| scalar_encode                | 102.6 ns |
-| scalar_decode                | 123.9 ns |
+| key_from_seed                | 84.1 us  |
+| key_from_scalar              | 82.0 us  |
+| vrf_output                   | 80.8 us  |
+| hash_to_curve_ell2_rfc_9380  | 74.5 us  |
+| challenge_rfc_9381           | 920 ns   |
+| point_to_hash_rfc_9381       | 336.7 ns |
+| nonce_rfc_8032               | 2.26 us  |
+| point_encode                 | 46.0 ns  |
+| point_decode                 | 15.3 us  |
+| scalar_encode                | 21.2 ns  |
+| scalar_decode                | 120.9 ns |
 
 ## IETF VRF Operations (`ietf.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| ietf_prove             | 173.3 us |
-| ietf_verify            | 352.1 us |
+| ietf_prove             | 168.7 us |
+| ietf_verify            | 344.4 us |
 
 ## Pedersen VRF Operations (`pedersen.rs`)
 

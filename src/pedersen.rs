@@ -55,15 +55,26 @@ pub trait PedersenSuite: IetfSuite {
         input: &AffinePoint<Self>,
         aux: &[u8],
     ) -> ScalarField<Self> {
+        use digest::Digest;
         const DOM_SEP_START: u8 = 0xCC;
         const DOM_SEP_END: u8 = 0x00;
-        let mut buf = [Self::SUITE_ID, &[DOM_SEP_START]].concat();
-        Self::Codec::scalar_encode_into(secret, &mut buf);
-        Self::Codec::point_encode_into(input, &mut buf);
-        buf.extend_from_slice(aux);
-        buf.push(DOM_SEP_END);
-        let hash = &utils::hash::<Self::Hasher>(&buf);
-        ScalarField::<Self>::from_be_bytes_mod_order(hash)
+        let mut buf = Vec::with_capacity(Self::Codec::POINT_ENCODED_LEN);
+        let hash = Self::Hasher::new()
+            .chain_update(Self::SUITE_ID)
+            .chain_update([DOM_SEP_START])
+            .chain_update({
+                Self::Codec::scalar_encode_into(secret, &mut buf);
+                &buf
+            })
+            .chain_update({
+                buf.clear();
+                Self::Codec::point_encode_into(input, &mut buf);
+                &buf
+            })
+            .chain_update(aux)
+            .chain_update([DOM_SEP_END])
+            .finalize();
+        ScalarField::<Self>::from_be_bytes_mod_order(&hash)
     }
 }
 
@@ -332,7 +343,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
         // response scalars s and sb need to be included separately.
         let mut hasher = S::Hasher::new();
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(3 * S::Codec::SCALAR_ENCODED_LEN);
         for e in items {
             buf.clear();
             S::Codec::scalar_encode_into(&e.c, &mut buf);
