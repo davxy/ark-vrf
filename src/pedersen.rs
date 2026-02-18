@@ -39,6 +39,9 @@ use ark_ec::VariableBaseMSM;
 pub const PEDERSEN_BASE_SEED: &[u8] =
     b"basis caecans lucis occultae quae mentem fugit et tenebras iis qui vident creat";
 
+/// Suite extension for Pedersen VRF support.
+///
+/// Provides the additional cryptographic parameters required by the Pedersen VRF scheme.
 pub trait PedersenSuite: IetfSuite {
     /// Blinding base.
     const BLINDING_BASE: AffinePoint<Self>;

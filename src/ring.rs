@@ -117,6 +117,7 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Kzg<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Kzg<S>, CurveConfig<S>>;
 
+/// Ring proof batch verifier (KZG-based).
 pub type RingBatchVerifier<S> = ring_proof::ring_verifier::KzgBatchVerifier<
     <S as RingSuite>::Pairing,
     CurveConfig<S>,
@@ -136,7 +137,9 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// - `ring_proof`: Membership proof binding the commitment to the ring
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite> {
+    /// Pedersen VRF proof (key commitment and VRF correctness).
     pub pedersen_proof: PedersenProof<S>,
+    /// Ring membership proof binding the key commitment to the ring.
     pub ring_proof: RingBareProof<S>,
 }
 
@@ -471,13 +474,16 @@ pub struct VerifierKeyBuilder<S: RingSuite> {
     raw_vk: RawVerifierKey<S>,
 }
 
+/// Pairing G1 affine point type.
 pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
+/// Pairing G2 affine point type.
 pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 
 /// Trait for accessing Structured Reference String entries in Lagrangian basis.
 ///
 /// Provides access to precomputed SRS elements needed for efficient ring operations.
 pub trait SrsLookup<S: RingSuite> {
+    /// Look up a range of SRS elements. Returns `None` if the range is out of bounds.
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
 
@@ -558,17 +564,23 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 type RingPreparedBatchItem<S> =
     ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
+/// Pre-processed data for a single ring proof awaiting batch verification.
 pub struct BatchItem<S: RingSuite> {
     ring: RingPreparedBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
 }
 
+/// Batch verifier for ring VRF proofs.
+///
+/// Collects multiple ring proofs and verifies them together, amortizing the
+/// cost of pairing checks and multi-scalar multiplications.
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
     pedersen_batch: pedersen::BatchVerifier<S>,
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
+    /// Create a new batch verifier from a ring verifier instance.
     pub fn new(ring_verifier: RingVerifier<S>) -> Self {
         Self {
             ring_batch: ring_verifier.kzg_batch_verifier(),
@@ -576,6 +588,10 @@ impl<S: RingSuite> BatchVerifier<S> {
         }
     }
 
+    /// Prepare a proof for deferred batch verification.
+    ///
+    /// Performs the cheap per-proof work (hashing, transcript setup) without
+    /// the expensive pairing and MSM checks.
     pub fn prepare(
         &self,
         input: Input<S>,
@@ -591,11 +607,13 @@ impl<S: RingSuite> BatchVerifier<S> {
         BatchItem { ring, pedersen }
     }
 
+    /// Push a previously prepared item into the batch.
     pub fn push_prepared(&mut self, item: BatchItem<S>) {
         self.pedersen_batch.push_prepared(item.pedersen);
         self.ring_batch.push_prepared(item.ring);
     }
 
+    /// Prepare and push a proof in one step.
     pub fn push(
         &mut self,
         input: Input<S>,
@@ -607,6 +625,10 @@ impl<S: RingSuite> BatchVerifier<S> {
         self.push_prepared(prepared);
     }
 
+    /// Verify all collected proofs in a single batch.
+    ///
+    /// Checks both the Pedersen proofs (via MSM) and the ring proofs (via pairing).
+    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
         self.pedersen_batch.verify()?;
         self.ring_batch
