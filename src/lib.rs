@@ -111,11 +111,16 @@ pub mod reexports {
 
 use codec::Codec;
 
+/// Suite's affine curve point type.
 pub type AffinePoint<S> = <S as Suite>::Affine;
+/// Suite's base field type.
 pub type BaseField<S> = <AffinePoint<S> as AffineRepr>::BaseField;
+/// Suite's scalar field type.
 pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
+/// Suite's curve configuration type.
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
+/// Suite's hash output type.
 pub type HashOutput<S> = digest::Output<<S as Suite>::Hasher>;
 
 /// Overarching errors.
@@ -230,9 +235,9 @@ pub trait Suite: Copy {
 /// Implements automatic zeroization on drop.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Secret<S: Suite> {
-    // Secret scalar.
+    /// Secret scalar.
     pub scalar: ScalarField<S>,
-    // Cached public point.
+    /// Cached public key.
     pub public: Public<S>,
 }
 
@@ -405,6 +410,10 @@ macro_rules! suite_types {
         pub type IetfProof = $crate::ietf::Proof<$suite>;
         #[allow(dead_code)]
         pub type PedersenProof = $crate::pedersen::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type PedersenBatchItem = $crate::pedersen::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type PedersenBatchVerifier = $crate::pedersen::BatchVerifier<$suite>;
     };
 }
 
@@ -412,7 +421,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use suites::testing::{Input, Secret};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {

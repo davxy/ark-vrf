@@ -359,13 +359,13 @@ impl<S: RingSuite> RingProofParams<S> {
     ///
     /// Returns a builder and associated PCS parameters that can be used to
     /// construct a verifier key by adding public keys in batches.
-    pub fn verifier_key_builder(&self) -> (RingVerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
+    pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
         let piop_domain_size = piop_domain_size::<S>(self.piop.keyset_part_size);
         let builder_key = RingBuilderKey::<S>::from_srs(&self.pcs, piop_domain_size);
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
-        let builder = RingVerifierKeyBuilder::new(self, &builder_pcs_params);
+        let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
         (builder, builder_pcs_params)
     }
 
@@ -466,7 +466,7 @@ type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct RingVerifierKeyBuilder<S: RingSuite> {
+pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
     raw_vk: RawVerifierKey<S>,
 }
@@ -499,7 +499,7 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
     }
 }
 
-impl<S: RingSuite> RingVerifierKeyBuilder<S> {
+impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
     /// * `params` - Ring proof parameters
@@ -510,7 +510,7 @@ impl<S: RingSuite> RingVerifierKeyBuilder<S> {
         let raw_vk = params.pcs.raw_vk();
         let partial =
             PartialRingCommitment::<S>::empty(&params.piop, lookup, raw_vk.g1.into_group());
-        RingVerifierKeyBuilder { partial, raw_vk }
+        VerifierKeyBuilder { partial, raw_vk }
     }
 
     /// Get the number of remaining slots available in the ring.
@@ -555,17 +555,17 @@ impl<S: RingSuite> RingVerifierKeyBuilder<S> {
     }
 }
 
+type RingPreparedBatchItem<S> =
+    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+
+pub struct BatchItem<S: RingSuite> {
+    ring: RingPreparedBatchItem<S>,
+    pedersen: pedersen::BatchItem<S>,
+}
+
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
     pedersen_batch: pedersen::BatchVerifier<S>,
-}
-
-pub type RingPreparedBatchItem<S> =
-    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
-
-pub struct PreparedBatchItem<S: RingSuite> {
-    ring: RingPreparedBatchItem<S>,
-    pedersen: pedersen::BatchEntry<S>,
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
@@ -582,16 +582,16 @@ impl<S: RingSuite> BatchVerifier<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) -> PreparedBatchItem<S> {
+    ) -> BatchItem<S> {
         let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
         let ring = self
             .ring_batch
             .prepare(proof.ring_proof.clone(), key_commitment);
-        PreparedBatchItem { ring, pedersen }
+        BatchItem { ring, pedersen }
     }
 
-    pub fn push_prepared(&mut self, item: PreparedBatchItem<S>) {
+    pub fn push_prepared(&mut self, item: BatchItem<S>) {
         self.pedersen_batch.push_prepared(item.pedersen);
         self.ring_batch.push_prepared(item.ring);
     }
@@ -639,7 +639,11 @@ macro_rules! ring_suite_types {
         #[allow(dead_code)]
         pub type RingProof = $crate::ring::Proof<$suite>;
         #[allow(dead_code)]
-        pub type RingVerifierKeyBuilder = $crate::ring::RingVerifierKeyBuilder<$suite>;
+        pub type RingVerifierKeyBuilder = $crate::ring::VerifierKeyBuilder<$suite>;
+        #[allow(dead_code)]
+        pub type RingBatchItem = $crate::ring::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type RingBatchVerifier = $crate::ring::BatchVerifier<$suite>;
     };
 }
 
