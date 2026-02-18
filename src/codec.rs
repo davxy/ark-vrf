@@ -10,6 +10,12 @@ pub trait Codec<S: Suite> {
     /// Whether the codec uses big endian byte order.
     const BIG_ENDIAN: bool;
 
+    /// Point compressed encoded length in bytes.
+    const POINT_ENCODED_LEN: usize;
+
+    /// Scalar compressed encoded length in bytes.
+    const SCALAR_ENCODED_LEN: usize;
+
     /// Point encode into the given buffer.
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>);
 
@@ -35,17 +41,24 @@ pub trait Codec<S: Suite> {
 
     /// Scalar decode.
     fn scalar_decode(buf: &[u8]) -> ScalarField<S>;
+}
 
-    /// Point encoded length in bytes.
-    fn point_encoded_len() -> usize {
-        AffinePoint::<S>::generator().serialized_size(ark_serialize::Compress::Yes)
-    }
+/// Number of flag bits used in arkworks compressed point serialization.
+///
+/// Twisted Edwards curves use 1 bit (x-coordinate sign).
+/// Short Weierstrass curves use 2 bits (infinity + y-coordinate sign).
+pub trait CompressFlagBits {
+    const FLAG_BITS: u32;
+}
 
-    /// Point encoded length in bytes.
-    fn scalar_encoded_len() -> usize {
-        use ark_ff::Zero;
-        ScalarField::<S>::zero().serialized_size(ark_serialize::Compress::Yes)
-    }
+impl<P: ark_ec::twisted_edwards::TECurveConfig> CompressFlagBits
+    for ark_ec::twisted_edwards::Affine<P>
+{
+    const FLAG_BITS: u32 = 1;
+}
+
+impl<P: SWCurveConfig> CompressFlagBits for ark_ec::short_weierstrass::Affine<P> {
+    const FLAG_BITS: u32 = 2;
 }
 
 /// Arkworks codec.
@@ -53,8 +66,21 @@ pub trait Codec<S: Suite> {
 /// Little endian. Points flags in MSB. Compression enabled.
 pub struct ArkworksCodec;
 
-impl<S: Suite> Codec<S> for ArkworksCodec {
+impl<S: Suite> Codec<S> for ArkworksCodec
+where
+    BaseField<S>: PrimeField,
+    AffinePoint<S>: CompressFlagBits,
+{
     const BIG_ENDIAN: bool = false;
+
+    // Arkworks compressed point encoding: base field coordinate + flag bits.
+    // The formula matches arkworks' `serialized_size_with_flags`:
+    // ceil((MODULUS_BIT_SIZE + FLAG_BITS) / 8).
+    const POINT_ENCODED_LEN: usize = (BaseField::<S>::MODULUS_BIT_SIZE as usize
+        + AffinePoint::<S>::FLAG_BITS as usize
+        + 7)
+        / 8;
+    const SCALAR_ENCODED_LEN: usize = (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         pt.serialize_compressed(buf).unwrap();
@@ -85,6 +111,12 @@ where
     AffinePoint<S>: te_sw_map::SWMapping<CurveConfig<S>>,
 {
     const BIG_ENDIAN: bool = true;
+
+    // SEC1 compressed point: 1 flag byte + base field element in big-endian.
+    const POINT_ENCODED_LEN: usize =
+        1 + (BaseField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
+    const SCALAR_ENCODED_LEN: usize =
+        (ScalarField::<S>::MODULUS_BIT_SIZE as usize + 7) / 8;
 
     fn point_encode_into(pt: &AffinePoint<S>, buf: &mut Vec<u8>) {
         use ark_ff::biginteger::BigInteger;
@@ -125,7 +157,7 @@ where
         let mut buf = buf.to_vec();
         buf.reverse();
 
-        let enc_len = S::Codec::point_encoded_len();
+        let enc_len = S::Codec::POINT_ENCODED_LEN;
         let y_flag = if buf.len() + 1 == enc_len {
             // Flag has not been included by the encoder, use even.
             0x02
@@ -178,24 +210,66 @@ pub fn scalar_decode<S: Suite>(buf: &[u8]) -> ScalarField<S> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::suites::testing::{Public, Secret};
+pub mod testing {
+    use super::*;
     use crate::testing::TEST_SEED;
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-    #[test]
-    fn codec_works() {
-        let secret = Secret::from_seed(TEST_SEED);
+    pub fn encoded_lengths<S: Suite>() {
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+
+        let point_buf = S::Codec::point_encode(&public.0);
+        assert_eq!(
+            point_buf.len(),
+            S::Codec::POINT_ENCODED_LEN,
+            "POINT_ENCODED_LEN mismatch: const {} vs actual {}",
+            S::Codec::POINT_ENCODED_LEN,
+            point_buf.len(),
+        );
+
+        let scalar_buf = S::Codec::scalar_encode(&secret.scalar);
+        assert_eq!(
+            scalar_buf.len(),
+            S::Codec::SCALAR_ENCODED_LEN,
+            "SCALAR_ENCODED_LEN mismatch: const {} vs actual {}",
+            S::Codec::SCALAR_ENCODED_LEN,
+            scalar_buf.len(),
+        );
+    }
+
+    pub fn roundtrip<S: Suite>() {
+        use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
 
         let mut buf = Vec::new();
         secret.serialize_compressed(&mut buf).unwrap();
-        let secret2 = Secret::deserialize_compressed(&mut &buf[..]).unwrap();
-        assert_eq!(secret, secret2);
+        let secret2 = Secret::<S>::deserialize_compressed(&mut &buf[..]).unwrap();
+        assert_eq!(secret.scalar, secret2.scalar);
 
         let mut buf = Vec::new();
         let public = secret.public();
         public.serialize_compressed(&mut buf).unwrap();
-        let public2 = Public::deserialize_compressed(&mut &buf[..]).unwrap();
-        assert_eq!(public, public2);
+        let public2 = Public::<S>::deserialize_compressed(&mut &buf[..]).unwrap();
+        assert_eq!(public.0, public2.0);
+    }
+
+    #[macro_export]
+    macro_rules! codec_suite_tests {
+        ($suite:ty) => {
+            mod codec {
+                use super::*;
+
+                #[test]
+                fn encoded_lengths() {
+                    $crate::codec::testing::encoded_lengths::<$suite>();
+                }
+
+                #[test]
+                fn roundtrip() {
+                    $crate::codec::testing::roundtrip::<$suite>();
+                }
+            }
+        };
     }
 }
