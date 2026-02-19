@@ -93,9 +93,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .prove(setup.input, setup.output, b"ad", &prover);
         let verifier_key = setup.params.verifier_key(&setup.ring);
         let commitment = verifier_key.commitment();
-        let verifier = setup
-            .params
-            .verifier(setup.params.clone_verifier_key(&verifier_key));
+        let verifier = setup.params.verifier(verifier_key.clone());
 
         c.benchmark_group(format!("{}/ring_verify", S::SUITE_NAME))
             .sample_size(10)
@@ -115,11 +113,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_verifier_from_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| {
-                    setup
-                        .params
-                        .verifier(black_box(setup.params.clone_verifier_key(&verifier_key)))
-                });
+                b.iter(|| setup.params.verifier(black_box(verifier_key.clone())));
             });
 
         c.benchmark_group(format!("{}/ring_vk_from_commitment", S::SUITE_NAME))
@@ -212,14 +206,14 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         .sample_size(10)
         .bench_function("batch_verifier_new", |b| {
             b.iter(|| {
-                let vk = setup.params.clone_verifier_key(&verifier_key);
+                let vk = verifier_key.clone();
                 let verifier = setup.params.verifier(vk);
                 BatchVerifier::<S>::new(black_box(verifier))
             });
         });
 
     // A single BatchVerifier for prepare benchmarks (prepare takes &self).
-    let vk = setup.params.clone_verifier_key(&verifier_key);
+    let vk = verifier_key.clone();
     let verifier = setup.params.verifier(vk);
     let batch_verifier = BatchVerifier::<S>::new(verifier);
 
@@ -232,7 +226,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .bench_function(id.clone(), |b| {
                 b.iter_batched(
                     || {
-                        let vk = setup.params.clone_verifier_key(&verifier_key);
+                        let vk = verifier_key.clone();
                         let verifier = setup.params.verifier(vk);
                         BatchVerifier::<S>::new(verifier)
                     },
@@ -290,7 +284,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                                 )
                             })
                             .collect::<Vec<_>>();
-                        let vk = setup.params.clone_verifier_key(&verifier_key);
+                        let vk = verifier_key.clone();
                         let verifier = setup.params.verifier(vk);
                         let bv = BatchVerifier::<S>::new(verifier);
                         (bv, prepared)
@@ -306,7 +300,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
 
         // batch_verify: verify a fully-populated batch.
         {
-            let vk = setup.params.clone_verifier_key(&verifier_key);
+            let vk = verifier_key.clone();
             let verifier = setup.params.verifier(vk);
             let mut bv = BatchVerifier::<S>::new(verifier);
             for item in &batch_items[..batch_size] {
