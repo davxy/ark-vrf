@@ -93,9 +93,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .prove(setup.input, setup.output, b"ad", &prover);
         let verifier_key = setup.params.verifier_key(&setup.ring);
         let commitment = verifier_key.commitment();
-        let verifier = setup
-            .params
-            .verifier(verifier_key.clone());
+        let verifier = setup.params.verifier(verifier_key.clone());
 
         c.benchmark_group(format!("{}/ring_verify", S::SUITE_NAME))
             .sample_size(10)
@@ -115,11 +113,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_verifier_from_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| {
-                    setup
-                        .params
-                        .verifier(black_box(verifier_key.clone()))
-                });
+                b.iter(|| setup.params.verifier(black_box(verifier_key.clone())));
             });
 
         c.benchmark_group(format!("{}/ring_vk_from_commitment", S::SUITE_NAME))
