@@ -32,6 +32,7 @@
 use crate::ietf::IetfSuite;
 use crate::*;
 use ark_ec::VariableBaseMSM;
+use ark_std::rand::{CryptoRng, RngCore};
 
 /// Magic spell for [`PedersenSuite::BLINDING_BASE`] generation in built-in implementations.
 ///
@@ -318,33 +319,23 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         self.push_prepared(entry);
     }
 
-    /// Batch-verify multiple Pedersen proofs using a single multi-scalar multiplication.
+    /// Batch-verify using a deterministic RNG derived from the proof data.
     ///
-    /// For each proof i, two equations are checked with independent random scalars
-    /// t_i (eq1) and u_i (eq2):
-    ///   Eq1: O_i*c_i + Ok_i == I_i*s_i
-    ///   Eq2: Yb_i*c_i + R_i == G*s_i + B*sb_i
-    ///
-    /// The random linear combination yields a (5N + 2)-point MSM.
-    ///
-    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    /// See [`verify_with_rng`](Self::verify_with_rng) for details.
     pub fn verify(&self) -> Result<(), Error> {
-        use ark_std::rand::{RngCore, SeedableRng};
+        use ark_std::rand::SeedableRng;
 
-        let items = &self.items;
-        if items.is_empty() {
+        if self.items.is_empty() {
             return Ok(());
         }
 
-        let n = items.len();
-
-        // Generate deterministic random scalars from entry data.
-        // Hash (c, s, sb) per entry into a seed, then use ChaCha20Rng to sample 2N scalars.
-        // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
-        // response scalars s and sb need to be included separately.
+        // Generate deterministic seed from entry data.
+        // Hash (c, s, sb) per entry; the challenge c already commits to
+        // (Yb, I, O, R, Ok, ad), so only the response scalars need to be
+        // included separately.
         let mut hasher = S::Hasher::new();
         let mut buf = Vec::with_capacity(3 * S::Codec::SCALAR_ENCODED_LEN);
-        for e in items {
+        for e in &self.items {
             buf.clear();
             S::Codec::scalar_encode_into(&e.c, &mut buf);
             S::Codec::scalar_encode_into(&e.s, &mut buf);
@@ -357,6 +348,26 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         seed[..copy_len].copy_from_slice(&hash[..copy_len]);
 
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        self.verify_with_rng(&mut rng)
+    }
+
+    /// Batch-verify multiple Pedersen proofs using a single multi-scalar multiplication.
+    ///
+    /// For each proof i, two equations are checked with independent random scalars
+    /// t_i (eq1) and u_i (eq2):
+    ///   Eq1: O_i*c_i + Ok_i == I_i*s_i
+    ///   Eq2: Yb_i*c_i + R_i == G*s_i + B*sb_i
+    ///
+    /// The random linear combination yields a (5N + 2)-point MSM.
+    ///
+    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    pub fn verify_with_rng<R: RngCore + CryptoRng>(&self, rng: &mut R) -> Result<(), Error> {
+        let items = &self.items;
+        if items.is_empty() {
+            return Ok(());
+        }
+
+        let n = items.len();
 
         // Sample 2N random 128-bit scalars (t_i for eq1, u_i for eq2).
         // 128-bit scalars are sufficient for the Schwartz-Zippel soundness argument
@@ -422,7 +433,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
