@@ -1,10 +1,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{rand::SeedableRng, UniformRand};
+use ark_std::{UniformRand, rand::SeedableRng};
 use ark_vrf::{AffinePoint, Input, Secret};
 use bench_utils::BenchInfo;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_ietf_bc_prove<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf_bc::Prover;
