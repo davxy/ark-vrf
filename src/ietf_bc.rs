@@ -103,10 +103,7 @@ impl<S: Suite> Prover<S> for Secret<S> {
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 
-        let c = S::challenge(
-            &[&self.public.0, &input.0, &output.0, &u, &v],
-            ad.as_ref(),
-        );
+        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &u, &v], ad.as_ref());
         let s = k + c * self.scalar;
         Proof { u, v, s }
     }
@@ -280,10 +277,8 @@ impl<S: Suite> BatchVerifier<S> {
                 .finalize();
 
             // Split h_i into l_i and r_i (each CHALLENGE_LEN bytes, LE integers).
-            let l_i =
-                ScalarField::<S>::from_le_bytes_mod_order(&h_i[..clen]);
-            let r_i =
-                ScalarField::<S>::from_le_bytes_mod_order(&h_i[clen..2 * clen]);
+            let l_i = ScalarField::<S>::from_le_bytes_mod_order(&h_i[..clen]);
+            let r_i = ScalarField::<S>::from_le_bytes_mod_order(&h_i[clen..2 * clen]);
 
             // Per-proof bases and scalars:
             // pk_i with scalar -r_i*c_i
