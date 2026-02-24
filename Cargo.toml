@@ -53,6 +53,10 @@ name = "pedersen"
 harness = false
 
 [[bench]]
+name = "ietf_bc"
+harness = false
+
+[[bench]]
 name = "ring"
 harness = false
 required-features = ["ring"]

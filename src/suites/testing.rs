@@ -52,5 +52,6 @@ mod tests {
     use super::*;
     codec_suite_tests!(TestSuite);
     ietf_suite_tests!(TestSuite);
+    ietf_bc_suite_tests!(TestSuite);
     pedersen_suite_tests!(TestSuite);
 }
