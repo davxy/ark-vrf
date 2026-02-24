@@ -91,6 +91,7 @@ use zeroize::Zeroize;
 
 pub mod codec;
 pub mod ietf;
+pub mod ietf_bc;
 pub mod pedersen;
 pub mod suites;
 pub mod utils;
@@ -419,6 +420,12 @@ macro_rules! suite_types {
         pub type PedersenBatchItem = $crate::pedersen::BatchItem<$suite>;
         #[allow(dead_code)]
         pub type PedersenBatchVerifier = $crate::pedersen::BatchVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type IetfBcProof = $crate::ietf_bc::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type IetfBcBatchItem = $crate::ietf_bc::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type IetfBcBatchVerifier = $crate::ietf_bc::BatchVerifier<$suite>;
     };
 }
 

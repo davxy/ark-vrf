@@ -1,0 +1,113 @@
+#[macro_use]
+mod bench_utils;
+
+use ark_std::{UniformRand, rand::SeedableRng};
+use ark_vrf::{AffinePoint, Input, Public, Secret};
+use bench_utils::BenchInfo;
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+
+fn bench_ietf_bc_prove<S: BenchInfo>(c: &mut Criterion) {
+    use ark_vrf::ietf_bc::Prover;
+
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let input = Input::<S>::new(b"bench input data").unwrap();
+    let output = secret.output(input);
+
+    let name = format!("{}/ietf_bc_prove", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| secret.prove(black_box(input), black_box(output), b"ad"));
+    });
+}
+
+fn bench_ietf_bc_verify<S: BenchInfo>(c: &mut Criterion) {
+    use ark_vrf::ietf_bc::{Prover, Verifier};
+
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let public = secret.public();
+    let input = Input::<S>::new(b"bench input data").unwrap();
+    let output = secret.output(input);
+    let proof = secret.prove(input, output, b"ad");
+
+    let name = format!("{}/ietf_bc_verify", S::SUITE_NAME);
+    c.bench_function(&name, |b| {
+        b.iter(|| {
+            public
+                .verify(
+                    black_box(input),
+                    black_box(output),
+                    b"ad",
+                    black_box(&proof),
+                )
+                .unwrap()
+        });
+    });
+}
+
+const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
+
+fn bench_ietf_bc_batch<S: BenchInfo>(c: &mut Criterion) {
+    use ark_vrf::ietf_bc::{BatchVerifier, Prover};
+
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let public = secret.public();
+    let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
+
+    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let batch_items: Vec<_> = (0..max_batch_size)
+        .map(|i| {
+            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
+            let output = secret.output(input);
+            let ad = format!("ad-{i}").into_bytes();
+            let proof = secret.prove(input, output, &ad);
+            (input, output, ad, proof)
+        })
+        .collect();
+
+    let prepare_group = format!("{}/ietf_bc_batch_prepare", S::SUITE_NAME);
+    let verify_group = format!("{}/ietf_bc_batch_verify", S::SUITE_NAME);
+
+    for &batch_size in BATCH_SIZES {
+        let id = BenchmarkId::from_parameter(batch_size);
+
+        c.benchmark_group(&prepare_group)
+            .sample_size(10)
+            .bench_function(id.clone(), |b| {
+                b.iter(|| {
+                    let _: Vec<_> = batch_items[..batch_size]
+                        .iter()
+                        .map(|(input, output, ad, proof)| {
+                            BatchVerifier::<S>::prepare(&public, *input, *output, ad, proof)
+                        })
+                        .collect();
+                });
+            });
+
+        {
+            let mut bv = BatchVerifier::<S>::new();
+            for (input, output, ad, proof) in &batch_items[..batch_size] {
+                bv.push(&public, *input, *output, ad, proof);
+            }
+
+            c.benchmark_group(&verify_group)
+                .sample_size(10)
+                .bench_function(id, |b| {
+                    b.iter(|| bv.verify().unwrap());
+                });
+        }
+    }
+}
+
+fn bench_ietf_bc_suite<S: BenchInfo>(c: &mut Criterion) {
+    S::print_info();
+    bench_ietf_bc_prove::<S>(c);
+    bench_ietf_bc_verify::<S>(c);
+    bench_ietf_bc_batch::<S>(c);
+}
+
+fn bench_ietf_bc(c: &mut Criterion) {
+    for_each_suite!(c, bench_ietf_bc_suite);
+}
+
+criterion_group!(benches, bench_ietf_bc);
+
+criterion_main!(benches);
