@@ -433,7 +433,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
+    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
