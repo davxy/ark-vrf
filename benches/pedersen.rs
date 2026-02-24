@@ -62,6 +62,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
     let prepare_group = format!("{}/pedersen_batch_prepare", S::SUITE_NAME);
     let verify_group = format!("{}/pedersen_batch_verify", S::SUITE_NAME);
+    let verify_rng_group = format!("{}/pedersen_batch_verify_rng", S::SUITE_NAME);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);
@@ -87,8 +88,15 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
             c.benchmark_group(&verify_group)
                 .sample_size(10)
-                .bench_function(id, |b| {
+                .bench_function(id.clone(), |b| {
                     b.iter(|| bv.verify().unwrap());
+                });
+
+            let mut rng = rand_chacha::ChaCha20Rng::from_seed([0; 32]);
+            c.benchmark_group(&verify_rng_group)
+                .sample_size(10)
+                .bench_function(id.clone(), |b| {
+                    b.iter(|| bv.verify_with_rng(&mut rng).unwrap());
                 });
         }
     }
