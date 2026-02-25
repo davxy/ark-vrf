@@ -93,6 +93,7 @@ pub mod codec;
 pub mod ietf;
 pub mod pedersen;
 pub mod suites;
+pub mod thin;
 pub mod utils;
 
 #[cfg(feature = "ring")]
@@ -419,6 +420,12 @@ macro_rules! suite_types {
         pub type PedersenBatchItem = $crate::pedersen::BatchItem<$suite>;
         #[allow(dead_code)]
         pub type PedersenBatchVerifier = $crate::pedersen::BatchVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type ThinProof = $crate::thin::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type ThinBatchItem = $crate::thin::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type ThinBatchVerifier = $crate::thin::BatchVerifier<$suite>;
     };
 }
 

@@ -1,0 +1,93 @@
+[
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-1",
+    "sk": "2e5fcb767f3f6528c6ff5304168c79bff667f830156433d7660fb98d72bc5a01",
+    "pk": "30f478ac3c74e78188193194fed53fb95ab9a5e3bb0b5177540d0e3668bfb4d6",
+    "alpha": "",
+    "salt": "",
+    "ad": "",
+    "h": "deb13729d88f7003e094dcef981aa8e62ce35d7dff20143c1ece67335dd23257",
+    "gamma": "33d5f173ef131ffa7cd137ced05e2374a78d085f8e0d0a8c2f64b5488e535ceb",
+    "beta": "0b5d3619b606a30f43d0b80f9b72d619caca4ae6c86afd6a7a54dd1a892ff34559279ca1341f177a2909cb97a2593ffc92399507867d29cb86615b83a4061d31",
+    "proof_r": "118dd3cfc5756dfc1b578126760e10d7471abe1ff6d76e22a5f752b6afa4d716",
+    "proof_s": "375d792b914d143e82ec33e7544aa94405c9784c0dbacd81a2ad5c4b3d44f103"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-2",
+    "sk": "ca48b2a3649f62e7c240e22851cb514b57ca1dfad8de5e6d79f06329357bd008",
+    "pk": "308996eb46e494d162f29bd6abacf14685bd204eeaeefd78d226da240dab9e3c",
+    "alpha": "0a",
+    "salt": "",
+    "ad": "",
+    "h": "0602a39a45b8b51b28f4489367e3215d8886e650a7dcd8a21e7365a2bfa1994e",
+    "gamma": "703fa7dce4f7acd51a92b5e845af77babee0c9cf9a680901c621ff98b0637821",
+    "beta": "282c8073be0faba5ec8d75b7c69790d4032be1af17b00d32d44b1d23a5b0d4935333e66481a212c42a0c6165c7ba568c6203a6b7e687bf513559b998af718fa0",
+    "proof_r": "317fa60adf1a5fac8d510353838d1e49b323c39935a85d892d2ebbab08bc7001",
+    "proof_s": "d209455769f0b257d2d720b82d37fd2103138c514754aa6634a6230a6e71d708"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-3",
+    "sk": "d0286e69edde875b7d5587068d03ffda50d2af165574c7b29136962b81796603",
+    "pk": "b818097374bdcec279c69356de3398a240f2542bfbe07b339d56d0b452c16cc6",
+    "alpha": "",
+    "salt": "",
+    "ad": "0b8c",
+    "h": "deb13729d88f7003e094dcef981aa8e62ce35d7dff20143c1ece67335dd23257",
+    "gamma": "28e78b819a6449ebeaa94866dbb93290177bb4c58fe9ac9dc5a82a8c871afd1a",
+    "beta": "d882d5ca4549f669da6c325957914bb19f0b7ee9eda29a8012cc2fde2b0e2f21ad321f6e6c2096582cae71af42f2ca345fb2dc3bf55cdabda35b9d937f54f89e",
+    "proof_r": "34657cde961c2014c00e4a14152768fa1d62a6b61b94951043643dd28c3acf50",
+    "proof_s": "e18ca02e141544a712421e07367e830f40384b9c68eda098aa9191b84755aa0c"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-4",
+    "sk": "0e141badfe43931575e134862426bc47b86440d2b2e643862c1250a1464a2203",
+    "pk": "205db8f7d735e7df59410f974e39d0c6797119034b090f749f0306ce7c27fb40",
+    "alpha": "73616d706c65",
+    "salt": "",
+    "ad": "",
+    "h": "d9151cdd64a5d16bf3149694f13dfcbc7df5b3657f70e3aa8daa2f67b0e75ccf",
+    "gamma": "5014e883d3c7994ecac93af9e6a95aeca4d5fc3be5e77fac8d8af1f313b0b12a",
+    "beta": "6035d22c8348614fb393c2910e81412711ff1defcfd1939e5744cbec10600489979bbe25a47f1738cb4937d9a3a16914cef65563a57b9142638a151d4ea459ff",
+    "proof_r": "4e88145ba8cba0498a9802c1ed100e3e99a711e117facc225dfef133cd53d44c",
+    "proof_s": "8a44f01da4bbeb83c0512b62767f5e95f32f197001e970330f68fa7d7b77e50d"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-5",
+    "sk": "c5b89638ae4eb16237a1d6f39d48687e9bf12733eb74c6b21edf871ca576fa02",
+    "pk": "8146083de63a51ca4c8c28126e5bed6439e3a2ad6c23307b96c030d3dabaffd6",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "",
+    "h": "4faa81c497e007f695dceca4d92abddf2f9d79aa298b5fad477079907fabe033",
+    "gamma": "b6014d3da5289c81014b6b5fb077183f4fc67370d589b04703f331d497c21b5a",
+    "beta": "bb1f90f574cac7deaac1a52fab802e4305cceababa4d874fcf1e0c122f13ee966c05b375f7d48df5ae7d286cb470f26a0f10ff19abe4f3d90d568c27621b4f0b",
+    "proof_r": "286fcfa1cc70bfed0df4ed1c70d115e27dc72f8846461497fe733abebdfffa68",
+    "proof_s": "1f2bf51891f026adcf150e94fe6eeb5cae17febeeb535b9a2d95d4be517f9b04"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-6",
+    "sk": "c5b89638ae4eb16237a1d6f39d48687e9bf12733eb74c6b21edf871ca576fa02",
+    "pk": "8146083de63a51ca4c8c28126e5bed6439e3a2ad6c23307b96c030d3dabaffd6",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "4faa81c497e007f695dceca4d92abddf2f9d79aa298b5fad477079907fabe033",
+    "gamma": "b6014d3da5289c81014b6b5fb077183f4fc67370d589b04703f331d497c21b5a",
+    "beta": "bb1f90f574cac7deaac1a52fab802e4305cceababa4d874fcf1e0c122f13ee966c05b375f7d48df5ae7d286cb470f26a0f10ff19abe4f3d90d568c27621b4f0b",
+    "proof_r": "286fcfa1cc70bfed0df4ed1c70d115e27dc72f8846461497fe733abebdfffa68",
+    "proof_s": "0c0a2395c7ea63b81df1d37ccc671b5d09f3bb7dcbca84c1f0cf854cd2dc8907"
+  },
+  {
+    "comment": "jubjub_sha-512_tai_thin - vector-7",
+    "sk": "d742adcfce2a341263158af472d390d680eef01422290420cc61107497597005",
+    "pk": "a1014ce47c0acb248907b95d8cac8427d56ec88f6b88e6efa85e9953a2ef2e6b",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "4faa81c497e007f695dceca4d92abddf2f9d79aa298b5fad477079907fabe033",
+    "gamma": "ef00ace4b541a74d06b05d03aa8447cb66a3a11aea47f26a0197ab7ff0498bb8",
+    "beta": "9b5d9daf0ae53d37fa2d1458005194e14c20520ede7fb12cb76b4b27743104bcbc71e6815708bf6136360c667515f5707ad68037b6efd32e59e17df962c8d10a",
+    "proof_r": "8c0d78129a849ec6380eb75d390a1c9b2c98d0f8d7e3081e641a4a21f5d6c0a9",
+    "proof_s": "c86ea5470684e8ccb6a5366f1e447be272a00cc8783651a75dbe7b0cd7c9c407"
+  }
+]
