@@ -35,8 +35,8 @@
     "h": "9abb8b379b4996df594cfa81df97ae3bcfa93812264d3a792537f129f842f89f",
     "gamma": "fd23a28fa40d9174064391dc9e13f11a12390d6f2bf17e4d065804583b107366",
     "beta": "1d29a4a4d0d673597665159420c6feebc56d4e97dea19babd6c9582575a3cecc",
-    "proof_c": "a26ccb53b2f4031218e96d0d540c5f6b",
-    "proof_s": "ad129b7d534d4dabf304b4a78c0f5859f40dbce94a1465258aaa4f67891ae302"
+    "proof_c": "e685817ed71c8bfd503d9cff3e847e54",
+    "proof_s": "48abbd246cf044959f7748db8ddbbfeb0eb377cd79734fa155741f4a367d0a01"
   },
   {
     "comment": "testing_sha-256_tai_ietf - vector-4",
@@ -74,8 +74,8 @@
     "h": "4c5a38e6e5c093341a0860c65e5917ed64855a6961e76be49d864868eda0665c",
     "gamma": "676ffa36995cc8fd773766150f7d265205a6362864618c184226103cd497b182",
     "beta": "b0e07545da9f2e7ada5312ce5acf1cf25c47a4585f679501eac4de1388a06dd1",
-    "proof_c": "c49386ae3f23b7a1232bfd9668d95a90",
-    "proof_s": "6fbe1c9f7c43f95b162fbe41f82506c26e324e90bc5f6ad4fb5c116cd696ce0e"
+    "proof_c": "c45049bd75db3b18197292dcf2354d48",
+    "proof_s": "2b05431570be1d64bd3d7a986b43c9fd9307884b33fb6a9fbd97566ea85ec80c"
   },
   {
     "comment": "testing_sha-256_tai_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "4c5a38e6e5c093341a0860c65e5917ed64855a6961e76be49d864868eda0665c",
     "gamma": "91593956ac82020256ea51c60478de47f68a2438d06c16da217c84e191c8b1c1",
     "beta": "9b900b742efecb5faa1dd3dc2ad1e9582295931bdef64cd6baaddd7a27ab1c90",
-    "proof_c": "f838c2df60f966de00ecce2f32b3ec18",
-    "proof_s": "c8121d53a55da3ed698cc4af31b6ef6263cb07c6217125dea8d0777363893501"
+    "proof_c": "c1d23faca149e10e05ff4f692d1c9968",
+    "proof_s": "04bd603a96f8b5f480266388dbf1873468264ad254bfa4397b29dc4e224fd505"
   }
 ]

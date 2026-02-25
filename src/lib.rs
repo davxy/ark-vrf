@@ -180,14 +180,20 @@ pub trait Suite: Copy {
     /// The algorithm generate the nonce value in a deterministic
     /// pseudorandom fashion.
     ///
+    /// The `ad` (additional data) parameter is mixed into the nonce
+    /// derivation to ensure that proofs binding different auxiliary
+    /// data to the same input produce distinct nonces. Omitting this
+    /// would allow secret key recovery from two proofs that share
+    /// an input but differ in additional data.
+    ///
     /// `Hasher` output **MUST** be be at least 64 bytes.
     ///
     /// # Panics
     ///
     /// This function panics if `Hasher` output is less than 64 bytes.
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>) -> ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, &pt.0)
+    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>, ad: &[u8]) -> ScalarField<Self> {
+        utils::nonce_rfc_8032::<Self>(sk, &pt.0, ad)
     }
 
     /// Challenge generation as described by RCF-9381 section 5.4.3.

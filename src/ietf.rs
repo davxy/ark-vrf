@@ -153,7 +153,7 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let k = S::nonce(&self.scalar, input);
+        let k = S::nonce(&self.scalar, input, ad.as_ref());
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);

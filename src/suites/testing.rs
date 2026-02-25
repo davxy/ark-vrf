@@ -1,6 +1,6 @@
 //! Suite for testing
 
-use crate::{pedersen::PedersenSuite, utils::hash, *};
+use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -15,19 +15,23 @@ impl Suite for TestSuite {
     type Hasher = sha2::Sha256;
     type Codec = codec::ArkworksCodec;
 
-    fn nonce(sk: &ScalarField, pt: Input) -> ScalarField
+    fn nonce(sk: &ScalarField, pt: Input, ad: &[u8]) -> ScalarField
     where
         Self: Suite,
         Self::Codec: codec::Codec<Self>,
     {
+        use digest::Digest;
         let mut buf = Vec::with_capacity(
             <Self::Codec as codec::Codec<Self>>::SCALAR_ENCODED_LEN
                 + <Self::Codec as codec::Codec<Self>>::POINT_ENCODED_LEN,
         );
         <Self::Codec as codec::Codec<Self>>::scalar_encode_into(sk, &mut buf);
         <Self::Codec as codec::Codec<Self>>::point_encode_into(&pt.0, &mut buf);
-        let h = &hash::<Self::Hasher>(&buf)[..];
-        <Self::Codec as codec::Codec<Self>>::scalar_decode(h)
+        let h = Self::Hasher::new()
+            .chain_update(&buf)
+            .chain_update(ad)
+            .finalize();
+        <Self::Codec as codec::Codec<Self>>::scalar_decode(&h)
     }
 }
 

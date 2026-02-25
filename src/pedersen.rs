@@ -163,8 +163,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let blinding = S::blinding(&self.scalar, &input.0, ad.as_ref());
 
         // Construct the nonces
-        let k = S::nonce(&self.scalar, input);
-        let kb = S::nonce(&blinding, input);
+        let k = S::nonce(&self.scalar, input, ad.as_ref());
+        let kb = S::nonce(&blinding, input, ad.as_ref());
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);

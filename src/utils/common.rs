@@ -221,10 +221,14 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// The deterministic generation ensures that the same nonce is never used twice
 /// with the same secret key for different inputs, which is critical for security.
 ///
+/// The `ad` (additional data) is mixed into the hash to ensure distinct nonces
+/// when the same secret key and input are used with different auxiliary data.
+///
 /// # Parameters
 ///
 /// * `sk` - The secret scalar key
 /// * `input` - The input point
+/// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
 ///
@@ -233,7 +237,11 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// # Panics
 ///
 /// This function panics if `Suite::Hasher` output is less than 64 bytes.
-pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S> {
+pub fn nonce_rfc_8032<S: Suite>(
+    sk: &ScalarField<S>,
+    input: &AffinePoint<S>,
+    ad: &[u8],
+) -> ScalarField<S> {
     assert!(
         S::Hasher::output_size() >= 64,
         "Suite::Hasher output is required to be >= 64 bytes"
@@ -246,6 +254,7 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
     let h = S::Hasher::new()
         .chain_update(&sk_hash[32..])
         .chain_update(&pt_buf)
+        .chain_update(ad)
         .finalize();
 
     S::Codec::scalar_decode(&h)
@@ -260,6 +269,9 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 /// It generates a deterministic nonce using HMAC-based extraction, which provides
 /// strong security guarantees against nonce reuse or biased nonce generation.
 ///
+/// The `ad` (additional data) is mixed into the initial hash to ensure distinct
+/// nonces when the same secret key and input are used with different auxiliary data.
+///
 /// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
 /// `from_be_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
 /// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
@@ -271,17 +283,25 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 ///
 /// * `sk` - The secret scalar key
 /// * `input` - The input point
+/// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
 ///
 /// A scalar field element to be used as a nonce
 #[cfg(feature = "rfc-6979")]
-pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S>
+pub fn nonce_rfc_6979<S: Suite>(
+    sk: &ScalarField<S>,
+    input: &AffinePoint<S>,
+    ad: &[u8],
+) -> ScalarField<S>
 where
     S::Hasher: digest::core_api::BlockSizeUser,
 {
     let raw = codec::point_encode::<S>(input);
-    let h1 = hash::<S::Hasher>(&raw);
+    let h1 = S::Hasher::new()
+        .chain_update(&raw)
+        .chain_update(ad)
+        .finalize();
 
     let v = [1; 32];
     let k = [0; 32];
