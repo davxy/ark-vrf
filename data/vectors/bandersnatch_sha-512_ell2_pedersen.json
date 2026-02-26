@@ -13,8 +13,8 @@
     "proof_pk_com": "3b21abd58807bb6d93797001adaacd7113ec320dcf32d1226494e18a57931fc4",
     "proof_r": "c815d32540ec86fb96cbf69cc3f0c43a7fb144dd21f6069edc98cd4015f2b6d5",
     "proof_ok": "d063f1434d6282fd31182c18302e8e5755b71921d4f503a5fe8a52f643b9f26e",
-    "proof_s": "e5cedc671a42098f57816dbb324ec38a87a54f4b00972e357423f5db03354f13",
-    "proof_sb": "2561a685afff7047cfdd65afa1a9a92d29dad245da838b05268f88605ab4fa19"
+    "proof_s": "a69ccc7cfd3c0bbf0048023e1d0e3fb702add388cf770befdbd96f37643acf0b",
+    "proof_sb": "9792a6be45645e1904d1528654a1a4b070da6f1de7c0e79094a41836b04d1707"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-2",
@@ -30,8 +30,8 @@
     "proof_pk_com": "c1322e7a65b83996c25e37a84e36598333b0d417619242c0cb3d9d972edde848",
     "proof_r": "be11a18f9c700122f58123eced4d154e48fda19e6a15325aa5b40a6d88fabb09",
     "proof_ok": "0afe87e2c68e9127b4eaca7637e21e5208d648544d27029675dc1138df75ad2b",
-    "proof_s": "cb41e903a300f2bee6b4aa011598690225b41d66cef7b581022ca15307895a00",
-    "proof_sb": "b72f3425d08c2afa3856821e3dab0051b342b0ca9a7b869ac593148087aa421a"
+    "proof_s": "1ed894a3ce969506e669530f731ee4e589244dcd04bec6fad47b37e4231cc508",
+    "proof_sb": "601168e3c7365d8b5ed64ddb141dbdda13e66a7e752c333f468d5b6e3723a415"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-3",
@@ -47,8 +47,8 @@
     "proof_pk_com": "54c04f259f9e40ee086031d29960b12b6b6407e9de14985001c7265587941831",
     "proof_r": "5c8684a01c32d61aaaa06caccbcb4ef6f65cff2a04a730c5b315597e9bb2bbab",
     "proof_ok": "7a6212e5b5a6e88cb3d9039e139383e354bf26c977708c55e1c481efed39ce8c",
-    "proof_s": "ce528e39121f18c22f6566523cb291a660a4e27ed8b94e9a45d93ed8109d7a0c",
-    "proof_sb": "0fe94a883ade46d06ea5345c74d5e74c7f92bf822b57c92ccbb67faf4d12630f"
+    "proof_s": "72bdc9626592d8d5b1ba2bd4c9002166659a610cb8b80790b87aa372ca54e303",
+    "proof_sb": "59a6b5fdafbf2c27383f5dfd1ce8be7e4706fcb643ce18855b8b37c2f6544a02"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-4",
@@ -64,8 +64,8 @@
     "proof_pk_com": "d26274e014ebfc19a9c1a951193858b972eae3360ed35635e89f1f9dbe432be5",
     "proof_r": "10ccf14fd4dcbedb49f6b14a768237aff580284795545165f80249aee6ab0de2",
     "proof_ok": "574f7f2e6491d45b0176a704b31a95c7c37bdb45f4801e5c1d57d474682a96a0",
-    "proof_s": "4fad7e0faca61fd6008011cae0ae61e34eae8ba11373b487078ae030b4897c14",
-    "proof_sb": "bf5f27de3b2d797155398204988f8c044ec827b609da165bb0b64142fca54d19"
+    "proof_s": "84a1959568d7f113004775c1be907b346a07774f882c5171bf0e3660c6ef830b",
+    "proof_sb": "7389952dcaf25fe28d5359c9b887aecc653b1ed835d8d39177ca95d349b46b03"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-5",
@@ -81,8 +81,8 @@
     "proof_pk_com": "a91807f0ee57d2344a8942808bf35c65b5bd4fde16752a98f3e3dc67be8c103d",
     "proof_r": "cf517b803df2d4dd811eddbf5182960bdd11b197df41d131d0962859363b540b",
     "proof_ok": "e170999eaae94e2de0ae5b32293fd4beb11a7f2f9191d7823ee40aa25cf03048",
-    "proof_s": "8faa55e1d69d353f0da6a6b276b0adfd23e3228f82490dd9c479e5bcffaba419",
-    "proof_sb": "00c76bfa07e6603ca7dca3f11921f2852630b85a9539d49fe1d707b85c905f13"
+    "proof_s": "cfccf9e9c2845671870241e63446cdff76d491d78fe8d74991f450838267340b",
+    "proof_sb": "cbe6b933efe403652fa3a14bc19a1d8e44fc904327220afa60d874130b886410"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-6",
@@ -98,8 +98,8 @@
     "proof_pk_com": "d03caebf8577c1d2ed30a09708683195f11883411dc170e3ea9f09a2cbf86bab",
     "proof_r": "2dc6d9e2b9e016a5f27daa49d373f1274f164da88ac9f3088ba67b6332deca43",
     "proof_ok": "ff8c3c3fbeda625b2534b071cec8d14f1572f10b979b5d5139fb2687e42a541f",
-    "proof_s": "b398eba8be1819c798d0f69bc87be386c77426f1366c1aa1a291e8fae647b701",
-    "proof_sb": "e5d0ab6f7325d25dbef4222392cb848851926a2a8234cd4bb4fc059fb119190b"
+    "proof_s": "a6871ba1c5b842973c0874b073eaadd13843ef94d8ff82fa56dcf6370efa740a",
+    "proof_sb": "4c0294369a45030428faadcc1827d1e6521a5fc12b7b7e09cad959d00f2af108"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_pedersen - vector-7",
@@ -115,7 +115,7 @@
     "proof_pk_com": "91f1ca92eeaa0b604faf3e4811c12b44991ea33cf582a529a4bc4429a3b6cc5a",
     "proof_r": "2dce0eb9684582fbb5b9e9534811f2fff76ff4e63b446f82f8f53a535eb0021a",
     "proof_ok": "1962ce1b62aaec76bd34822f86e8146dff613fdb6d879ccc04860017d08e5adb",
-    "proof_s": "b302aca865948a67603c6eb159f0af27a901159bd6e22f82c30b048a0d806703",
-    "proof_sb": "ec440f25b481ac453c9c9efa59c5a9cd9253204f14af41d272673147f02ad40f"
+    "proof_s": "bd29ff7437657ca87aa75d44a523d6e02bc0a943802a712e5fc9a2d45d4c990c",
+    "proof_sb": "41e370c9e2a502fb18f4ae1e6e748b12f3504da3d37164412736fd9669f71a19"
   }
 ]

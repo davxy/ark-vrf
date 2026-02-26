@@ -13,8 +13,8 @@
     "proof_pk_com": "5ebd05cab58921b689158c401e59d2ce8d4449d311662f962c0f673206663ea2",
     "proof_r": "323581a3d8c509c27724748a4533b01924b464083205ff4f9ec6c8e3ac68ba2d",
     "proof_ok": "3654463b0218e8a6060618f9013283cc064c861a02b38904a8e2594546a9f29b",
-    "proof_s": "ada95edd429a814bd0c48585532842857a19dfe13fb301d36e3b37dc6d4aeb00",
-    "proof_sb": "04416d1055f93e7f22d6ad5764f1094b510aa448a9305ce795cfa16320b88600"
+    "proof_s": "3e9ec318154e07ec08809f859101e6dd44fb0dc6b9889e4ca8ee8402a6ade603",
+    "proof_sb": "dbe060f371673bcd1ad9e3c381f54e00685766149711a917d0fe80e84d65ae02"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-2",
@@ -30,8 +30,8 @@
     "proof_pk_com": "95be7ea0d859f8f81358afcad8dccdc1fae18a5c458be0cde5f99582f5a9b401",
     "proof_r": "313d1d30f3306cc67b6c2c8fe8ba09f3b7590c2671e2a144b13a9315c7367e96",
     "proof_ok": "86f8334a09893150672d7ddead5c73ce63937b6ce2660707421461ef0e46ea8b",
-    "proof_s": "6f39f531f572e1a035fe4b125e7af24dd171dea2f59185ee22a8d5280b0a2c00",
-    "proof_sb": "c101dec71dc5767f84d68887e6ea06c4e4ab6135cee862fce988bc9b915b5605"
+    "proof_s": "7a989fc74592d5e06341393f1a01458dbc09dc148f29a1f214c2ae6cbe87f301",
+    "proof_sb": "f504138fb339be0a8740a68de2b2428a67d634a7b145be51869f72061b24c205"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-3",
@@ -47,8 +47,8 @@
     "proof_pk_com": "8981402e3c28b9006d9cbe784167a2f6f6ec3b10a8d8e527fecc835de3ec8087",
     "proof_r": "977587f4e2165246812289a061c81f4e780407d30513987dd03ec4bf6f68dd98",
     "proof_ok": "176ec7768e463b0576bd90e2ed3607aef5c124da64edd936d12731851cc338a0",
-    "proof_s": "6424059caf6cb632270d81143fc6adb2c276bf25c2a504978115d61e049e5001",
-    "proof_sb": "eb30eff79fe5578c99d2dd7f8e13a2b81f52c22fd0e6ae8b6cd648c845e2a205"
+    "proof_s": "f8abafd520b285bd8092f90c2d34474e84e9de2fafa5e83af12464916352ec00",
+    "proof_sb": "64e491d1833b32328bc2abdd436a2d58e906630c3ae64bc5c8338134e8f06605"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-4",
@@ -64,8 +64,8 @@
     "proof_pk_com": "9ac3de2981787be78be595c2b539099815d149e38e7229e576bd58d69120af17",
     "proof_r": "930b3c0eaa03d5ef16e366b97b8d56a1ffbb75d579a849b3f19c31842f2d2e06",
     "proof_ok": "9415efa4fa053d60169ab1ce187920b1d10567a114362d3c7178a4dff540139f",
-    "proof_s": "590718b51fd143d326cfdfa0b71071a87a49d204af95e73accbb2dee0c7f6000",
-    "proof_sb": "fa3e55dcee66ebd11f20111a656eece6eef17aced9c25747fdc00c5f9c735901"
+    "proof_s": "3eaeec1ba54c75fcc78ff93718819997e9a61f98ece365007ad5d61266136b03",
+    "proof_sb": "ba061079cfa2d0c3d7543b0337b7195d2d5ee34fc919679fd177e1aeef0a9904"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-5",
@@ -81,8 +81,8 @@
     "proof_pk_com": "5ba0702f2754a02b79d5036d37ad8ed59d8202375cbf7a09b43a39ddc2108210",
     "proof_r": "ba4c49277eb41507e766c8a528fa507758b0bf419ff6764af357520706da5e8d",
     "proof_ok": "981492e18376b53f8cbe1768ecb4072c2d04702e911d823a6e8e3eecd0c54391",
-    "proof_s": "fd3ad6dcb3a8f66331ba86bdafe2a45c6e357df388e5231369d148541709bd04",
-    "proof_sb": "5de05d55cb9c317f0854f2e326ffdc0b0e9b0659eefd489074466cc3e41a7505"
+    "proof_s": "d7c54b5bd00f04b5120183132fe425f5dc07cabe7e8cc23a186f9e6447b15004",
+    "proof_sb": "261a18eaecb7cdc68a800d22e8484189bf877158d913c39312b5a2d6e77d3301"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-6",
@@ -98,8 +98,8 @@
     "proof_pk_com": "ffb25e7ceb49d58d95e809f144e20ba272f241b4ac932a7ab64e907e70d79715",
     "proof_r": "7e60d56c717735e029efed69e51a924382bc69ecc2a1b259d6622c571aa90f91",
     "proof_ok": "244da8ae7212678a0beae987c48fff5b1127be801c081f8472246777bd484509",
-    "proof_s": "75fe03e5337bf6863fab5aa10b96997c04c483900d2cd499aa12da266245f902",
-    "proof_sb": "704470df5879f5181ca7563615b781174c1f7beecd0ef9c063ae7f62f3148c01"
+    "proof_s": "0ebc5d2ac49caf79c4591673acdc7e1cc4ba50ee15cf155e3df21dd49d07f903",
+    "proof_sb": "9076f37468e6f4f19b8be0dcc1a3dcd89ec2433c356b2289b51b544de87bcc00"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_pedersen - vector-7",
@@ -115,7 +115,7 @@
     "proof_pk_com": "3a1522a20a87db09a205a00d8dbde870721b6497f5c2634c4006d528b80db422",
     "proof_r": "de45adb21f7555c446e358c6e7bae24853c842727730f349a59111b2b2fe0e04",
     "proof_ok": "af29abbb8aeca7fded12f8c661d4cd53850686cec18f3adaa9c80b72641d2587",
-    "proof_s": "16615edc7858cc8f46b0c0b2647ad3aeff07640aba8b0029feedb92438f38a02",
-    "proof_sb": "005dfa303bfaf84b1b4f19aec5378ed8b0917aa1ce1c1fb1c437154500ec8b02"
+    "proof_s": "755c97186c68254ba8b12f35545620ab742f8020642831a3216a8e3aebc79d00",
+    "proof_sb": "74113bce2f7899b11e5e6b3013ef0da3ed218129edbb28e7c3712acc4e56b801"
   }
 ]
