@@ -159,12 +159,29 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
+        let ad = ad.as_ref();
+
         // Build blinding factor
-        let blinding = S::blinding(&self.scalar, &input.0, ad.as_ref());
+        let blinding = S::blinding(&self.scalar, &input.0, ad);
 
         // Construct the nonces
-        let k = S::nonce(&self.scalar, input, ad.as_ref());
-        let kb = S::nonce(&blinding, input, ad.as_ref());
+
+        // Bind the blinding factor to the nonce derivation for `k`.
+        // Without it, two proofs with the same (secret, input, ad) but different
+        // blinding factors would reuse `k` with different challenges, enabling
+        // secret key recovery: x = (s1 - s2) / (c1 - c2).
+        let blinding_buf = codec::scalar_encode::<S>(&blinding);
+        let buf = [blinding_buf.as_slice(), ad].concat();
+        let k = S::nonce(&self.scalar, input, &buf);
+
+        // Bind the secret key to the nonce derivation for `kb`.
+        // Without it, two proofs with the same (blinding, input, ad) but different
+        // secret keys would reuse `kb` with different challenges, enabling
+        // blinding factor recovery: b = (sb1 - sb2) / (c1 - c2).
+        // This scenario is unlikely in practice, but worth guarding against.
+        let secret_buf = codec::scalar_encode::<S>(&self.scalar);
+        let buf = [secret_buf.as_slice(), ad].concat();
+        let kb = S::nonce(&blinding, input, &buf);
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -183,7 +200,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad.as_ref());
+        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad);
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -422,7 +439,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
