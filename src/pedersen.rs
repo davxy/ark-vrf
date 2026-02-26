@@ -74,7 +74,7 @@ pub trait PedersenSuite: IetfSuite {
             .chain_update(aux)
             .chain_update([DOM_SEP_END])
             .finalize();
-        ScalarField::<Self>::from_be_bytes_mod_order(&hash)
+        codec::scalar_decode::<Self>(&hash)
     }
 }
 

@@ -163,7 +163,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     hasher.update(ad);
     hasher.update([DOM_SEP_END]);
     let hash = hasher.finalize();
-    ScalarField::<S>::from_be_bytes_mod_order(&hash[..S::CHALLENGE_LEN])
+    codec::scalar_decode::<S>(&hash[..S::CHALLENGE_LEN])
 }
 
 /// Point to a hash according to RFC-9381 section 5.2.
