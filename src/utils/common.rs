@@ -9,7 +9,6 @@ use ark_ec::{
     AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
-use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
 
 #[cfg(not(feature = "std"))]
