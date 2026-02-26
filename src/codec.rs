@@ -16,6 +16,9 @@ impl Endianness {
     pub const fn is_big(self) -> bool {
         matches!(self, Endianness::Big)
     }
+    pub const fn is_little(self) -> bool {
+        matches!(self, Endianness::Little)
+    }
 }
 
 /// Defines points and scalars encoding format.
