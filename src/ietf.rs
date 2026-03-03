@@ -205,6 +205,66 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
     }
 }
 
+/// Delinearize and merge multiple input-output pairs into a single pair.
+///
+/// - N=0: returns the identity point for both input and output.
+/// - N=1: returns the pair as-is, no delinearization.
+/// - N>1: derives 128-bit delinearization scalars and returns
+///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
+fn merge<S: IetfSuite>(
+    pk: &Public<S>,
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> (Input<S>, Output<S>) {
+    if ios.len() == 1 {
+        return (ios[0].0, ios[0].1);
+    }
+
+    let zs = utils::delinearization_scalars::<S>(&pk.0, ios, ad);
+
+    type Projective<S> = <AffinePoint<S> as AffineRepr>::Group;
+    let (input, output) = ios.iter().zip(zs.iter()).fold(
+        (Projective::<S>::zero(), Projective::<S>::zero()),
+        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
+    );
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    (Input(norms[0]), Output(norms[1]))
+}
+
+impl<S: IetfSuite> Secret<S> {
+    /// Generate a proof for multiple input-output pairs using delinearized DLEQ.
+    ///
+    /// When `ios` has a single element, the proof is byte-identical to [`Prover::prove`].
+    /// For N>1, delinearization scalars merge all input-output pairs into a single
+    /// DLEQ proof, amortizing proof size.
+    ///
+    /// When `ios` is empty, the merged input and output are both the identity point,
+    /// reducing to a Schnorr signature over the additional data.
+    pub fn prove_multi(&self, ios: &[(Input<S>, Output<S>)], ad: impl AsRef<[u8]>) -> Proof<S> {
+        let (input, output) = merge(&self.public, ios, ad.as_ref());
+        Prover::prove(self, input, output, ad)
+    }
+}
+
+impl<S: IetfSuite> Public<S> {
+    /// Verify a proof for multiple input-output pairs using delinearized DLEQ.
+    ///
+    /// When `ios` has a single element, delegates to [`Verifier::verify`].
+    /// For N>1, recomputes delinearization scalars and verifies the merged DLEQ.
+    ///
+    /// When `ios` is empty, the merged input and output are both the identity point,
+    /// reducing to a Schnorr signature verification over the additional data.
+    pub fn verify_multi(
+        &self,
+        ios: &[(Input<S>, Output<S>)],
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<(), Error> {
+        let (input, output) = merge(self, ios, ad.as_ref());
+        Verifier::verify(self, input, output, ad, proof)
+    }
+}
+
 #[cfg(test)]
 pub mod testing {
     use super::*;
@@ -223,6 +283,72 @@ pub mod testing {
         assert!(result.is_ok());
     }
 
+    /// N=1 multi proof must be byte-identical to standard Prover::prove,
+    /// and cross-verification works in both directions.
+    pub fn prove_verify_multi_single<S: IetfSuite>() {
+        use ietf::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let input = Input::from_affine(common::random_val(None));
+        let output = secret.output(input);
+
+        let proof_std = secret.prove(input, output, b"foo");
+        let io = (input, output);
+        let proof_multi = secret.prove_multi(&[io], b"foo");
+
+        // Byte-identical proofs
+        let encode = |p: &ietf::Proof<S>| {
+            let mut buf = Vec::new();
+            p.serialize_compressed(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(encode(&proof_std), encode(&proof_multi));
+
+        // Cross-verification: multi proof verifies via standard verifier
+        assert!(public.verify(input, output, b"foo", &proof_multi).is_ok());
+        // Standard proof verifies via multi verifier
+        assert!(public.verify_multi(&[io], b"foo", &proof_std).is_ok());
+    }
+
+    /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
+    pub fn prove_verify_multi<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+
+        let ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                (input, secret.output(input))
+            })
+            .collect();
+
+        let proof = secret.prove_multi(&ios, b"bar");
+        assert!(public.verify_multi(&ios, b"bar", &proof).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].1 = secret.output(ios[0].0); // wrong output for that input
+        assert!(public.verify_multi(&bad_ios, b"bar", &proof).is_err());
+
+        // Tamper: wrong input on ios[0]
+        let mut bad_ios = ios.clone();
+        bad_ios[0].0 = ios[1].0;
+        assert!(public.verify_multi(&bad_ios, b"bar", &proof).is_err());
+
+        // Tamper: wrong ad
+        assert!(public.verify_multi(&ios, b"baz", &proof).is_err());
+    }
+
+    pub fn prove_verify_multi_empty<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let proof = secret.prove_multi(&[], b"bar");
+
+        assert!(public.verify_multi(&[], b"bar", &proof).is_ok());
+        assert!(public.verify_multi(&[], b"baz", &proof).is_err());
+    }
+
     #[macro_export]
     macro_rules! ietf_suite_tests {
         ($suite:ty) => {
@@ -232,6 +358,21 @@ pub mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ietf::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_single() {
+                    $crate::ietf::testing::prove_verify_multi_single::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::ietf::testing::prove_verify_multi::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_empty() {
+                    $crate::ietf::testing::prove_verify_multi_empty::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::ietf::testing::TestVector<$suite>);

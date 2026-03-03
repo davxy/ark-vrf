@@ -344,6 +344,58 @@ where
     }
 }
 
+/// Delinearization scalars for multi-input DLEQ proofs.
+///
+/// Derives per-input scalars using the technique from Privacy Pass / dleq_vrf.
+/// Each scalar is 128-bit, providing 2^{-128} Schwartz-Zippel soundness.
+///
+/// Uses domain separator `0x04` (unused by TAI=0x01, challenge=0x02, point_to_hash=0x03).
+pub fn delinearization_scalars<S: Suite>(
+    pk: &AffinePoint<S>,
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> Vec<ScalarField<S>> {
+    const DOM_SEP_FRONT: u8 = 0x04;
+    const DOM_SEP_BACK: u8 = 0x00;
+
+    let n = ios.len() as u32;
+
+    // Seed: H(suite_id || 0x04 || encode(pk) || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([DOM_SEP_FRONT]);
+
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    S::Codec::point_encode_into(pk, &mut pt_buf);
+    hasher.update(&pt_buf);
+
+    hasher.update(n.to_le_bytes());
+
+    for (input, output) in ios {
+        pt_buf.clear();
+        S::Codec::point_encode_into(&input.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+        pt_buf.clear();
+        S::Codec::point_encode_into(&output.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+
+    hasher.update(ad);
+    hasher.update([DOM_SEP_BACK]);
+    let seed = hasher.finalize();
+
+    // For each i: z_i = H(seed || i_as_u32_le) truncated to 128 bits
+    (0..n)
+        .map(|i| {
+            let h = S::Hasher::new()
+                .chain_update(&seed)
+                .chain_update(i.to_le_bytes())
+                .finalize();
+            ScalarField::<S>::from_le_bytes_mod_order(&h[..16])
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
