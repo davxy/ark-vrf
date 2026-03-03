@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-25
+
+### Fixed
+
+- **Security**: Bind additional data (`ad`) to nonce derivation. Previously, nonces
+  depended only on the secret key and input point, allowing secret key recovery from
+  two proofs over the same input with different additional data. Affects all schemes.
+- **Security**: Pedersen VRF nonce derivation now cross-binds the blinding factor
+  into the `k` nonce and the secret key into the `kb` nonce, preventing recovery
+  of either scalar when the other varies across proofs.
+- Challenge serialization now validates that the value fits in `CHALLENGE_LEN`,
+  rejecting proofs with oversized challenge values.
+
+### Changed
+
+- `Suite::nonce` signature now takes an additional `ad: &[u8]` parameter.
+  This is a breaking change for custom `Suite` implementations that override `nonce`.
+- Reduce `CHALLENGE_LEN` from 32 to 16 for all built-in suites.
+  This matches the value prescribed by RFC-9381 for curves with comparable security
+  level (128 bits), and reduces proof size without affecting security.
+- Challenge and blinding factor decoding now use suite codec (`scalar_decode`)
+  instead of `from_be_bytes_mod_order`, so endianness follows the suite configuration.
+
 ## [0.2.1] - 2026-02-19
 
 ### Changed
@@ -66,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `no_std` support.
 - `parallel` and `asm` optimization features.
 
+[0.3.0]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/davxy/ark-vrf/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/davxy/ark-vrf/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/davxy/ark-vrf/compare/v0.1.0...v0.1.1

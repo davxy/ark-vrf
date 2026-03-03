@@ -55,14 +55,18 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
         let c_buf = codec::scalar_encode::<S>(&self.c);
         if c_buf.len() < S::CHALLENGE_LEN {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
-            return Err(ark_serialize::SerializationError::NotEnoughSpace);
+            return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let buf = if S::Codec::ENDIANNESS.is_big() {
-            &c_buf[c_buf.len() - S::CHALLENGE_LEN..]
+        let (c, zero) = if S::Codec::ENDIANNESS.is_little() {
+            c_buf.split_at(S::CHALLENGE_LEN)
         } else {
-            &c_buf[..S::CHALLENGE_LEN]
+            let (high, low) = c_buf.split_at(c_buf.len() - S::CHALLENGE_LEN);
+            (low, high)
         };
-        writer.write_all(buf)?;
+        if zero.iter().any(|&b| b != 0) {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        writer.write_all(c)?;
         self.s.serialize_with_mode(&mut writer, compress)?;
         Ok(())
     }
@@ -153,7 +157,7 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let k = S::nonce(&self.scalar, input);
+        let k = S::nonce(&self.scalar, input, ad.as_ref());
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);

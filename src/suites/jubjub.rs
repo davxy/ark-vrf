@@ -12,7 +12,8 @@
 //!   - G.x = 8076246640662884909881801758704306714034609987455869804520522091855516602923
 //!   - G.y = 13262374693698910701929044844600465831413122818447359594527400194675274060458
 //!
-//! * `cLen` = 32.
+//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
+//!   approximately 128-bit security level.
 //!
 //! * The key pair generation primitive is `PK = sk * G`, with x the secret
 //!   key scalar and `G` the group generator. In this ciphersuite, the secret
@@ -55,7 +56,7 @@ suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"JubJub_SHA-512_TAI";
-    const CHALLENGE_LEN: usize = 32;
+    const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
     type Hasher = sha2::Sha512;

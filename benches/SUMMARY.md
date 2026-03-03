@@ -32,22 +32,22 @@ Criterion: `--quick` mode
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| ietf_prove             | 168.7 us |
-| ietf_verify            | 344.4 us |
+| ietf_prove             | 169.5 us |
+| ietf_verify            | 258.1 us |
 
 ## Pedersen VRF Operations (`pedersen.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| pedersen_prove         | 476.7 us |
-| pedersen_verify        | 460.1 us |
+| pedersen_prove         | 482.6 us |
+| pedersen_verify        | 358.1 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.09 us  | 2.14 us  | 4.22 us  | 7.92 us  | 15.9 us  | 32.1 us  | 67.4 us  | 133.6 us | 269.7 us |
-| batch_verify         | 504.0 us | 598.1 us | 763.6 us | 1.74 ms  | 2.13 ms  | 3.61 ms  | 6.20 ms  | 8.46 ms  | 15.8 ms  |
+| batch_prepare        | 0.91 us  | 1.84 us  | 3.65 us  | 6.73 us  | 13.4 us  | 27.3 us  | 60.2 us  | 115.6 us | 229.6 us |
+| batch_verify         | 507.6 us | 600.2 us | 711.9 us | 1.63 ms  | 1.98 ms  | 3.36 ms  | 6.24 ms  | 8.41 ms  | 14.8 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 

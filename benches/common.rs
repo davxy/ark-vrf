@@ -76,7 +76,13 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
     c.bench_function(&name, |b| {
-        b.iter(|| S::nonce(black_box(secret.scalar()), black_box(input)));
+        b.iter(|| {
+            S::nonce(
+                black_box(secret.scalar()),
+                black_box(input),
+                black_box(b"bench"),
+            )
+        });
     });
 }
 
