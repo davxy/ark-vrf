@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Multi-input IETF VRF (`prove_multi`/`verify_multi`) using delinearized DLEQ.
+  Proves multiple input-output pairs with a single proof. N=1 is byte-identical
+  to standard RFC-9381. N=0 reduces to a Schnorr signature over additional data.
+
 ## [0.3.0] - 2026-02-25
 
 ### Fixed
