@@ -13,7 +13,8 @@
 //!   - G.x = 30900340493481298850216505686589334086208278925799850409469406976849338430199
 //!   - G.y = 12663882780877899054958035777720958383845500985908634476792678820121468453298
 //!
-//! * `cLen` = 32.
+//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
+//!   approximately 128-bit security level.
 //!
 //! * The key pair generation primitive is `PK = sk * G`, with x the secret
 //!   key scalar and `G` the group generator. In this ciphersuite, the secret
