@@ -104,11 +104,40 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
     }
 }
 
+/// Delinearize and merge multiple input-output pairs into a single pair.
+///
+/// - N=0: returns the identity point for both input and output.
+/// - N=1: returns the pair as-is, no delinearization.
+/// - N>1: derives 128-bit delinearization scalars and returns
+///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
+fn merge<S: IetfSuite>(
+    pk: &Public<S>,
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> (Input<S>, Output<S>) {
+    if ios.len() == 1 {
+        return (ios[0].0, ios[0].1);
+    }
+
+    let zs = utils::delinearization_scalars::<S>(&pk.0, ios, ad);
+
+    type Projective<S> = <AffinePoint<S> as AffineRepr>::Group;
+    let (input, output) = ios.iter().zip(zs.iter()).fold(
+        (Projective::<S>::zero(), Projective::<S>::zero()),
+        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
+    );
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    (Input(norms[0]), Output(norms[1]))
+}
+
 /// Trait for types that can generate VRF proofs.
 ///
 /// Implementors can create cryptographic proofs that a VRF output
 /// is correctly derived from an input using their secret key.
 pub trait Prover<S: IetfSuite> {
+    /// The public key associated with this prover.
+    fn public_key(&self) -> Public<S>;
+
     /// Generate a proof for the given input/output and additional data.
     ///
     /// Creates a non-interactive zero-knowledge proof binding the input, output,
@@ -118,6 +147,19 @@ pub trait Prover<S: IetfSuite> {
     /// * `output` - VRF output point (γ = x·H)
     /// * `ad` - Additional data to bind to the proof
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
+
+    /// Generate a proof for multiple input-output pairs using delinearized DLEQ.
+    ///
+    /// When `ios` has a single element, the proof is byte-identical to [`Prover::prove`].
+    /// For N>1, delinearization scalars merge all input-output pairs into a single
+    /// DLEQ proof, amortizing proof size.
+    ///
+    /// When `ios` is empty, the merged input and output are both the identity point,
+    /// reducing to a Schnorr signature over the additional data.
+    fn prove_multi(&self, ios: &[(Input<S>, Output<S>)], ad: impl AsRef<[u8]>) -> Proof<S> {
+        let (input, output) = merge(&self.public_key(), ios, ad.as_ref());
+        self.prove(input, output, ad)
+    }
 }
 
 /// Trait for entities that can verify VRF proofs.
@@ -125,6 +167,9 @@ pub trait Prover<S: IetfSuite> {
 /// Implementors can verify that a VRF output is correctly derived
 /// from an input using a specific public key.
 pub trait Verifier<S: IetfSuite> {
+    /// The public key associated with this verifier.
+    fn public_key(&self) -> Public<S>;
+
     /// Verify a proof for the given input/output and additional data.
     ///
     /// Verifies the cryptographic relationship between input, output, and proof
@@ -143,9 +188,30 @@ pub trait Verifier<S: IetfSuite> {
         aux: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
+
+    /// Verify a proof for multiple input-output pairs using delinearized DLEQ.
+    ///
+    /// When `ios` has a single element, delegates to [`Verifier::verify`].
+    /// For N>1, recomputes delinearization scalars and verifies the merged DLEQ.
+    ///
+    /// When `ios` is empty, the merged input and output are both the identity point,
+    /// reducing to a Schnorr signature verification over the additional data.
+    fn verify_multi(
+        &self,
+        ios: &[(Input<S>, Output<S>)],
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<(), Error> {
+        let (input, output) = merge(&self.public_key(), ios, ad.as_ref());
+        self.verify(input, output, ad, proof)
+    }
 }
 
 impl<S: IetfSuite> Prover<S> for Secret<S> {
+    fn public_key(&self) -> Public<S> {
+        self.public
+    }
+
     /// Implements the IETF VRF proving algorithm.
     ///
     /// This follows the procedure specified in RFC-9381 section 5.1, with extensions
@@ -174,6 +240,10 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
 }
 
 impl<S: IetfSuite> Verifier<S> for Public<S> {
+    fn public_key(&self) -> Public<S> {
+        *self
+    }
+
     /// Implements the IETF VRF verification algorithm.
     ///
     /// This follows the procedure specified in RFC-9381 section 5.3, with extensions
@@ -202,66 +272,6 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         (&c_exp == c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
-    }
-}
-
-/// Delinearize and merge multiple input-output pairs into a single pair.
-///
-/// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no delinearization.
-/// - N>1: derives 128-bit delinearization scalars and returns
-///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
-fn merge<S: IetfSuite>(
-    pk: &Public<S>,
-    ios: &[(Input<S>, Output<S>)],
-    ad: &[u8],
-) -> (Input<S>, Output<S>) {
-    if ios.len() == 1 {
-        return (ios[0].0, ios[0].1);
-    }
-
-    let zs = utils::delinearization_scalars::<S>(&pk.0, ios, ad);
-
-    type Projective<S> = <AffinePoint<S> as AffineRepr>::Group;
-    let (input, output) = ios.iter().zip(zs.iter()).fold(
-        (Projective::<S>::zero(), Projective::<S>::zero()),
-        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
-    );
-    let norms = CurveGroup::normalize_batch(&[input, output]);
-    (Input(norms[0]), Output(norms[1]))
-}
-
-impl<S: IetfSuite> Secret<S> {
-    /// Generate a proof for multiple input-output pairs using delinearized DLEQ.
-    ///
-    /// When `ios` has a single element, the proof is byte-identical to [`Prover::prove`].
-    /// For N>1, delinearization scalars merge all input-output pairs into a single
-    /// DLEQ proof, amortizing proof size.
-    ///
-    /// When `ios` is empty, the merged input and output are both the identity point,
-    /// reducing to a Schnorr signature over the additional data.
-    pub fn prove_multi(&self, ios: &[(Input<S>, Output<S>)], ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (input, output) = merge(&self.public, ios, ad.as_ref());
-        Prover::prove(self, input, output, ad)
-    }
-}
-
-impl<S: IetfSuite> Public<S> {
-    /// Verify a proof for multiple input-output pairs using delinearized DLEQ.
-    ///
-    /// When `ios` has a single element, delegates to [`Verifier::verify`].
-    /// For N>1, recomputes delinearization scalars and verifies the merged DLEQ.
-    ///
-    /// When `ios` is empty, the merged input and output are both the identity point,
-    /// reducing to a Schnorr signature verification over the additional data.
-    pub fn verify_multi(
-        &self,
-        ios: &[(Input<S>, Output<S>)],
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> Result<(), Error> {
-        let (input, output) = merge(self, ios, ad.as_ref());
-        Verifier::verify(self, input, output, ad, proof)
     }
 }
 
