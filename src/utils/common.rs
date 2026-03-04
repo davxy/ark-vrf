@@ -394,15 +394,19 @@ pub fn delinearize<S: Suite>(
     hasher.update([DOM_SEP_BACK]);
     let seed = hasher.finalize();
 
-    // Derive z_i = H(seed || i_le) truncated to 128 bits, accumulate on the fly.
-    let (input, output) = ios.iter().enumerate().fold(
+    // Seed a ChaCha20Rng from the hash, then draw 128-bit scalars on the fly.
+    use ark_std::rand::{RngCore, SeedableRng};
+    let mut rng_seed = [0u8; 32];
+    let copy_len = seed.len().min(32);
+    rng_seed[..copy_len].copy_from_slice(&seed[..copy_len]);
+    let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
+
+    let (input, output) = ios.iter().fold(
         (zero.into_group(), zero.into_group()),
-        |(h_acc, g_acc), (i, (inp, out))| {
-            let h = S::Hasher::new()
-                .chain_update(&seed)
-                .chain_update((i as u32).to_le_bytes())
-                .finalize();
-            let z = ScalarField::<S>::from_le_bytes_mod_order(&h[..16]);
+        |(h_acc, g_acc), (inp, out)| {
+            let mut buf = [0u8; 16];
+            rng.fill_bytes(&mut buf);
+            let z = ScalarField::<S>::from_le_bytes_mod_order(&buf);
             (h_acc + inp.0 * z, g_acc + out.0 * z)
         },
     );
