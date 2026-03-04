@@ -1,7 +1,7 @@
 //! # Thin-VRF
 //!
-//! Implementation of the Thin VRF scheme as described in the
-//! [W3F ring-vrf specification](https://github.com/davxy/bandersnatch-vrf-spec).
+//! Inspired by the delinearized DLEQ technique from
+//! [BCHSV23](https://eprint.iacr.org/2023/002).
 //!
 //! ThinVrf merges the public-key Schnorr pair `(G, P)` and the VRF I/O pair
 //! `(I, O)` into a single DLEQ relation via delinearization, then proves it
