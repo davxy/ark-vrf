@@ -55,14 +55,18 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
         let c_buf = codec::scalar_encode::<S>(&self.c);
         if c_buf.len() < S::CHALLENGE_LEN {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
-            return Err(ark_serialize::SerializationError::NotEnoughSpace);
+            return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let buf = if S::Codec::ENDIANNESS.is_big() {
-            &c_buf[c_buf.len() - S::CHALLENGE_LEN..]
+        let (c, zero) = if S::Codec::ENDIANNESS.is_little() {
+            c_buf.split_at(S::CHALLENGE_LEN)
         } else {
-            &c_buf[..S::CHALLENGE_LEN]
+            let (high, low) = c_buf.split_at(c_buf.len() - S::CHALLENGE_LEN);
+            (low, high)
         };
-        writer.write_all(buf)?;
+        if zero.iter().any(|&b| b != 0) {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        writer.write_all(c)?;
         self.s.serialize_with_mode(&mut writer, compress)?;
         Ok(())
     }
@@ -153,7 +157,7 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let k = S::nonce(&self.scalar, input);
+        let k = S::nonce(&self.scalar, input, ad.as_ref());
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);
@@ -206,9 +210,11 @@ pub mod testing {
     use super::*;
     use crate::testing::{self as common, SuiteExt};
 
-    pub fn prove_verify<S: IetfSuite>() {
-        use ietf::{Prover, Verifier};
+    fn merge<S: IetfSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
+        utils::delinearize::<S>(ios, ad)
+    }
 
+    pub fn prove_verify<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(None));
@@ -217,6 +223,81 @@ pub mod testing {
         let proof = secret.prove(input, output, b"foo");
         let result = public.verify(input, output, b"foo", &proof);
         assert!(result.is_ok());
+    }
+
+    pub fn prove_verify_multi_empty<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+
+        let (input, output) = merge(&[], b"bar");
+        assert_eq!(input.0, output.0);
+        assert_eq!(input.0, S::Affine::zero());
+        let proof = secret.prove(input, output, b"bar");
+
+        assert!(public.verify(input, output, b"bar", &proof).is_ok());
+
+        let (bi, bo) = merge(&[], b"baz");
+        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
+    }
+
+    /// N=1 merge + prove must be byte-identical to standard Prover::prove,
+    /// and cross-verification works in both directions.
+    pub fn prove_verify_multi_single<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let input = Input::from_affine(common::random_val(None));
+        let output = secret.output(input);
+
+        let proof_std = secret.prove(input, output, b"foo");
+        let io = (input, output);
+        let (mi, mo) = merge(&[io], b"foo");
+        let proof_multi = secret.prove(mi, mo, b"foo");
+
+        // Byte-identical proofs
+        let encode = |p: &ietf::Proof<S>| {
+            let mut buf = Vec::new();
+            p.serialize_compressed(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(encode(&proof_std), encode(&proof_multi));
+
+        // Cross-verification
+        assert!(public.verify(input, output, b"foo", &proof_multi).is_ok());
+        assert!(public.verify(mi, mo, b"foo", &proof_std).is_ok());
+    }
+
+    /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
+    pub fn prove_verify_multi<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+
+        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                (input, secret.output(input))
+            })
+            .collect();
+        ios.push((Input(S::Affine::generator()), Output(public.0)));
+
+        let (input, output) = merge(&ios, b"bar");
+        let proof = secret.prove(input, output, b"bar");
+        assert!(public.verify(input, output, b"bar", &proof).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].1 = secret.output(ios[0].0);
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong input on ios[0]
+        let mut bad_ios = ios.clone();
+        bad_ios[0].0 = ios[1].0;
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong ad
+        let (bi, bo) = merge(&ios, b"baz");
+        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
     }
 
     #[macro_export]
@@ -228,6 +309,21 @@ pub mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ietf::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_single() {
+                    $crate::ietf::testing::prove_verify_multi_single::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::ietf::testing::prove_verify_multi::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_empty() {
+                    $crate::ietf::testing::prove_verify_multi_empty::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::ietf::testing::TestVector<$suite>);

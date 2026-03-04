@@ -55,13 +55,12 @@ pub trait PedersenSuite: IetfSuite {
         input: &AffinePoint<Self>,
         aux: &[u8],
     ) -> ScalarField<Self> {
+        use crate::utils::common::DomSep;
         use digest::Digest;
-        const DOM_SEP_START: u8 = 0xCC;
-        const DOM_SEP_END: u8 = 0x00;
         let mut buf = Vec::with_capacity(Self::Codec::POINT_ENCODED_LEN);
         let hash = Self::Hasher::new()
             .chain_update(Self::SUITE_ID)
-            .chain_update([DOM_SEP_START])
+            .chain_update([DomSep::PedersenBlinding as u8])
             .chain_update({
                 Self::Codec::scalar_encode_into(secret, &mut buf);
                 &buf
@@ -72,9 +71,9 @@ pub trait PedersenSuite: IetfSuite {
                 &buf
             })
             .chain_update(aux)
-            .chain_update([DOM_SEP_END])
+            .chain_update([DomSep::End as u8])
             .finalize();
-        ScalarField::<Self>::from_be_bytes_mod_order(&hash)
+        codec::scalar_decode::<Self>(&hash)
     }
 }
 
@@ -159,12 +158,29 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         output: Output<S>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
+        let ad = ad.as_ref();
+
         // Build blinding factor
-        let blinding = S::blinding(&self.scalar, &input.0, ad.as_ref());
+        let blinding = S::blinding(&self.scalar, &input.0, ad);
 
         // Construct the nonces
-        let k = S::nonce(&self.scalar, input);
-        let kb = S::nonce(&blinding, input);
+
+        // Bind the blinding factor to the nonce derivation for `k`.
+        // Without it, two proofs with the same (secret, input, ad) but different
+        // blinding factors would reuse `k` with different challenges, enabling
+        // secret key recovery: x = (s1 - s2) / (c1 - c2).
+        let blinding_buf = codec::scalar_encode::<S>(&blinding);
+        let buf = [blinding_buf.as_slice(), ad].concat();
+        let k = S::nonce(&self.scalar, input, &buf);
+
+        // Bind the secret key to the nonce derivation for `kb`.
+        // Without it, two proofs with the same (blinding, input, ad) but different
+        // secret keys would reuse `kb` with different challenges, enabling
+        // blinding factor recovery: b = (sb1 - sb2) / (c1 - c2).
+        // This scenario is unlikely in practice, but worth guarding against.
+        let secret_buf = codec::scalar_encode::<S>(&self.scalar);
+        let buf = [secret_buf.as_slice(), ad].concat();
+        let kb = S::nonce(&blinding, input, &buf);
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -183,7 +199,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad.as_ref());
+        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad);
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -424,6 +440,10 @@ pub(crate) mod testing {
     use super::*;
     use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
+    fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
+        utils::delinearize::<S>(ios, ad)
+    }
+
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
 
@@ -480,6 +500,84 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// N=1 merge + prove must be byte-identical to standard prove,
+    /// and cross-verification works in both directions.
+    pub fn prove_verify_multi_single<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let input = Input::from_affine(random_val(None));
+        let output = secret.output(input);
+
+        let (proof_std, blinding_std) = secret.prove(input, output, b"foo");
+        let io = (input, output);
+        let (mi, mo) = merge(&[io], b"foo");
+        let (proof_multi, blinding_multi) = secret.prove(mi, mo, b"foo");
+
+        // Byte-identical proofs and blinding factors
+        let encode = |p: &pedersen::Proof<S>| {
+            let mut buf = Vec::new();
+            p.serialize_compressed(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(encode(&proof_std), encode(&proof_multi));
+        assert_eq!(blinding_std, blinding_multi);
+
+        // Cross-verification
+        assert!(Public::verify(input, output, b"foo", &proof_multi).is_ok());
+        assert!(Public::verify(mi, mo, b"foo", &proof_std).is_ok());
+    }
+
+    /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
+    pub fn prove_verify_multi<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+
+        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                (input, secret.output(input))
+            })
+            .collect();
+        ios.push((Input(S::Affine::generator()), Output(secret.public().0)));
+
+        let (input, output) = merge(&ios, b"bar");
+        let (proof, _) = secret.prove(input, output, b"bar");
+        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].1 = secret.output(ios[0].0);
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong input on ios[0]
+        let mut bad_ios = ios.clone();
+        bad_ios[0].0 = ios[1].0;
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong ad
+        let (bi, bo) = merge(&ios, b"baz");
+        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+    }
+
+    /// N=0 reduces to a Schnorr signature over the additional data.
+    pub fn prove_verify_multi_empty<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+
+        let (input, output) = merge(&[], b"bar");
+        let (proof, _) = secret.prove(input, output, b"bar");
+
+        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+
+        let (bi, bo) = merge(&[], b"baz");
+        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+    }
+
     pub fn blinding_base_check<S: PedersenSuite>()
     where
         AffinePoint<S>: CheckPoint,
@@ -502,6 +600,21 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::pedersen::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_single() {
+                    $crate::pedersen::testing::prove_verify_multi_single::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::pedersen::testing::prove_verify_multi::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_empty() {
+                    $crate::pedersen::testing::prove_verify_multi_empty::<$suite>();
                 }
 
                 #[test]

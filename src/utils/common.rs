@@ -9,8 +9,18 @@ use ark_ec::{
     AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
-use ark_ff::PrimeField;
 use digest::{Digest, FixedOutputReset};
+
+/// Internal domain separation tags for protocol hashing.
+#[repr(u8)]
+pub(crate) enum DomSep {
+    HashToCurveTai = 0x01,
+    Challenge = 0x02,
+    PointToHash = 0x03,
+    Delinearize = 0x04,
+    PedersenBlinding = 0xCC,
+    End = 0x00,
+}
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
@@ -63,16 +73,16 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
 
-    const DOM_SEP_FRONT: u8 = 0x01;
-    const DOM_SEP_BACK: u8 = 0x00;
-
     let prefix = S::Hasher::new()
         .chain_update(S::SUITE_ID)
-        .chain_update([DOM_SEP_FRONT])
+        .chain_update([DomSep::HashToCurveTai as u8])
         .chain_update(data);
 
     for ctr in 0..=255u8 {
-        let hash = prefix.clone().chain_update([ctr, DOM_SEP_BACK]).finalize();
+        let hash = prefix
+            .clone()
+            .chain_update([ctr, DomSep::End as u8])
+            .finalize();
         if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
@@ -149,11 +159,9 @@ where
 ///
 /// A scalar field element derived from the hash of the inputs
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
-    const DOM_SEP_START: u8 = 0x02;
-    const DOM_SEP_END: u8 = 0x00;
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_START]);
+    hasher.update([DomSep::Challenge as u8]);
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     for p in pts {
         pt_buf.clear();
@@ -161,9 +169,9 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
         hasher.update(&pt_buf);
     }
     hasher.update(ad);
-    hasher.update([DOM_SEP_END]);
+    hasher.update([DomSep::End as u8]);
     let hash = hasher.finalize();
-    ScalarField::<S>::from_be_bytes_mod_order(&hash[..S::CHALLENGE_LEN])
+    codec::scalar_decode::<S>(&hash[..S::CHALLENGE_LEN])
 }
 
 /// Point to a hash according to RFC-9381 section 5.2.
@@ -196,19 +204,17 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
     mul_by_cofactor: bool,
 ) -> HashOutput<S> {
     use ark_std::borrow::Cow::*;
-    const DOM_SEP_START: u8 = 0x03;
-    const DOM_SEP_END: u8 = 0x00;
     let pt = match mul_by_cofactor {
         false => Borrowed(pt),
         true => Owned(pt.mul_by_cofactor()),
     };
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_START]);
+    hasher.update([DomSep::PointToHash as u8]);
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     S::Codec::point_encode_into(&pt, &mut pt_buf);
     hasher.update(&pt_buf);
-    hasher.update([DOM_SEP_END]);
+    hasher.update([DomSep::End as u8]);
     hasher.finalize()
 }
 
@@ -221,10 +227,14 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// The deterministic generation ensures that the same nonce is never used twice
 /// with the same secret key for different inputs, which is critical for security.
 ///
+/// The `ad` (additional data) is mixed into the hash to ensure distinct nonces
+/// when the same secret key and input are used with different auxiliary data.
+///
 /// # Parameters
 ///
 /// * `sk` - The secret scalar key
 /// * `input` - The input point
+/// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
 ///
@@ -233,7 +243,11 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// # Panics
 ///
 /// This function panics if `Suite::Hasher` output is less than 64 bytes.
-pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S> {
+pub fn nonce_rfc_8032<S: Suite>(
+    sk: &ScalarField<S>,
+    input: &AffinePoint<S>,
+    ad: &[u8],
+) -> ScalarField<S> {
     assert!(
         S::Hasher::output_size() >= 64,
         "Suite::Hasher output is required to be >= 64 bytes"
@@ -246,6 +260,7 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
     let h = S::Hasher::new()
         .chain_update(&sk_hash[32..])
         .chain_update(&pt_buf)
+        .chain_update(ad)
         .finalize();
 
     S::Codec::scalar_decode(&h)
@@ -260,6 +275,9 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 /// It generates a deterministic nonce using HMAC-based extraction, which provides
 /// strong security guarantees against nonce reuse or biased nonce generation.
 ///
+/// The `ad` (additional data) is mixed into the initial hash to ensure distinct
+/// nonces when the same secret key and input are used with different auxiliary data.
+///
 /// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
 /// `from_be_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
 /// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
@@ -271,17 +289,25 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 ///
 /// * `sk` - The secret scalar key
 /// * `input` - The input point
+/// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
 ///
 /// A scalar field element to be used as a nonce
 #[cfg(feature = "rfc-6979")]
-pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S>
+pub fn nonce_rfc_6979<S: Suite>(
+    sk: &ScalarField<S>,
+    input: &AffinePoint<S>,
+    ad: &[u8],
+) -> ScalarField<S>
 where
     S::Hasher: digest::core_api::BlockSizeUser,
 {
     let raw = codec::point_encode::<S>(input);
-    let h1 = hash::<S::Hasher>(&raw);
+    let h1 = S::Hasher::new()
+        .chain_update(&raw)
+        .chain_update(ad)
+        .finalize();
 
     let v = [1; 32];
     let k = [0; 32];
@@ -323,6 +349,105 @@ where
         k = hmac::<S::Hasher>(&k, &data);
         v = hmac::<S::Hasher>(&k, &v);
     }
+}
+
+/// Delinearize multiple input-output pairs into a single pair.
+///
+/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
+/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
+/// The resulting `(Input, Output)` can be passed directly to a scheme's
+/// `prove` / `verify` to obtain or check a single proof covering all pairs.
+///
+/// The ordering of `ios` matters: the delinearization scalars are derived from
+/// the hash of the pairs in the given order, so the prover and verifier must
+/// use the same ordering to obtain the same merged pair.
+///
+/// - N=0: returns the identity point for both input and output.
+/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
+/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
+///   and returns their linear combination.
+///
+/// # WARNING: N=0
+///
+/// When `ios` is empty, both returned points are the identity (zero point).
+/// Since `sk * O = O` for every secret key, the resulting DLEQ proof degenerates
+/// into a Schnorr signature over the additional data -- it binds the public key
+/// to `ad` but provides **no VRF output**. The `Output` is a public constant
+/// (the identity point) and **must not** be used to derive VRF randomness.
+/// Doing so would produce a predictable, key-independent value.
+pub fn delinearize<S: Suite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
+    let zero = AffinePoint::<S>::zero();
+
+    if ios.is_empty() {
+        return (Input(zero), Output(zero));
+    }
+
+    if ios.len() == 1 {
+        return (ios[0].0, ios[0].1);
+    }
+
+    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
+    let n = u32::try_from(ios.len()).expect("too many input-output pairs");
+
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([DomSep::Delinearize as u8]);
+    hasher.update(n.to_le_bytes());
+
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    for (input, output) in ios {
+        pt_buf.clear();
+        S::Codec::point_encode_into(&input.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+        pt_buf.clear();
+        S::Codec::point_encode_into(&output.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+    hasher.update(ad);
+    hasher.update([DomSep::End as u8]);
+    let seed = hasher.finalize();
+
+    // Seed a ChaCha20Rng from the hash, then draw 128-bit scalars on the fly.
+    use ark_std::rand::{RngCore, SeedableRng};
+    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
+    let mut rng_seed = [0u8; 32];
+    rng_seed.copy_from_slice(&seed[..32]);
+    let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
+
+    // MSM has bucket-setup overhead that dominates for small N.
+    // Fold is faster below this threshold; MSM wins above it.
+    const MSM_THRESHOLD: usize = 16;
+
+    let mut next_scalar = || {
+        let mut buf = [0u8; 16];
+        rng.fill_bytes(&mut buf);
+        S::Codec::scalar_decode(&buf)
+    };
+
+    let zero = zero.into_group();
+    let (input, output) = if ios.len() < MSM_THRESHOLD {
+        ios.iter().fold((zero, zero), |(h_acc, g_acc), (inp, out)| {
+            let z = next_scalar();
+            (h_acc + inp.0 * z, g_acc + out.0 * z)
+        })
+    } else {
+        let n = ios.len();
+        let mut scalars = Vec::with_capacity(n);
+        let mut inputs = Vec::with_capacity(n);
+        let mut outputs = Vec::with_capacity(n);
+        for (inp, out) in ios {
+            scalars.push(next_scalar());
+            inputs.push(inp.0);
+            outputs.push(out.0);
+        }
+        use ark_ec::VariableBaseMSM;
+        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
+        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
+        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
+        (input, output)
+    };
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    (Input(norms[0]), Output(norms[1]))
 }
 
 #[cfg(test)]

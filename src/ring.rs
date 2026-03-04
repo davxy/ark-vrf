@@ -866,6 +866,57 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
+    fn delinearize<S: RingSuite>(
+        ios: &[(Input<S>, Output<S>)],
+        ad: &[u8],
+    ) -> (Input<S>, Output<S>) {
+        utils::delinearize::<S>(ios, ad)
+    }
+
+    /// N=3 multi proof via delinearize + ring prove/verify.
+    #[allow(unused)]
+    pub fn prove_verify_multi<S: RingSuite>() {
+        use ring::{Prover, Verifier};
+
+        let rng = &mut ark_std::test_rng();
+        let params = RingProofParams::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx = 3;
+        pks[prover_idx] = public.0;
+
+        let prover_key = params.prover_key(&pks);
+        let prover = params.prover(prover_key, prover_idx);
+
+        let verifier_key = params.verifier_key(&pks);
+        let verifier = params.verifier(verifier_key);
+
+        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                (input, secret.output(input))
+            })
+            .collect();
+        ios.push((Input(S::Affine::generator()), Output(public.0)));
+
+        let (input, output) = delinearize(&ios, b"bar");
+        let proof = secret.prove(input, output, b"bar", &prover);
+        assert!(Public::verify(input, output, b"bar", &proof, &verifier).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].1 = secret.output(ios[0].0);
+        let (bi, bo) = delinearize(&bad_ios, b"bar");
+        assert!(Public::verify(bi, bo, b"bar", &proof, &verifier).is_err());
+
+        // Tamper: wrong ad
+        let (bi, bo) = delinearize(&ios, b"baz");
+        assert!(Public::verify(bi, bo, b"baz", &proof, &verifier).is_err());
+    }
+
     #[allow(unused)]
     pub fn prove_verify_batch<S: RingSuite>() {
         use rayon::prelude::*;
@@ -1092,6 +1143,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ring::testing::prove_verify::<$suite>()
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::ring::testing::prove_verify_multi::<$suite>()
                 }
 
                 #[test]
