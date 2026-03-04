@@ -79,7 +79,10 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
         .chain_update(data);
 
     for ctr in 0..=255u8 {
-        let hash = prefix.clone().chain_update([ctr, DomSep::End as u8]).finalize();
+        let hash = prefix
+            .clone()
+            .chain_update([ctr, DomSep::End as u8])
+            .finalize();
         if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
@@ -372,10 +375,7 @@ where
 /// to `ad` but provides **no VRF output**. The `Output` is a public constant
 /// (the identity point) and **must not** be used to derive VRF randomness.
 /// Doing so would produce a predictable, key-independent value.
-pub fn delinearize<S: Suite>(
-    ios: &[(Input<S>, Output<S>)],
-    ad: &[u8],
-) -> (Input<S>, Output<S>) {
+pub fn delinearize<S: Suite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
     let zero = AffinePoint::<S>::zero();
 
     if ios.is_empty() {

@@ -55,8 +55,8 @@ pub trait PedersenSuite: IetfSuite {
         input: &AffinePoint<Self>,
         aux: &[u8],
     ) -> ScalarField<Self> {
-        use digest::Digest;
         use crate::utils::common::DomSep;
+        use digest::Digest;
         let mut buf = Vec::with_capacity(Self::Codec::POINT_ENCODED_LEN);
         let hash = Self::Hasher::new()
             .chain_update(Self::SUITE_ID)

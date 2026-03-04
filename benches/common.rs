@@ -144,12 +144,7 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     for &size in DELINEARIZE_SIZES {
         c.benchmark_group(&group_name)
             .bench_function(BenchmarkId::from_parameter(size), |b| {
-                b.iter(|| {
-                    ark_vrf::utils::delinearize::<S>(
-                        black_box(&ios[..size]),
-                        b"ad",
-                    )
-                });
+                b.iter(|| ark_vrf::utils::delinearize::<S>(black_box(&ios[..size]), b"ad"));
             });
     }
 }
