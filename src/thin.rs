@@ -49,49 +49,18 @@ pub struct Proof<S: ThinVrfSuite> {
     pub s: ScalarField<S>,
 }
 
-/// Compute delinearization weights `(z_0, z_1)` for the VRF I/O and Schnorr pairs.
-///
-/// Hashes `(G, P, I, O)` with domain separator `0x11` and splits the output
-/// into two 128-bit scalars used to merge the two DLEQ relations.
-fn delinearize<S: ThinVrfSuite>(
+/// Merge the VRF I/O pair and Schnorr key pair into a single delinearized pair.
+fn merged_pairs<S: ThinVrfSuite>(
     public: &AffinePoint<S>,
-    input: &AffinePoint<S>,
-    output: &AffinePoint<S>,
-) -> (ScalarField<S>, ScalarField<S>) {
-    use digest::Digest;
-
-    const DOM_SEP_START: u8 = 0x11;
-    const DOM_SEP_END: u8 = 0x00;
-
-    let mut buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    let hash = S::Hasher::new()
-        .chain_update(S::SUITE_ID)
-        .chain_update([DOM_SEP_START])
-        .chain_update({
-            S::Codec::point_encode_into(&S::generator(), &mut buf);
-            &buf
-        })
-        .chain_update({
-            buf.clear();
-            S::Codec::point_encode_into(public, &mut buf);
-            &buf
-        })
-        .chain_update({
-            buf.clear();
-            S::Codec::point_encode_into(input, &mut buf);
-            &buf
-        })
-        .chain_update({
-            buf.clear();
-            S::Codec::point_encode_into(output, &mut buf);
-            &buf
-        })
-        .chain_update([DOM_SEP_END])
-        .finalize();
-
-    let z_0 = ScalarField::<S>::from_le_bytes_mod_order(&hash[..16]);
-    let z_1 = ScalarField::<S>::from_le_bytes_mod_order(&hash[16..32]);
-    (z_0, z_1)
+    input: Input<S>,
+    output: Output<S>,
+    ad: &[u8],
+) -> (Input<S>, Output<S>) {
+    let ios = [
+        (input, output),
+        (Input(S::generator()), Output(*public)),
+    ];
+    utils::delinearize::<S>(&ios, ad)
 }
 
 /// Compute the Thin VRF challenge.
@@ -156,17 +125,13 @@ pub trait Verifier<S: ThinVrfSuite> {
 
 impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (z_0, z_1) = delinearize::<S>(&self.public.0, &input.0, &output.0);
-
-        // Merged pair: I_m = z_0*I + z_1*G, O_m = z_0*O + z_1*P
-        let i_m = input.0 * z_0 + S::generator() * z_1;
-        let i_m = i_m.into_affine();
+        let (merged_input, _) = merged_pairs::<S>(&self.public.0, input, output, ad.as_ref());
 
         // Nonce
-        let k = S::nonce(&self.scalar, Input(i_m), ad.as_ref());
+        let k = S::nonce(&self.scalar, merged_input, ad.as_ref());
 
         // R = k * I_m (secret nonce)
-        let r = smul!(i_m, k).into_affine();
+        let r = smul!(merged_input.0, k).into_affine();
 
         // Challenge
         let c = thin_challenge::<S>(&self.public.0, &input.0, &output.0, &r, ad.as_ref());
@@ -188,17 +153,14 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
 
-        let (z_0, z_1) = delinearize::<S>(&self.0, &input.0, &output.0);
-
-        // Merged pair
-        let i_m = (input.0 * z_0 + S::generator() * z_1).into_affine();
-        let o_m = (output.0 * z_0 + self.0 * z_1).into_affine();
+        let (merged_input, merged_output) =
+            merged_pairs::<S>(&self.0, input, output, ad.as_ref());
 
         // Challenge
         let c = thin_challenge::<S>(&self.0, &input.0, &output.0, r, ad.as_ref());
 
         // Verify: R + c*O_m == s*I_m
-        if *r + o_m * c != i_m * s {
+        if *r + merged_output.0 * c != merged_input.0 * s {
             return Err(Error::VerificationFailure);
         }
 
@@ -250,14 +212,13 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let (z_0, z_1) = delinearize::<S>(&public.0, &input.0, &output.0);
-        let i_m = (input.0 * z_0 + S::generator() * z_1).into_affine();
-        let o_m = (output.0 * z_0 + public.0 * z_1).into_affine();
+        let (merged_input, merged_output) =
+            merged_pairs::<S>(&public.0, input, output, ad.as_ref());
         let c = thin_challenge::<S>(&public.0, &input.0, &output.0, &proof.r, ad.as_ref());
         BatchItem {
             c,
-            i_m,
-            o_m,
+            i_m: merged_input.0,
+            o_m: merged_output.0,
             r: proof.r,
             s: proof.s,
         }
