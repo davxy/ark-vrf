@@ -357,6 +357,15 @@ where
 /// - N=1: returns the pair as-is, no hashing or scalar multiplications.
 /// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
 ///   and returns their linear combination.
+///
+/// # WARNING: N=0
+///
+/// When `ios` is empty, both returned points are the identity (zero point).
+/// Since `sk * O = O` for every secret key, the resulting DLEQ proof degenerates
+/// into a Schnorr signature over the additional data -- it binds the public key
+/// to `ad` but provides **no VRF output**. The `Output` is a public constant
+/// (the identity point) and **must not** be used to derive VRF randomness.
+/// Doing so would produce a predictable, key-independent value.
 pub fn delinearize<S: Suite>(
     dom_sep: u8,
     ios: &[(Input<S>, Output<S>)],
