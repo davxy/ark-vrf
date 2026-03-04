@@ -353,6 +353,10 @@ where
 ///
 /// The `dom_sep` byte allows callers to domain-separate different schemes.
 ///
+/// The ordering of `ios` matters: the delinearization scalars are derived from
+/// the hash of the pairs in the given order, so the prover and verifier must
+/// use the same ordering to obtain the same merged pair.
+///
 /// - N=0: returns the identity point for both input and output.
 /// - N=1: returns the pair as-is, no hashing or scalar multiplications.
 /// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
