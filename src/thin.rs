@@ -163,7 +163,7 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
         let i_m = i_m.into_affine();
 
         // Nonce
-        let k = S::nonce(&self.scalar, Input(i_m));
+        let k = S::nonce(&self.scalar, Input(i_m), ad.as_ref());
 
         // R = k * I_m (secret nonce)
         let r = smul!(i_m, k).into_affine();
