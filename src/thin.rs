@@ -56,53 +56,8 @@ fn merged_pairs<S: ThinVrfSuite>(
     output: Output<S>,
     ad: &[u8],
 ) -> (Input<S>, Output<S>) {
-    let ios = [
-        (input, output),
-        (Input(S::generator()), Output(*public)),
-    ];
+    let ios = [(Input(S::generator()), Output(*public)), (input, output)];
     utils::delinearize::<S>(&ios, ad)
-}
-
-/// Compute the Thin VRF challenge.
-///
-/// Follows the RFC-9381 challenge pattern with domain separator `0x12`.
-fn thin_challenge<S: ThinVrfSuite>(
-    public: &AffinePoint<S>,
-    input: &AffinePoint<S>,
-    output: &AffinePoint<S>,
-    r: &AffinePoint<S>,
-    ad: &[u8],
-) -> ScalarField<S> {
-    use digest::Digest;
-
-    const DOM_SEP_START: u8 = 0x12;
-    const DOM_SEP_END: u8 = 0x00;
-
-    let mut buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_START]);
-
-    S::Codec::point_encode_into(public, &mut buf);
-    hasher.update(&buf);
-
-    buf.clear();
-    S::Codec::point_encode_into(input, &mut buf);
-    hasher.update(&buf);
-
-    buf.clear();
-    S::Codec::point_encode_into(output, &mut buf);
-    hasher.update(&buf);
-
-    buf.clear();
-    S::Codec::point_encode_into(r, &mut buf);
-    hasher.update(&buf);
-
-    hasher.update(ad);
-    hasher.update([DOM_SEP_END]);
-
-    let hash = hasher.finalize();
-    ScalarField::<S>::from_be_bytes_mod_order(&hash[..S::CHALLENGE_LEN])
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -134,7 +89,7 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
         let r = smul!(merged_input.0, k).into_affine();
 
         // Challenge
-        let c = thin_challenge::<S>(&self.public.0, &input.0, &output.0, &r, ad.as_ref());
+        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &r], ad.as_ref());
 
         // Response
         let s = k + c * self.scalar;
@@ -153,11 +108,10 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
 
-        let (merged_input, merged_output) =
-            merged_pairs::<S>(&self.0, input, output, ad.as_ref());
+        let (merged_input, merged_output) = merged_pairs::<S>(&self.0, input, output, ad.as_ref());
 
         // Challenge
-        let c = thin_challenge::<S>(&self.0, &input.0, &output.0, r, ad.as_ref());
+        let c = S::challenge(&[&self.0, &input.0, &output.0, r], ad.as_ref());
 
         // Verify: R + c*O_m == s*I_m
         if *r + merged_output.0 * c != merged_input.0 * s {
@@ -214,7 +168,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     ) -> BatchItem<S> {
         let (merged_input, merged_output) =
             merged_pairs::<S>(&public.0, input, output, ad.as_ref());
-        let c = thin_challenge::<S>(&public.0, &input.0, &output.0, &proof.r, ad.as_ref());
+        let c = S::challenge(&[&public.0, &input.0, &output.0, &proof.r], ad.as_ref());
         BatchItem {
             c,
             i_m: merged_input.0,
@@ -313,7 +267,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
