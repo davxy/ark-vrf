@@ -56,12 +56,11 @@ pub trait PedersenSuite: IetfSuite {
         aux: &[u8],
     ) -> ScalarField<Self> {
         use digest::Digest;
-        const DOM_SEP_START: u8 = 0xCC;
-        const DOM_SEP_END: u8 = 0x00;
+        use crate::utils::common::DomSep;
         let mut buf = Vec::with_capacity(Self::Codec::POINT_ENCODED_LEN);
         let hash = Self::Hasher::new()
             .chain_update(Self::SUITE_ID)
-            .chain_update([DOM_SEP_START])
+            .chain_update([DomSep::PedersenBlinding as u8])
             .chain_update({
                 Self::Codec::scalar_encode_into(secret, &mut buf);
                 &buf
@@ -72,7 +71,7 @@ pub trait PedersenSuite: IetfSuite {
                 &buf
             })
             .chain_update(aux)
-            .chain_update([DOM_SEP_END])
+            .chain_update([DomSep::End as u8])
             .finalize();
         codec::scalar_decode::<Self>(&hash)
     }
@@ -442,7 +441,7 @@ pub(crate) mod testing {
     use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
     fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(123, ios, ad)
+        utils::delinearize::<S>(ios, ad)
     }
 
     pub fn prove_verify<S: PedersenSuite>() {

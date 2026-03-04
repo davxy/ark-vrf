@@ -211,7 +211,7 @@ pub mod testing {
     use crate::testing::{self as common, SuiteExt};
 
     fn merge<S: IetfSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(123, ios, ad)
+        utils::delinearize::<S>(ios, ad)
     }
 
     pub fn prove_verify<S: IetfSuite>() {

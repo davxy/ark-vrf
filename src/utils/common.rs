@@ -11,6 +11,17 @@ use ark_ec::{
 };
 use digest::{Digest, FixedOutputReset};
 
+/// Internal domain separation tags for protocol hashing.
+#[repr(u8)]
+pub(crate) enum DomSep {
+    HashToCurveTai = 0x01,
+    Challenge = 0x02,
+    PointToHash = 0x03,
+    Delinearize = 0x04,
+    PedersenBlinding = 0xCC,
+    End = 0x00,
+}
+
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
@@ -62,16 +73,13 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     use ark_ec::AffineRepr;
 
-    const DOM_SEP_FRONT: u8 = 0x01;
-    const DOM_SEP_BACK: u8 = 0x00;
-
     let prefix = S::Hasher::new()
         .chain_update(S::SUITE_ID)
-        .chain_update([DOM_SEP_FRONT])
+        .chain_update([DomSep::HashToCurveTai as u8])
         .chain_update(data);
 
     for ctr in 0..=255u8 {
-        let hash = prefix.clone().chain_update([ctr, DOM_SEP_BACK]).finalize();
+        let hash = prefix.clone().chain_update([ctr, DomSep::End as u8]).finalize();
         if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
             let pt = pt.clear_cofactor();
             if !pt.is_zero() {
@@ -148,11 +156,9 @@ where
 ///
 /// A scalar field element derived from the hash of the inputs
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
-    const DOM_SEP_START: u8 = 0x02;
-    const DOM_SEP_END: u8 = 0x00;
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_START]);
+    hasher.update([DomSep::Challenge as u8]);
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     for p in pts {
         pt_buf.clear();
@@ -160,7 +166,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
         hasher.update(&pt_buf);
     }
     hasher.update(ad);
-    hasher.update([DOM_SEP_END]);
+    hasher.update([DomSep::End as u8]);
     let hash = hasher.finalize();
     codec::scalar_decode::<S>(&hash[..S::CHALLENGE_LEN])
 }
@@ -195,19 +201,17 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
     mul_by_cofactor: bool,
 ) -> HashOutput<S> {
     use ark_std::borrow::Cow::*;
-    const DOM_SEP_START: u8 = 0x03;
-    const DOM_SEP_END: u8 = 0x00;
     let pt = match mul_by_cofactor {
         false => Borrowed(pt),
         true => Owned(pt.mul_by_cofactor()),
     };
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_START]);
+    hasher.update([DomSep::PointToHash as u8]);
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     S::Codec::point_encode_into(&pt, &mut pt_buf);
     hasher.update(&pt_buf);
-    hasher.update([DOM_SEP_END]);
+    hasher.update([DomSep::End as u8]);
     hasher.finalize()
 }
 
@@ -351,8 +355,6 @@ where
 /// The resulting `(Input, Output)` can be passed directly to a scheme's
 /// `prove` / `verify` to obtain or check a single proof covering all pairs.
 ///
-/// The `dom_sep` byte allows callers to domain-separate different schemes.
-///
 /// The ordering of `ios` matters: the delinearization scalars are derived from
 /// the hash of the pairs in the given order, so the prover and verifier must
 /// use the same ordering to obtain the same merged pair.
@@ -371,7 +373,6 @@ where
 /// (the identity point) and **must not** be used to derive VRF randomness.
 /// Doing so would produce a predictable, key-independent value.
 pub fn delinearize<S: Suite>(
-    dom_sep: u8,
     ios: &[(Input<S>, Output<S>)],
     ad: &[u8],
 ) -> (Input<S>, Output<S>) {
@@ -386,12 +387,11 @@ pub fn delinearize<S: Suite>(
     }
 
     // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
-    const DOM_SEP_BACK: u8 = 0x00;
     let n = u32::try_from(ios.len()).expect("too many input-output pairs");
 
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([dom_sep]);
+    hasher.update([DomSep::Delinearize as u8]);
     hasher.update(n.to_le_bytes());
 
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
@@ -404,7 +404,7 @@ pub fn delinearize<S: Suite>(
         hasher.update(&pt_buf);
     }
     hasher.update(ad);
-    hasher.update([DOM_SEP_BACK]);
+    hasher.update([DomSep::End as u8]);
     let seed = hasher.finalize();
 
     // Seed a ChaCha20Rng from the hash, then draw 128-bit scalars on the fly.

@@ -146,7 +146,6 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
             .bench_function(BenchmarkId::from_parameter(size), |b| {
                 b.iter(|| {
                     ark_vrf::utils::delinearize::<S>(
-                        black_box(0x04),
                         black_box(&ios[..size]),
                         b"ad",
                     )

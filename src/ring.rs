@@ -870,7 +870,7 @@ pub(crate) mod testing {
         ios: &[(Input<S>, Output<S>)],
         ad: &[u8],
     ) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(123, ios, ad)
+        utils::delinearize::<S>(ios, ad)
     }
 
     /// N=3 multi proof via delinearize + ring prove/verify.
