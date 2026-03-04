@@ -28,6 +28,15 @@ Criterion: `--quick` mode
 | scalar_encode                | 21.2 ns  |
 | scalar_decode                | 120.9 ns |
 
+### Delinearization
+
+| Benchmark      | n=2     | n=4     | n=8     | n=16    | n=32    | n=64    | n=128   | n=256   |
+|:---------------|---------|---------|---------|---------|---------|---------|---------|---------|
+| delinearize    | 177 us  | 401 us  | 805 us  | 1.15 ms | 2.13 ms | 3.49 ms | 4.45 ms | 7.51 ms |
+
+Uses a hybrid strategy: sequential fold for N < 16, MSM (Pippenger) for N >= 16.
+Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scaling.
+
 ## IETF VRF Operations (`ietf.rs`)
 
 | Benchmark              |     Time |
