@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use digest::{Digest, FixedOutputReset};
 
@@ -113,7 +113,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -374,7 +374,7 @@ pub fn delinearize<S: Suite>(
 
     // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
     const DOM_SEP_BACK: u8 = 0x00;
-    let n = ios.len() as u32;
+    let n = u32::try_from(ios.len()).expect("too many input-output pairs");
 
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
@@ -396,20 +396,43 @@ pub fn delinearize<S: Suite>(
 
     // Seed a ChaCha20Rng from the hash, then draw 128-bit scalars on the fly.
     use ark_std::rand::{RngCore, SeedableRng};
+    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
     let mut rng_seed = [0u8; 32];
-    let copy_len = seed.len().min(32);
-    rng_seed[..copy_len].copy_from_slice(&seed[..copy_len]);
+    rng_seed.copy_from_slice(&seed[..32]);
     let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
 
-    let (input, output) = ios.iter().fold(
-        (zero.into_group(), zero.into_group()),
-        |(h_acc, g_acc), (inp, out)| {
-            let mut buf = [0u8; 16];
-            rng.fill_bytes(&mut buf);
-            let z = ScalarField::<S>::from_le_bytes_mod_order(&buf);
+    // MSM has bucket-setup overhead that dominates for small N.
+    // Fold is faster below this threshold; MSM wins above it.
+    const MSM_THRESHOLD: usize = 16;
+
+    let mut next_scalar = || {
+        let mut buf = [0u8; 16];
+        rng.fill_bytes(&mut buf);
+        S::Codec::scalar_decode(&buf)
+    };
+
+    let zero = zero.into_group();
+    let (input, output) = if ios.len() < MSM_THRESHOLD {
+        ios.iter().fold((zero, zero), |(h_acc, g_acc), (inp, out)| {
+            let z = next_scalar();
             (h_acc + inp.0 * z, g_acc + out.0 * z)
-        },
-    );
+        })
+    } else {
+        let n = ios.len();
+        let mut scalars = Vec::with_capacity(n);
+        let mut inputs = Vec::with_capacity(n);
+        let mut outputs = Vec::with_capacity(n);
+        for (inp, out) in ios {
+            scalars.push(next_scalar());
+            inputs.push(inp.0);
+            outputs.push(out.0);
+        }
+        use ark_ec::VariableBaseMSM;
+        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
+        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
+        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
+        (input, output)
+    };
     let norms = CurveGroup::normalize_batch(&[input, output]);
     (Input(norms[0]), Output(norms[1]))
 }

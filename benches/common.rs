@@ -1,10 +1,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
-use ark_vrf::{AffinePoint, Input, Secret};
+use ark_std::{rand::SeedableRng, UniformRand};
+use ark_vrf::{AffinePoint, Input, Output, Secret};
 use bench_utils::BenchInfo;
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_key_from_seed<S: BenchInfo>(c: &mut Criterion) {
     let name = format!("{}/key_from_seed", S::SUITE_NAME);
@@ -126,6 +126,35 @@ fn bench_scalar_decode<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
+fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
+    const DELINEARIZE_SIZES: &[usize] = &[2, 4, 8, 16, 32, 64, 128, 256];
+    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let max_size = DELINEARIZE_SIZES[DELINEARIZE_SIZES.len() - 1];
+
+    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let ios: Vec<(Input<S>, Output<S>)> = (0..max_size)
+        .map(|_| {
+            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
+            let output = secret.output(input);
+            (input, output)
+        })
+        .collect();
+
+    let group_name = format!("{}/delinearize", S::SUITE_NAME);
+    for &size in DELINEARIZE_SIZES {
+        c.benchmark_group(&group_name)
+            .bench_function(BenchmarkId::from_parameter(size), |b| {
+                b.iter(|| {
+                    ark_vrf::utils::delinearize::<S>(
+                        black_box(0x04),
+                        black_box(&ios[..size]),
+                        b"ad",
+                    )
+                });
+            });
+    }
+}
+
 // All common benchmarks for a single suite.
 fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
     S::print_info();
@@ -140,6 +169,7 @@ fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
     bench_point_decode::<S>(c);
     bench_scalar_encode::<S>(c);
     bench_scalar_decode::<S>(c);
+    bench_delinearize::<S>(c);
 }
 
 fn bench_common(c: &mut Criterion) {
