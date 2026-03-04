@@ -104,40 +104,11 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
     }
 }
 
-/// Delinearize and merge multiple input-output pairs into a single pair.
-///
-/// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no delinearization.
-/// - N>1: derives 128-bit delinearization scalars and returns
-///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
-fn merge<S: IetfSuite>(
-    pk: &Public<S>,
-    ios: &[(Input<S>, Output<S>)],
-    ad: &[u8],
-) -> (Input<S>, Output<S>) {
-    if ios.len() == 1 {
-        return (ios[0].0, ios[0].1);
-    }
-
-    let zs = utils::delinearization_scalars::<S>(&pk.0, ios, ad);
-
-    type Projective<S> = <AffinePoint<S> as AffineRepr>::Group;
-    let (input, output) = ios.iter().zip(zs.iter()).fold(
-        (Projective::<S>::zero(), Projective::<S>::zero()),
-        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
-    );
-    let norms = CurveGroup::normalize_batch(&[input, output]);
-    (Input(norms[0]), Output(norms[1]))
-}
-
 /// Trait for types that can generate VRF proofs.
 ///
 /// Implementors can create cryptographic proofs that a VRF output
 /// is correctly derived from an input using their secret key.
 pub trait Prover<S: IetfSuite> {
-    /// The public key associated with this prover.
-    fn public_key(&self) -> Public<S>;
-
     /// Generate a proof for the given input/output and additional data.
     ///
     /// Creates a non-interactive zero-knowledge proof binding the input, output,
@@ -147,19 +118,6 @@ pub trait Prover<S: IetfSuite> {
     /// * `output` - VRF output point (γ = x·H)
     /// * `ad` - Additional data to bind to the proof
     fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
-
-    /// Generate a proof for multiple input-output pairs using delinearized DLEQ.
-    ///
-    /// When `ios` has a single element, the proof is byte-identical to [`Prover::prove`].
-    /// For N>1, delinearization scalars merge all input-output pairs into a single
-    /// DLEQ proof, amortizing proof size.
-    ///
-    /// When `ios` is empty, the merged input and output are both the identity point,
-    /// reducing to a Schnorr signature over the additional data.
-    fn prove_multi(&self, ios: &[(Input<S>, Output<S>)], ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (input, output) = merge(&self.public_key(), ios, ad.as_ref());
-        self.prove(input, output, ad)
-    }
 }
 
 /// Trait for entities that can verify VRF proofs.
@@ -167,9 +125,6 @@ pub trait Prover<S: IetfSuite> {
 /// Implementors can verify that a VRF output is correctly derived
 /// from an input using a specific public key.
 pub trait Verifier<S: IetfSuite> {
-    /// The public key associated with this verifier.
-    fn public_key(&self) -> Public<S>;
-
     /// Verify a proof for the given input/output and additional data.
     ///
     /// Verifies the cryptographic relationship between input, output, and proof
@@ -188,30 +143,9 @@ pub trait Verifier<S: IetfSuite> {
         aux: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
-
-    /// Verify a proof for multiple input-output pairs using delinearized DLEQ.
-    ///
-    /// When `ios` has a single element, delegates to [`Verifier::verify`].
-    /// For N>1, recomputes delinearization scalars and verifies the merged DLEQ.
-    ///
-    /// When `ios` is empty, the merged input and output are both the identity point,
-    /// reducing to a Schnorr signature verification over the additional data.
-    fn verify_multi(
-        &self,
-        ios: &[(Input<S>, Output<S>)],
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> Result<(), Error> {
-        let (input, output) = merge(&self.public_key(), ios, ad.as_ref());
-        self.verify(input, output, ad, proof)
-    }
 }
 
 impl<S: IetfSuite> Prover<S> for Secret<S> {
-    fn public_key(&self) -> Public<S> {
-        self.public
-    }
-
     /// Implements the IETF VRF proving algorithm.
     ///
     /// This follows the procedure specified in RFC-9381 section 5.1, with extensions
@@ -240,10 +174,6 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
 }
 
 impl<S: IetfSuite> Verifier<S> for Public<S> {
-    fn public_key(&self) -> Public<S> {
-        *self
-    }
-
     /// Implements the IETF VRF verification algorithm.
     ///
     /// This follows the procedure specified in RFC-9381 section 5.3, with extensions
@@ -280,9 +210,11 @@ pub mod testing {
     use super::*;
     use crate::testing::{self as common, SuiteExt};
 
-    pub fn prove_verify<S: IetfSuite>() {
-        use ietf::{Prover, Verifier};
+    fn merge<S: IetfSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
+        utils::merge::<S>(123, ios, ad)
+    }
 
+    pub fn prove_verify<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(None));
@@ -293,11 +225,24 @@ pub mod testing {
         assert!(result.is_ok());
     }
 
-    /// N=1 multi proof must be byte-identical to standard Prover::prove,
+    pub fn prove_verify_multi_empty<S: IetfSuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+
+        let (input, output) = merge(&[], b"bar");
+        assert_eq!(input.0, output.0);
+        assert_eq!(input.0, S::Affine::zero());
+        let proof = secret.prove(input, output, b"bar");
+
+        assert!(public.verify(input, output, b"bar", &proof).is_ok());
+
+        let (bi, bo) = merge(&[], b"baz");
+        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
+    }
+
+    /// N=1 merge + prove must be byte-identical to standard Prover::prove,
     /// and cross-verification works in both directions.
     pub fn prove_verify_multi_single<S: IetfSuite>() {
-        use ietf::{Prover, Verifier};
-
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(None));
@@ -305,7 +250,8 @@ pub mod testing {
 
         let proof_std = secret.prove(input, output, b"foo");
         let io = (input, output);
-        let proof_multi = secret.prove_multi(&[io], b"foo");
+        let (mi, mo) = merge(&[io], b"foo");
+        let proof_multi = secret.prove(mi, mo, b"foo");
 
         // Byte-identical proofs
         let encode = |p: &ietf::Proof<S>| {
@@ -315,10 +261,9 @@ pub mod testing {
         };
         assert_eq!(encode(&proof_std), encode(&proof_multi));
 
-        // Cross-verification: multi proof verifies via standard verifier
+        // Cross-verification
         assert!(public.verify(input, output, b"foo", &proof_multi).is_ok());
-        // Standard proof verifies via multi verifier
-        assert!(public.verify_multi(&[io], b"foo", &proof_std).is_ok());
+        assert!(public.verify(mi, mo, b"foo", &proof_std).is_ok());
     }
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
@@ -326,37 +271,33 @@ pub mod testing {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
 
-        let ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
                 (input, secret.output(input))
             })
             .collect();
+        ios.push((Input(S::Affine::generator()), Output(public.0)));
 
-        let proof = secret.prove_multi(&ios, b"bar");
-        assert!(public.verify_multi(&ios, b"bar", &proof).is_ok());
+        let (input, output) = merge(&ios, b"bar");
+        let proof = secret.prove(input, output, b"bar");
+        assert!(public.verify(input, output, b"bar", &proof).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
-        bad_ios[1].1 = secret.output(ios[0].0); // wrong output for that input
-        assert!(public.verify_multi(&bad_ios, b"bar", &proof).is_err());
+        bad_ios[1].1 = secret.output(ios[0].0);
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
 
         // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
         bad_ios[0].0 = ios[1].0;
-        assert!(public.verify_multi(&bad_ios, b"bar", &proof).is_err());
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
 
         // Tamper: wrong ad
-        assert!(public.verify_multi(&ios, b"baz", &proof).is_err());
-    }
-
-    pub fn prove_verify_multi_empty<S: IetfSuite>() {
-        let secret = Secret::<S>::from_seed(common::TEST_SEED);
-        let public = secret.public();
-        let proof = secret.prove_multi(&[], b"bar");
-
-        assert!(public.verify_multi(&[], b"bar", &proof).is_ok());
-        assert!(public.verify_multi(&[], b"baz", &proof).is_err());
+        let (bi, bo) = merge(&ios, b"baz");
+        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
     }
 
     #[macro_export]

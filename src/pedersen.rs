@@ -439,7 +439,11 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
+
+    fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
+        utils::merge::<S>(123, ios, ad)
+    }
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -497,6 +501,84 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// N=1 merge + prove must be byte-identical to standard prove,
+    /// and cross-verification works in both directions.
+    pub fn prove_verify_multi_single<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let input = Input::from_affine(random_val(None));
+        let output = secret.output(input);
+
+        let (proof_std, blinding_std) = secret.prove(input, output, b"foo");
+        let io = (input, output);
+        let (mi, mo) = merge(&[io], b"foo");
+        let (proof_multi, blinding_multi) = secret.prove(mi, mo, b"foo");
+
+        // Byte-identical proofs and blinding factors
+        let encode = |p: &pedersen::Proof<S>| {
+            let mut buf = Vec::new();
+            p.serialize_compressed(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(encode(&proof_std), encode(&proof_multi));
+        assert_eq!(blinding_std, blinding_multi);
+
+        // Cross-verification
+        assert!(Public::verify(input, output, b"foo", &proof_multi).is_ok());
+        assert!(Public::verify(mi, mo, b"foo", &proof_std).is_ok());
+    }
+
+    /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
+    pub fn prove_verify_multi<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+
+        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                (input, secret.output(input))
+            })
+            .collect();
+        ios.push((Input(S::Affine::generator()), Output(secret.public().0)));
+
+        let (input, output) = merge(&ios, b"bar");
+        let (proof, _) = secret.prove(input, output, b"bar");
+        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].1 = secret.output(ios[0].0);
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong input on ios[0]
+        let mut bad_ios = ios.clone();
+        bad_ios[0].0 = ios[1].0;
+        let (bi, bo) = merge(&bad_ios, b"bar");
+        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+
+        // Tamper: wrong ad
+        let (bi, bo) = merge(&ios, b"baz");
+        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+    }
+
+    /// N=0 reduces to a Schnorr signature over the additional data.
+    pub fn prove_verify_multi_empty<S: PedersenSuite>() {
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+
+        let (input, output) = merge(&[], b"bar");
+        let (proof, _) = secret.prove(input, output, b"bar");
+
+        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+
+        let (bi, bo) = merge(&[], b"baz");
+        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+    }
+
     pub fn blinding_base_check<S: PedersenSuite>()
     where
         AffinePoint<S>: CheckPoint,
@@ -519,6 +601,21 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::pedersen::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_single() {
+                    $crate::pedersen::testing::prove_verify_multi_single::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::pedersen::testing::prove_verify_multi::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_empty() {
+                    $crate::pedersen::testing::prove_verify_multi_empty::<$suite>();
                 }
 
                 #[test]

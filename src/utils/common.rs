@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use digest::{Digest, FixedOutputReset};
 
@@ -113,7 +113,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -349,26 +349,23 @@ where
 /// Derives per-input scalars using the technique from Privacy Pass / dleq_vrf.
 /// Each scalar is 128-bit, providing 2^{-128} Schwartz-Zippel soundness.
 ///
-/// Uses domain separator `0x04` (unused by TAI=0x01, challenge=0x02, point_to_hash=0x03).
+/// The `dom_sep` byte allows callers to domain-separate different schemes.
+///
+/// Seed: `H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)`
 pub fn delinearization_scalars<S: Suite>(
-    pk: &AffinePoint<S>,
+    dom_sep: u8,
     ios: &[(Input<S>, Output<S>)],
     ad: &[u8],
 ) -> Vec<ScalarField<S>> {
-    const DOM_SEP_FRONT: u8 = 0x04;
     const DOM_SEP_BACK: u8 = 0x00;
 
-    let n = ios.len() as u32;
-
-    // Seed: H(suite_id || 0x04 || encode(pk) || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
-    hasher.update([DOM_SEP_FRONT]);
+    hasher.update([dom_sep]);
 
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    S::Codec::point_encode_into(pk, &mut pt_buf);
-    hasher.update(&pt_buf);
 
+    let n = ios.len() as u32;
     hasher.update(n.to_le_bytes());
 
     for (input, output) in ios {
@@ -394,6 +391,39 @@ pub fn delinearization_scalars<S: Suite>(
             ScalarField::<S>::from_le_bytes_mod_order(&h[..16])
         })
         .collect()
+}
+
+/// Delinearize and merge multiple input-output pairs into a single pair.
+///
+/// The resulting `(Input, Output)` can be passed directly to a scheme's
+/// `prove` / `verify` to obtain or check a single proof covering all pairs.
+///
+/// - N=0: returns the identity point for both input and output.
+/// - N=1: returns the pair as-is, no delinearization.
+/// - N>1: derives 128-bit delinearization scalars and returns
+///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
+pub fn merge<S: Suite>(
+    dom_sep: u8,
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> (Input<S>, Output<S>) {
+    let zero = AffinePoint::<S>::zero();
+
+    if ios.is_empty() {
+        return (Input(zero), Output(zero));
+    }
+
+    if ios.len() == 1 {
+        return (ios[0].0, ios[0].1);
+    }
+
+    let zs = delinearization_scalars::<S>(dom_sep, ios, ad);
+    let (input, output) = ios.iter().zip(zs.iter()).fold(
+        (zero.into_group(), zero.into_group()),
+        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
+    );
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    (Input(norms[0]), Output(norms[1]))
 }
 
 #[cfg(test)]
