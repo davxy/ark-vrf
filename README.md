@@ -24,6 +24,9 @@ supports customization of scheme parameters.
   This is a standardized VRF implementation suitable for most applications requiring
   verifiable randomness.
 
+- **Thin VRF**: Merges the Schnorr public-key and VRF I/O DLEQ relations into a single
+  delinearized proof. Produces compact proofs (R, s) that support batch verification.
+
 - **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
   Extends the basic VRF with key-hiding properties using Pedersen commitments.
 
@@ -40,11 +43,11 @@ supports customization of scheme parameters.
 
 The library conditionally includes the following pre-configured suites (see features section):
 
-- **Ed25519-SHA-512-TAI**: Supports IETF and Pedersen VRF.
-- **Secp256r1-SHA-256-TAI**: Supports IETF and Pedersen VRF.
-- **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
-- **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
-- **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Pedersen, and Ring VRF.
+- **Ed25519-SHA-512-TAI**: Supports IETF, Thin, and Pedersen VRF.
+- **Secp256r1-SHA-256-TAI**: Supports IETF, Thin, and Pedersen VRF.
+- **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
+- **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
+- **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.
 
 ## Basic Usage
 
@@ -91,6 +94,40 @@ assert!(result.is_ok());
 // Verification will fail if any parameter is modified
 let tampered_output = secret.output(Input::new(b"different input").unwrap());
 assert!(public.verify(input, tampered_output, b"aux data", &proof).is_err());
+```
+
+### Thin-VRF
+
+The Thin VRF merges the public-key Schnorr pair and the VRF I/O pair into a
+single DLEQ relation via delinearization, then proves it with a Schnorr-like
+proof (R, s).
+
+_Prove_
+```rust,ignore
+use ark_vrf::thin::Prover;
+
+let proof = secret.prove(input, output, b"aux data");
+```
+
+_Verify_
+```rust,ignore
+use ark_vrf::thin::Verifier;
+
+let result = public.verify(input, output, b"aux data", &proof);
+assert!(result.is_ok());
+```
+
+_Batch verify_
+```rust,ignore
+use ark_vrf::thin::{Prover, BatchVerifier};
+
+let proof1 = secret.prove(input, output, b"data1");
+let proof2 = secret.prove(input, output, b"data2");
+
+let mut batch = BatchVerifier::new();
+batch.push(&public, input, output, b"data1", &proof1);
+batch.push(&public, input, output, b"data2", &proof2);
+assert!(batch.verify().is_ok());
 ```
 
 ### Pedersen-VRF
