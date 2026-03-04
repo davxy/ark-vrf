@@ -195,7 +195,7 @@ let verifier_key = params.verifier_key_from_commitment(ring_commitment);
 ## Features
 
 - `default`: `std`
-- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `rfc-6979`, `test-vectors`.
+- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `test-vectors`.
 - `secret-split`: Point scalar multiplication with secret split. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
    sensible scalar multiplications, but provides side channel defenses.
