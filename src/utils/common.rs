@@ -344,65 +344,20 @@ where
     }
 }
 
-/// Delinearization scalars for multi-input DLEQ proofs.
+/// Delinearize multiple input-output pairs into a single pair.
 ///
-/// Derives per-input scalars using the technique from Privacy Pass / dleq_vrf.
-/// Each scalar is 128-bit, providing 2^{-128} Schwartz-Zippel soundness.
-///
-/// The `dom_sep` byte allows callers to domain-separate different schemes.
-///
-/// Seed: `H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)`
-pub fn delinearization_scalars<S: Suite>(
-    dom_sep: u8,
-    ios: &[(Input<S>, Output<S>)],
-    ad: &[u8],
-) -> Vec<ScalarField<S>> {
-    const DOM_SEP_BACK: u8 = 0x00;
-
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([dom_sep]);
-
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-
-    let n = ios.len() as u32;
-    hasher.update(n.to_le_bytes());
-
-    for (input, output) in ios {
-        pt_buf.clear();
-        S::Codec::point_encode_into(&input.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-        pt_buf.clear();
-        S::Codec::point_encode_into(&output.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-    }
-
-    hasher.update(ad);
-    hasher.update([DOM_SEP_BACK]);
-    let seed = hasher.finalize();
-
-    // For each i: z_i = H(seed || i_as_u32_le) truncated to 128 bits
-    (0..n)
-        .map(|i| {
-            let h = S::Hasher::new()
-                .chain_update(&seed)
-                .chain_update(i.to_le_bytes())
-                .finalize();
-            ScalarField::<S>::from_le_bytes_mod_order(&h[..16])
-        })
-        .collect()
-}
-
-/// Delinearize and merge multiple input-output pairs into a single pair.
-///
+/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
+/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
 /// The resulting `(Input, Output)` can be passed directly to a scheme's
 /// `prove` / `verify` to obtain or check a single proof covering all pairs.
 ///
+/// The `dom_sep` byte allows callers to domain-separate different schemes.
+///
 /// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no delinearization.
-/// - N>1: derives 128-bit delinearization scalars and returns
-///   `(sum(z_i * H_i), sum(z_i * Gamma_i))`.
-pub fn merge<S: Suite>(
+/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
+/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
+///   and returns their linear combination.
+pub fn delinearize<S: Suite>(
     dom_sep: u8,
     ios: &[(Input<S>, Output<S>)],
     ad: &[u8],
@@ -417,10 +372,39 @@ pub fn merge<S: Suite>(
         return (ios[0].0, ios[0].1);
     }
 
-    let zs = delinearization_scalars::<S>(dom_sep, ios, ad);
-    let (input, output) = ios.iter().zip(zs.iter()).fold(
+    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
+    const DOM_SEP_BACK: u8 = 0x00;
+    let n = ios.len() as u32;
+
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([dom_sep]);
+    hasher.update(n.to_le_bytes());
+
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    for (input, output) in ios {
+        pt_buf.clear();
+        S::Codec::point_encode_into(&input.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+        pt_buf.clear();
+        S::Codec::point_encode_into(&output.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+    hasher.update(ad);
+    hasher.update([DOM_SEP_BACK]);
+    let seed = hasher.finalize();
+
+    // Derive z_i = H(seed || i_le) truncated to 128 bits, accumulate on the fly.
+    let (input, output) = ios.iter().enumerate().fold(
         (zero.into_group(), zero.into_group()),
-        |(h_acc, g_acc), ((i, o), z)| (h_acc + i.0 * z, g_acc + o.0 * z),
+        |(h_acc, g_acc), (i, (inp, out))| {
+            let h = S::Hasher::new()
+                .chain_update(&seed)
+                .chain_update((i as u32).to_le_bytes())
+                .finalize();
+            let z = ScalarField::<S>::from_le_bytes_mod_order(&h[..16]);
+            (h_acc + inp.0 * z, g_acc + out.0 * z)
+        },
     );
     let norms = CurveGroup::normalize_batch(&[input, output]);
     (Input(norms[0]), Output(norms[1]))

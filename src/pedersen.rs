@@ -442,7 +442,7 @@ pub(crate) mod testing {
     use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::merge::<S>(123, ios, ad)
+        utils::delinearize::<S>(123, ios, ad)
     }
 
     pub fn prove_verify<S: PedersenSuite>() {
