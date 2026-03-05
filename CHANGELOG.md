@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Thin VRF scheme. Merges the Schnorr public-key and VRF I/O DLEQ into a
+  single delinearized relation with a Schnorr-like proof (R, s). Supports batch
+  verification via randomized multi-scalar multiplication.
 - Multi-input IETF VRF using delinearized DLEQ. Proves multiple input-output
   pairs with a single proof via `delinearize` folding. N=1 is byte-identical
   to standard RFC-9381. N=0 reduces to a Schnorr signature over additional data.
