@@ -444,8 +444,10 @@ macro_rules! suite_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suites::testing::{Input, Secret};
+    use suites::testing::{Input, Secret, TestSuite};
     use testing::{TEST_SEED, random_val};
+    use ark_ec::AffineRepr;
+    use crate::ietf::{Prover, Verifier};
 
     #[test]
     fn vrf_output_check() {
@@ -457,5 +459,71 @@ mod tests {
 
         let expected = "71c1b2ee6e46c59e3bd0e2f0e2852b90ab56abb223180b00bd6c8ec6b11af18c";
         assert_eq!(expected, hex::encode(output.hash()));
+    }
+
+    #[test]
+    fn prove_uniqueness_vulnerability() {
+        use ark_std::{Zero, One};
+        use ark_ff::{Field, BigInteger};
+
+        type S = TestSuite;
+        type Sc = ScalarField<S>;
+
+        let secret = crate::Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::new(b"uniqueness attack").unwrap();
+        let honest_output = secret.output(input);
+        let ad = b"aux data";
+
+        // 1. Find a low-order point L (order 2 for Ed25519)
+        // For Ed25519, (0, -1) is order 2.
+        let low_order_pt = AffinePoint::<S>::new_unchecked(
+            BaseField::<S>::zero(),
+            -BaseField::<S>::one(),
+        );
+        assert!(!low_order_pt.is_zero());
+        // Verify it's order 2: 2 * L = O
+        assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
+
+        // 2. Compute gamma' = gamma + L
+        let malicious_output = Output::from_affine((honest_output.0 + low_order_pt).into_affine());
+        assert_ne!(honest_output, malicious_output);
+        assert_ne!(honest_output.hash(), malicious_output.hash());
+
+        // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
+        let mut ctr = 0u64;
+        let (proof, _) = loop {
+            let mut k_seed = [0u8; 8];
+            k_seed.copy_from_slice(&ctr.to_le_bytes());
+            let k = Sc::from_le_bytes_mod_order(&k_seed);
+            
+            let k_b = (S::generator() * k).into_affine();
+            let k_h = (input.0 * k).into_affine();
+            
+            let c = S::challenge(
+                &[&public.0, &input.0, &malicious_output.0, &k_b, &k_h],
+                ad,
+            );
+
+            // We need c to be even so that c * L = identity (since L has order 2)
+            if c.into_bigint().is_even() {
+                let s = k + c * secret.scalar;
+                break (crate::ietf::Proof { c, s }, c);
+            }
+            ctr += 1;
+            if ctr > 1000 { panic!("Grinding failed"); }
+        };
+
+        // 4. Verify the malicious proof
+        assert!(public.verify(input, malicious_output, ad, &proof).is_ok());
+
+        // 5. Verify the honest proof still works
+        let honest_proof = secret.prove(input, honest_output, ad);
+        assert!(public.verify(input, honest_output, ad, &honest_proof).is_ok());
+
+        // SUCCESS! Two different outputs for the same input and public key!
+        println!("Uniqueness BROKEN!");
+        println!("Honest output hash: {}", hex::encode(honest_output.hash()));
+        println!("Malicious output hash: {}", hex::encode(malicious_output.hash()));
     }
 }
