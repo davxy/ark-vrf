@@ -8,6 +8,14 @@
 //! with a Schnorr-like proof `(R, s)`. The `(R, s)` format (storing nonce
 //! commitment rather than challenge) enables batch verification.
 //!
+//! # Security
+//!
+//! The input point `I` **must** be constructed via hash-to-curve (e.g.
+//! [`Input::new`]) so that nobody knows its discrete-log relation to the
+//! generator `G`. If the prover knew such a relation, they could forge
+//! outputs. This is critical because the delinearization merges the Schnorr
+//! and VRF pairs into a single check.
+//!
 //! ## Usage Example
 //!
 //! ```rust,ignore
@@ -267,7 +275,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
@@ -424,5 +432,118 @@ pub(crate) mod testing {
             let pk = Public(self.base.pk);
             assert!(pk.verify(input, output, &self.base.ad, &proof).is_ok());
         }
+    }
+
+    /// Demonstrates that a malicious prover who knows the discrete-log relation
+    /// between the VRF input `I` and the generator `G` (i.e. knows `d` s.t.
+    /// `I = d * G`) can forge a valid Thin-VRF proof for an arbitrary output.
+    ///
+    /// This is why `Input` **must** be constructed via hash-to-curve.
+    #[test]
+    fn known_dlog_input_forgery() {
+        use ark_ff::Field;
+        use ark_std::rand::{RngCore, SeedableRng};
+
+        type S = crate::suites::testing::TestSuite;
+        type Sc = ScalarField<S>;
+
+        let g = S::generator();
+
+        // Attacker's key pair.
+        let sk = Sc::from(42);
+        let pk = (g * sk).into_affine();
+
+        // Input with KNOWN discrete log: I = d * G.
+        let d = Sc::from(7);
+        let input_pt = (g * d).into_affine();
+        let input = Input::<S>::from_affine(input_pt);
+
+        // Honest output would be O = sk * I.
+        let honest_output = (input_pt * sk).into_affine();
+
+        // Attacker picks a DIFFERENT output: O' = t * G, with t != sk * d.
+        let t = Sc::from(1234);
+        let fake_output_pt = (g * t).into_affine();
+        assert_ne!(fake_output_pt, honest_output);
+        let fake_output = Output::<S>::from_affine(fake_output_pt);
+
+        let ad: &[u8] = b"attack";
+
+        // --- Replicate delinearization to extract coefficients z0, z1 ---
+        //
+        // merged_pairs passes [(G, pk), (I, O')] to delinearize.
+        let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
+
+        // Re-derive the ChaCha20 seed (same procedure as utils::delinearize).
+        let n = 2u32;
+        let mut hasher = <S as Suite>::Hasher::new();
+        hasher.update(S::SUITE_ID);
+        hasher.update([0x04u8]); // DomSep::Delinearize
+        hasher.update(n.to_le_bytes());
+
+        for (inp, out) in &ios {
+            hasher.update(codec::point_encode::<S>(&inp.0));
+            hasher.update(codec::point_encode::<S>(&out.0));
+        }
+        hasher.update(ad);
+        hasher.update([0x00u8]); // DomSep::End
+
+        let seed = hasher.finalize();
+        let mut rng_seed = [0u8; 32];
+        rng_seed.copy_from_slice(&seed[..32]);
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
+
+        let mut next_scalar = || {
+            let mut buf = [0u8; 16];
+            rng.fill_bytes(&mut buf);
+            codec::scalar_decode::<S>(&buf)
+        };
+        let z0: Sc = next_scalar();
+        let z1: Sc = next_scalar();
+
+        // Sanity: verify extracted coefficients match the library output.
+        let (merged_input, merged_output) = utils::delinearize::<S>(&ios, ad);
+        assert_eq!(merged_input.0, (g * z0 + input_pt * z1).into_affine());
+        assert_eq!(
+            merged_output.0,
+            (pk * z0 + fake_output_pt * z1).into_affine()
+        );
+
+        // --- Forge the proof ---
+        //
+        // Because I = d*G, the merged input is I_m = (z0 + z1*d) * G and the
+        // merged output is O_m = (z0*sk + z1*t) * G, both multiples of G.
+        // The effective DLEQ secret is x = (z0*sk + z1*t) / (z0 + z1*d).
+        let x = (z0 * sk + z1 * t) * (z0 + z1 * d).inverse().unwrap();
+
+        // Standard Schnorr proof with the derived secret.
+        let k = Sc::from(9999);
+        let r = (merged_input.0 * k).into_affine();
+        let c = S::challenge(&[&pk, &input_pt, &fake_output_pt, &r], ad);
+        let s = k + c * x;
+
+        let forged_proof = Proof::<S> { r, s };
+
+        // The forged proof verifies despite O' != sk * I.
+        //
+        // The verifier checks: s * I_m == R + c * O_m
+        //
+        // Expanding with I = d*G (everything collapses to multiples of G):
+        //   I_m = z0*G + z1*I = (z0 + z1*d) * G
+        //   O_m = z0*pk + z1*O' = (z0*sk + z1*t) * G
+        //
+        // LHS: s * I_m = (k + c*x) * (z0 + z1*d) * G
+        // RHS: R + c * O_m = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
+        //
+        // Since x = (z0*sk + z1*t) / (z0 + z1*d):
+        //   LHS = (k + c*x) * (z0 + z1*d) * G
+        //       = k*(z0 + z1*d)*G + c * [(z0*sk + z1*t) / (z0 + z1*d)] * (z0 + z1*d) * G
+        //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
+        //       = RHS
+        let public = Public::<S>(pk);
+        assert!(
+            public.verify(input, fake_output, ad, &forged_proof).is_ok(),
+            "Forged proof must verify when input discrete log is known"
+        );
     }
 }

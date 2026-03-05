@@ -279,7 +279,7 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// nonces when the same secret key and input are used with different auxiliary data.
 ///
 /// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
-/// `from_be_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
+/// `from_(le/be)_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
 /// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
 /// rejected and trigger a retry; here they are instead reduced to a valid scalar.
 /// This introduces a negligible bias for curves where `q` is close to `2^(8*qbytes)`

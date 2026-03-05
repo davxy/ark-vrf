@@ -375,6 +375,14 @@ impl<S: Suite> Input<S> {
 
 impl<S: Suite> Input<S> {
     /// Construct from an affine point.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `value` was produced by a hash-to-curve
+    /// procedure (or is otherwise not in a known discrete-log relation with
+    /// the suite generator). This is required for the soundness of schemes
+    /// like Thin-VRF where the input and generator are delinearized into a
+    /// single check.
     pub fn from_affine(value: AffinePoint<S>) -> Self {
         Self(value)
     }
