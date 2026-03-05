@@ -15,7 +15,7 @@ impl Suite for TestSuite {
     type Hasher = sha2::Sha256;
     type Codec = codec::ArkworksCodec;
 
-    fn nonce(sk: &ScalarField, pt: Input, ad: &[u8]) -> ScalarField
+    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField
     where
         Self: Suite,
         Self::Codec: codec::Codec<Self>,
@@ -26,7 +26,9 @@ impl Suite for TestSuite {
                 + <Self::Codec as codec::Codec<Self>>::POINT_ENCODED_LEN,
         );
         <Self::Codec as codec::Codec<Self>>::scalar_encode_into(sk, &mut buf);
-        <Self::Codec as codec::Codec<Self>>::point_encode_into(&pt.0, &mut buf);
+        for pt in pts {
+            <Self::Codec as codec::Codec<Self>>::point_encode_into(pt, &mut buf);
+        }
         let h = Self::Hasher::new()
             .chain_update(&buf)
             .chain_update(ad)

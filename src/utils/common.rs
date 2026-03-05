@@ -9,7 +9,53 @@ use ark_ec::{
     AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
+use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
+
+/// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
+///
+/// Safe because the constituent iterators are both `ExactSizeIterator`
+/// with small lengths (VRF I/O pairs), so overflow is not a concern.
+#[derive(Clone)]
+pub struct ExactChain<A, B>(Chain<A, B>, usize);
+
+impl<A, B> ExactChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = A::Item>,
+{
+    pub fn new(a: A, b: B) -> Self {
+        let len = a.len() + b.len();
+        Self(a.chain(b), len)
+    }
+}
+
+impl<A, B> Iterator for ExactChain<A, B>
+where
+    A: Iterator,
+    B: Iterator<Item = A::Item>,
+{
+    type Item = A::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.0.next();
+        if item.is_some() {
+            self.1 -= 1;
+        }
+        item
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.1, Some(self.1))
+    }
+}
+
+impl<A, B> ExactSizeIterator for ExactChain<A, B>
+where
+    A: Iterator,
+    B: Iterator<Item = A::Item>,
+{
+}
 
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
@@ -233,7 +279,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// # Parameters
 ///
 /// * `sk` - The secret scalar key
-/// * `input` - The input point
+/// * `pts` - Points to bind into the nonce derivation
 /// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
@@ -245,7 +291,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// This function panics if `Suite::Hasher` output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
-    input: &AffinePoint<S>,
+    pts: &[&AffinePoint<S>],
     ad: &[u8],
 ) -> ScalarField<S> {
     assert!(
@@ -256,12 +302,16 @@ pub fn nonce_rfc_8032<S: Suite>(
     let sk_buf = codec::scalar_encode::<S>(sk);
     let sk_hash = hash::<S::Hasher>(&sk_buf);
 
-    let pt_buf = codec::point_encode::<S>(input);
-    let h = S::Hasher::new()
-        .chain_update(&sk_hash[32..])
-        .chain_update(&pt_buf)
-        .chain_update(ad)
-        .finalize();
+    let mut hasher = S::Hasher::new();
+    hasher.update(&sk_hash[32..]);
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    for pt in pts {
+        pt_buf.clear();
+        S::Codec::point_encode_into(pt, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+    hasher.update(ad);
+    let h = hasher.finalize();
 
     S::Codec::scalar_decode(&h)
 }
@@ -288,7 +338,7 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// # Parameters
 ///
 /// * `sk` - The secret scalar key
-/// * `input` - The input point
+/// * `pts` - Points to bind into the nonce derivation
 /// * `ad` - Additional data bound to the proof
 ///
 /// # Returns
@@ -297,17 +347,21 @@ pub fn nonce_rfc_8032<S: Suite>(
 #[cfg(feature = "rfc-6979")]
 pub fn nonce_rfc_6979<S: Suite>(
     sk: &ScalarField<S>,
-    input: &AffinePoint<S>,
+    pts: &[&AffinePoint<S>],
     ad: &[u8],
 ) -> ScalarField<S>
 where
     S::Hasher: digest::core_api::BlockSizeUser,
 {
-    let raw = codec::point_encode::<S>(input);
-    let h1 = S::Hasher::new()
-        .chain_update(&raw)
-        .chain_update(ad)
-        .finalize();
+    let mut h1_hasher = S::Hasher::new();
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    for pt in pts {
+        pt_buf.clear();
+        S::Codec::point_encode_into(pt, &mut pt_buf);
+        h1_hasher.update(&pt_buf);
+    }
+    h1_hasher.update(ad);
+    let h1 = h1_hasher.finalize();
 
     let v = [1; 32];
     let k = [0; 32];
@@ -373,16 +427,16 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 }
 
-/// Seed a [`DelinearizeScalars`] stream for the given I/O pairs and
-/// auxiliary data. The seed is derived deterministically by hashing all
+/// Seed a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
+/// and auxiliary data. The seed is derived deterministically by hashing all
 /// encoded points together with `ad`.
-pub(crate) fn delinearize_scalars<S: Suite>(
-    ios: &[(Input<S>, Output<S>)],
+pub(crate) fn delinearize_scalars_from_iter<S: Suite>(
+    iter: impl ExactSizeIterator<Item = VrfIo<S>>,
     ad: &[u8],
 ) -> DelinearizeScalars<S> {
     use ark_std::rand::SeedableRng;
 
-    let n = u32::try_from(ios.len()).expect("too many input-output pairs");
+    let n = u32::try_from(iter.len()).expect("too many input-output pairs");
 
     // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
     let mut hasher = S::Hasher::new();
@@ -391,12 +445,12 @@ pub(crate) fn delinearize_scalars<S: Suite>(
     hasher.update(n.to_le_bytes());
 
     let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    for (input, output) in ios {
+    for io in iter {
         pt_buf.clear();
-        S::Codec::point_encode_into(&input.0, &mut pt_buf);
+        S::Codec::point_encode_into(&io.input.0, &mut pt_buf);
         hasher.update(&pt_buf);
         pt_buf.clear();
-        S::Codec::point_encode_into(&output.0, &mut pt_buf);
+        S::Codec::point_encode_into(&io.output.0, &mut pt_buf);
         hasher.update(&pt_buf);
     }
     hasher.update(ad);
@@ -411,6 +465,68 @@ pub(crate) fn delinearize_scalars<S: Suite>(
         rng: rand_chacha::ChaCha20Rng::from_seed(rng_seed),
         _marker: core::marker::PhantomData,
     }
+}
+
+/// Seed a [`DelinearizeScalars`] stream for the given I/O pairs and
+/// auxiliary data. The seed is derived deterministically by hashing all
+/// encoded points together with `ad`.
+pub(crate) fn delinearize_scalars<S: Suite>(
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> DelinearizeScalars<S> {
+    delinearize_scalars_from_iter(
+        ios.iter().map(|&(input, output)| VrfIo { input, output }),
+        ad,
+    )
+}
+
+/// Delinearize multiple input-output pairs (from an iterator) into a single pair.
+///
+/// Same semantics as [`delinearize`] but accepts an iterator instead of a slice,
+/// enabling zero-allocation composition (e.g. chaining a Schnorr pair with VRF pairs).
+///
+/// The iterator must be `ExactSizeIterator` (to know N) and `Clone` (for the
+/// two-pass hash-then-fold without allocation).
+pub fn delinearize_from_iter<S: Suite>(
+    iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: &[u8],
+) -> (Input<S>, Output<S>) {
+    let zero = AffinePoint::<S>::zero();
+    let n = iter.len();
+
+    if n == 0 {
+        return (Input(zero), Output(zero));
+    }
+
+    if n == 1 {
+        let io = iter.clone().next().unwrap();
+        return (io.input, io.output);
+    }
+
+    // MSM has bucket-setup overhead that dominates for small N.
+    // Fold is faster below this threshold; MSM wins above it.
+    const MSM_THRESHOLD: usize = 16;
+
+    let mut scalars = delinearize_scalars_from_iter(iter.clone(), ad);
+
+    let zero = zero.into_group();
+    let (input, output) = if n < MSM_THRESHOLD {
+        iter.fold((zero, zero), |(h_acc, g_acc), io| {
+            let z = scalars.next();
+            (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
+        })
+    } else {
+        let scalars = scalars.take_vec(n);
+        let (inputs, outputs): (Vec<_>, Vec<_>) =
+            iter.map(|io| (io.input.0, io.output.0)).unzip();
+        use ark_ec::VariableBaseMSM;
+        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
+        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
+        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
+        (input, output)
+    };
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    (Input(norms[0]), Output(norms[1]))
 }
 
 /// Delinearize multiple input-output pairs into a single pair.
@@ -438,40 +554,10 @@ pub(crate) fn delinearize_scalars<S: Suite>(
 /// (the identity point) and **must not** be used to derive VRF randomness.
 /// Doing so would produce a predictable, key-independent value.
 pub fn delinearize<S: Suite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-    let zero = AffinePoint::<S>::zero();
-
-    if ios.is_empty() {
-        return (Input(zero), Output(zero));
-    }
-
-    if ios.len() == 1 {
-        return (ios[0].0, ios[0].1);
-    }
-
-    // MSM has bucket-setup overhead that dominates for small N.
-    // Fold is faster below this threshold; MSM wins above it.
-    const MSM_THRESHOLD: usize = 16;
-
-    let mut scalars = delinearize_scalars::<S>(ios, ad);
-
-    let zero = zero.into_group();
-    let (input, output) = if ios.len() < MSM_THRESHOLD {
-        ios.iter().fold((zero, zero), |(h_acc, g_acc), (inp, out)| {
-            let z = scalars.next();
-            (h_acc + inp.0 * z, g_acc + out.0 * z)
-        })
-    } else {
-        let scalars = scalars.take_vec(ios.len());
-        let inputs: Vec<_> = ios.iter().map(|(inp, _)| inp.0).collect();
-        let outputs: Vec<_> = ios.iter().map(|(_, out)| out.0).collect();
-        use ark_ec::VariableBaseMSM;
-        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
-        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
-        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
-        (input, output)
-    };
-    let norms = CurveGroup::normalize_batch(&[input, output]);
-    (Input(norms[0]), Output(norms[1]))
+    delinearize_from_iter(
+        ios.iter().map(|&(input, output)| VrfIo { input, output }),
+        ad,
+    )
 }
 
 #[cfg(test)]

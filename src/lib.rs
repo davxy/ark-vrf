@@ -179,6 +179,13 @@ pub trait Suite: Copy {
     /// The algorithm generate the nonce value in a deterministic
     /// pseudorandom fashion.
     ///
+    /// The `pts` parameter accepts a slice of points that are all
+    /// hashed into the nonce derivation. Each scheme passes exactly
+    /// the points it needs: IETF and Thin pass the single input point,
+    /// while Pedersen passes both input and output to bind the nonce
+    /// to the VRF output and prevent nonce reuse across different
+    /// output values.
+    ///
     /// The `ad` (additional data) parameter is mixed into the nonce
     /// derivation to ensure that proofs binding different auxiliary
     /// data to the same input produce distinct nonces. Omitting this
@@ -191,8 +198,8 @@ pub trait Suite: Copy {
     ///
     /// This function panics if `Hasher` output is less than 64 bytes.
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>, ad: &[u8]) -> ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, &pt.0, ad)
+    fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
+        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
     }
 
     /// Challenge generation as described by RCF-9381 section 5.4.3.
@@ -341,6 +348,14 @@ impl<S: Suite> Secret<S> {
     pub fn output(&self, input: Input<S>) -> Output<S> {
         Output(smul!(input.0, self.scalar).into_affine())
     }
+
+    /// Get the VRF input-output pair relative to input.
+    pub fn vrf_io(&self, input: Input<S>) -> VrfIo<S> {
+        VrfIo {
+            input,
+            output: self.output(input),
+        }
+    }
 }
 
 /// Public key generic over the cipher suite.
@@ -406,6 +421,19 @@ impl<S: Suite> Output<S> {
     }
 }
 
+/// VRF input-output pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct VrfIo<S: Suite> {
+    pub input: Input<S>,
+    pub output: Output<S>,
+}
+
+impl<S: Suite> AsRef<[VrfIo<S>]> for VrfIo<S> {
+    fn as_ref(&self) -> &[VrfIo<S>] {
+        core::slice::from_ref(self)
+    }
+}
+
 /// Type aliases for the given suite.
 #[macro_export]
 macro_rules! suite_types {
@@ -438,16 +466,18 @@ macro_rules! suite_types {
         pub type ThinBatchItem = $crate::thin::BatchItem<$suite>;
         #[allow(dead_code)]
         pub type ThinBatchVerifier = $crate::thin::BatchVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type VrfIo = $crate::VrfIo<$suite>;
     };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
-    use ark_ec::AffineRepr;
     use crate::ietf::{Prover, Verifier};
+    use ark_ec::AffineRepr;
+    use suites::testing::{Input, Secret, TestSuite};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {
@@ -463,8 +493,8 @@ mod tests {
 
     #[test]
     fn prove_uniqueness_vulnerability() {
-        use ark_std::{Zero, One};
-        use ark_ff::{Field, BigInteger};
+        use ark_ff::BigInteger;
+        use ark_std::{One, Zero};
 
         type S = TestSuite;
         type Sc = ScalarField<S>;
@@ -477,10 +507,8 @@ mod tests {
 
         // 1. Find a low-order point L (order 2 for Ed25519)
         // For Ed25519, (0, -1) is order 2.
-        let low_order_pt = AffinePoint::<S>::new_unchecked(
-            BaseField::<S>::zero(),
-            -BaseField::<S>::one(),
-        );
+        let low_order_pt =
+            AffinePoint::<S>::new_unchecked(BaseField::<S>::zero(), -BaseField::<S>::one());
         assert!(!low_order_pt.is_zero());
         // Verify it's order 2: 2 * L = O
         assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
@@ -496,14 +524,11 @@ mod tests {
             let mut k_seed = [0u8; 8];
             k_seed.copy_from_slice(&ctr.to_le_bytes());
             let k = Sc::from_le_bytes_mod_order(&k_seed);
-            
+
             let k_b = (S::generator() * k).into_affine();
             let k_h = (input.0 * k).into_affine();
-            
-            let c = S::challenge(
-                &[&public.0, &input.0, &malicious_output.0, &k_b, &k_h],
-                ad,
-            );
+
+            let c = S::challenge(&[&public.0, &input.0, &malicious_output.0, &k_b, &k_h], ad);
 
             // We need c to be even so that c * L = identity (since L has order 2)
             if c.into_bigint().is_even() {
@@ -511,7 +536,9 @@ mod tests {
                 break (crate::ietf::Proof { c, s }, c);
             }
             ctr += 1;
-            if ctr > 1000 { panic!("Grinding failed"); }
+            if ctr > 1000 {
+                panic!("Grinding failed");
+            }
         };
 
         // 4. Verify the malicious proof
@@ -519,11 +546,16 @@ mod tests {
 
         // 5. Verify the honest proof still works
         let honest_proof = secret.prove(input, honest_output, ad);
-        assert!(public.verify(input, honest_output, ad, &honest_proof).is_ok());
+        assert!(public
+            .verify(input, honest_output, ad, &honest_proof)
+            .is_ok());
 
         // SUCCESS! Two different outputs for the same input and public key!
         println!("Uniqueness BROKEN!");
         println!("Honest output hash: {}", hex::encode(honest_output.hash()));
-        println!("Malicious output hash: {}", hex::encode(malicious_output.hash()));
+        println!(
+            "Malicious output hash: {}",
+            hex::encode(malicious_output.hash())
+        );
     }
 }

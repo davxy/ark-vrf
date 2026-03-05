@@ -164,24 +164,23 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, &input.0, ad);
 
-        // Construct the nonces
-
-        // Bind the blinding factor to the nonce derivation for `k`.
-        // Without it, two proofs with the same (secret, input, ad) but different
-        // blinding factors would reuse `k` with different challenges, enabling
-        // secret key recovery: x = (s1 - s2) / (c1 - c2).
+        // k nonce: bind input, output, and blinding.
+        // The blinding factor is mixed into `ad` so that two proofs with the
+        // same (secret, input, ad) but different blinding factors produce
+        // distinct nonces, preventing secret key recovery via
+        // x = (s1 - s2) / (c1 - c2).
         let blinding_buf = codec::scalar_encode::<S>(&blinding);
         let buf = [blinding_buf.as_slice(), ad].concat();
-        let k = S::nonce(&self.scalar, input, &buf);
+        let k = S::nonce(&self.scalar, &[&input.0, &output.0], &buf);
 
-        // Bind the secret key to the nonce derivation for `kb`.
-        // Without it, two proofs with the same (blinding, input, ad) but different
-        // secret keys would reuse `kb` with different challenges, enabling
-        // blinding factor recovery: b = (sb1 - sb2) / (c1 - c2).
-        // This scenario is unlikely in practice, but worth guarding against.
+        // kb nonce: bind input, output, and secret key.
+        // The secret key is mixed into `ad` so that two proofs with the
+        // same (blinding, input, ad) but different secret keys produce
+        // distinct nonces, preventing blinding factor recovery via
+        // b = (sb1 - sb2) / (c1 - c2).
         let secret_buf = codec::scalar_encode::<S>(&self.scalar);
         let buf = [secret_buf.as_slice(), ad].concat();
-        let kb = S::nonce(&blinding, input, &buf);
+        let kb = S::nonce(&blinding, &[&input.0, &output.0], &buf);
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -439,11 +438,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
-
-    fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(ios, ad)
-    }
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
@@ -512,7 +507,7 @@ pub(crate) mod testing {
 
         let (proof_std, blinding_std) = secret.prove(input, output, b"foo");
         let io = (input, output);
-        let (mi, mo) = merge(&[io], b"foo");
+        let (mi, mo) = utils::delinearize(&[io], b"foo");
         let (proof_multi, blinding_multi) = secret.prove(mi, mo, b"foo");
 
         // Byte-identical proofs and blinding factors
@@ -543,24 +538,24 @@ pub(crate) mod testing {
             .collect();
         ios.push((Input(S::Affine::generator()), Output(secret.public().0)));
 
-        let (input, output) = merge(&ios, b"bar");
+        let (input, output) = utils::delinearize(&ios, b"bar");
         let (proof, _) = secret.prove(input, output, b"bar");
         assert!(Public::verify(input, output, b"bar", &proof).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].1 = secret.output(ios[0].0);
-        let (bi, bo) = merge(&bad_ios, b"bar");
+        let (bi, bo) = utils::delinearize(&bad_ios, b"bar");
         assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
 
         // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
         bad_ios[0].0 = ios[1].0;
-        let (bi, bo) = merge(&bad_ios, b"bar");
+        let (bi, bo) = utils::delinearize(&bad_ios, b"bar");
         assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
 
         // Tamper: wrong ad
-        let (bi, bo) = merge(&ios, b"baz");
+        let (bi, bo) = utils::delinearize(&ios, b"baz");
         assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
     }
 
@@ -570,12 +565,12 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
 
-        let (input, output) = merge(&[], b"bar");
+        let (input, output) = utils::delinearize(&[], b"bar");
         let (proof, _) = secret.prove(input, output, b"bar");
 
         assert!(Public::verify(input, output, b"bar", &proof).is_ok());
 
-        let (bi, bo) = merge(&[], b"baz");
+        let (bi, bo) = utils::delinearize(&[], b"baz");
         assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
     }
 
