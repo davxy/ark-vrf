@@ -1,7 +1,8 @@
 //! # Ring VRF
 //!
 //! Implementation of a zero-knowledge VRF scheme providing signer anonymity within a set of
-//! public keys, based on [BCHSV23](https://eprint.iacr.org/2023/002).
+//! public keys, based on Sections 4 and 6 of
+//! [BCHSV23](https://eprint.iacr.org/2023/002).
 //!
 //! This module is gated by the `ring` feature.
 //!

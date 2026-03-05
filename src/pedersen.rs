@@ -1,6 +1,7 @@
 //! # Pedersen-VRF
 //!
-//! Implementation of a key-hiding VRF scheme using Pedersen commitments as described in
+//! Implementation of a key-hiding VRF scheme using Pedersen commitments, based on
+//! the PedVRF construction from Section 4 of
 //! [BCHSV23](https://eprint.iacr.org/2023/002).
 //!
 //! This scheme extends the IETF VRF by adding key privacy through blinding factors,

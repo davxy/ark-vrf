@@ -1,7 +1,9 @@
 //! # Thin-VRF
 //!
-//! Inspired by the delinearized DLEQ technique from
-//! [BCHSV23](https://eprint.iacr.org/2023/002).
+//! Based on the PedVRF construction from Section 4 of
+//! [BCHSV23](https://eprint.iacr.org/2023/002), reduced to EC-VRF form
+//! by setting the blinding factor `b = 0` and using `pk = sk*G` directly
+//! (see remark on page 13 of the paper).
 //!
 //! ThinVrf merges the public-key Schnorr pair `(G, P)` and the VRF I/O pair
 //! `(I, O)` into a single DLEQ relation via delinearization, then proves it
@@ -275,7 +277,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
+    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
@@ -442,7 +444,6 @@ pub(crate) mod testing {
     #[test]
     fn known_dlog_input_forgery() {
         use ark_ff::Field;
-        use ark_std::rand::{RngCore, SeedableRng};
 
         type S = crate::suites::testing::TestSuite;
         type Sc = ScalarField<S>;
@@ -469,45 +470,16 @@ pub(crate) mod testing {
 
         let ad: &[u8] = b"attack";
 
-        // --- Replicate delinearization to extract coefficients z0, z1 ---
+        // Extract delinearization coefficients z0, z1.
         //
         // merged_pairs passes [(G, pk), (I, O')] to delinearize.
         let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
+        let mut zs = utils::delinearize_scalars::<S>(&ios, ad);
+        let (z0, z1) = (zs.next(), zs.next());
 
-        // Re-derive the ChaCha20 seed (same procedure as utils::delinearize).
-        let n = 2u32;
-        let mut hasher = <S as Suite>::Hasher::new();
-        hasher.update(S::SUITE_ID);
-        hasher.update([0x04u8]); // DomSep::Delinearize
-        hasher.update(n.to_le_bytes());
-
-        for (inp, out) in &ios {
-            hasher.update(codec::point_encode::<S>(&inp.0));
-            hasher.update(codec::point_encode::<S>(&out.0));
-        }
-        hasher.update(ad);
-        hasher.update([0x00u8]); // DomSep::End
-
-        let seed = hasher.finalize();
-        let mut rng_seed = [0u8; 32];
-        rng_seed.copy_from_slice(&seed[..32]);
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
-
-        let mut next_scalar = || {
-            let mut buf = [0u8; 16];
-            rng.fill_bytes(&mut buf);
-            codec::scalar_decode::<S>(&buf)
-        };
-        let z0: Sc = next_scalar();
-        let z1: Sc = next_scalar();
-
-        // Sanity: verify extracted coefficients match the library output.
-        let (merged_input, merged_output) = utils::delinearize::<S>(&ios, ad);
-        assert_eq!(merged_input.0, (g * z0 + input_pt * z1).into_affine());
-        assert_eq!(
-            merged_output.0,
-            (pk * z0 + fake_output_pt * z1).into_affine()
-        );
+        let (merged_input, _) = utils::delinearize::<S>(&ios, ad);
+        let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
+        assert_eq!(merged_input.0, expected_merged_input);
 
         // --- Forge the proof ---
         //
