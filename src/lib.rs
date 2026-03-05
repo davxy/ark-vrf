@@ -11,11 +11,15 @@
 //!
 //! - **IETF VRF**: ECVRF implementation compliant with [RFC9381](https://datatracker.ietf.org/doc/rfc9381)
 //!
-//! - **Pedersen VRF**: Key-hiding VRF using Pedersen commitments as described in
-//!   [BCHSV23](https://eprint.iacr.org/2023/002)
+//! - **Thin VRF**: Compact VRF using a delinearized DLEQ proof, derived from the PedVRF
+//!   construction in Section 4 of [BCHSV23](https://eprint.iacr.org/2023/002) with
+//!   `b = 0` and `pk = sk*G` (see page 13)
+//!
+//! - **Pedersen VRF**: Key-hiding VRF using Pedersen commitments, based on the PedVRF
+//!   construction from Section 4 of [BCHSV23](https://eprint.iacr.org/2023/002)
 //!
 //! - **Ring VRF**: Zero-knowledge VRF with signer anonymity within a key set, based on
-//!   [BCHSV23](https://eprint.iacr.org/2023/002)
+//!   Sections 4 and 6 of [BCHSV23](https://eprint.iacr.org/2023/002)
 //!
 //! ### Specifications
 //!
@@ -43,12 +47,6 @@
 //! let output = secret.output(input);
 //! let hash_bytes = output.hash();
 //! ```
-//!
-//! ### Proof Generation Schemes
-//!
-//! - [ietf] vrf proof
-//! - [pedersen] vrf proof
-//! - [ring] vrf proof
 //!
 //! ## Features
 //!
@@ -93,6 +91,7 @@ pub mod codec;
 pub mod ietf;
 pub mod pedersen;
 pub mod suites;
+pub mod thin;
 pub mod utils;
 
 #[cfg(feature = "ring")]
@@ -374,6 +373,14 @@ impl<S: Suite> Input<S> {
 
 impl<S: Suite> Input<S> {
     /// Construct from an affine point.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `value` was produced by a hash-to-curve
+    /// procedure (or is otherwise not in a known discrete-log relation with
+    /// the suite generator). This is required for the soundness of schemes
+    /// like Thin-VRF where the input and generator are delinearized into a
+    /// single check.
     pub fn from_affine(value: AffinePoint<S>) -> Self {
         Self(value)
     }
@@ -425,6 +432,12 @@ macro_rules! suite_types {
         pub type PedersenBatchItem = $crate::pedersen::BatchItem<$suite>;
         #[allow(dead_code)]
         pub type PedersenBatchVerifier = $crate::pedersen::BatchVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type ThinProof = $crate::thin::Proof<$suite>;
+        #[allow(dead_code)]
+        pub type ThinBatchItem = $crate::thin::BatchItem<$suite>;
+        #[allow(dead_code)]
+        pub type ThinBatchVerifier = $crate::thin::BatchVerifier<$suite>;
     };
 }
 

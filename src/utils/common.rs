@@ -279,7 +279,7 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// nonces when the same secret key and input are used with different auxiliary data.
 ///
 /// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
-/// `from_be_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
+/// `from_(le/be)_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
 /// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
 /// rejected and trigger a retry; here they are instead reduced to a valid scalar.
 /// This introduces a negligible bias for curves where `q` is close to `2^(8*qbytes)`
@@ -351,6 +351,68 @@ where
     }
 }
 
+/// Stateful stream of 128-bit delinearization scalars backed by a seeded
+/// ChaCha20 PRNG. Created by [`delinearize_scalars`].
+pub(crate) struct DelinearizeScalars<S: Suite> {
+    rng: rand_chacha::ChaCha20Rng,
+    _marker: core::marker::PhantomData<S>,
+}
+
+impl<S: Suite> DelinearizeScalars<S> {
+    /// Draw the next 128-bit scalar.
+    pub fn next(&mut self) -> ScalarField<S> {
+        use ark_std::rand::RngCore;
+        let mut buf = [0u8; 16];
+        self.rng.fill_bytes(&mut buf);
+        S::Codec::scalar_decode(&buf)
+    }
+
+    /// Collect `n` scalars into a `Vec`.
+    pub fn take_vec(&mut self, n: usize) -> Vec<ScalarField<S>> {
+        (0..n).map(|_| self.next()).collect()
+    }
+}
+
+/// Seed a [`DelinearizeScalars`] stream for the given I/O pairs and
+/// auxiliary data. The seed is derived deterministically by hashing all
+/// encoded points together with `ad`.
+pub(crate) fn delinearize_scalars<S: Suite>(
+    ios: &[(Input<S>, Output<S>)],
+    ad: &[u8],
+) -> DelinearizeScalars<S> {
+    use ark_std::rand::SeedableRng;
+
+    let n = u32::try_from(ios.len()).expect("too many input-output pairs");
+
+    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
+    let mut hasher = S::Hasher::new();
+    hasher.update(S::SUITE_ID);
+    hasher.update([DomSep::Delinearize as u8]);
+    hasher.update(n.to_le_bytes());
+
+    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    for (input, output) in ios {
+        pt_buf.clear();
+        S::Codec::point_encode_into(&input.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+        pt_buf.clear();
+        S::Codec::point_encode_into(&output.0, &mut pt_buf);
+        hasher.update(&pt_buf);
+    }
+    hasher.update(ad);
+    hasher.update([DomSep::End as u8]);
+    let seed = hasher.finalize();
+
+    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
+    let mut rng_seed = [0u8; 32];
+    rng_seed.copy_from_slice(&seed[..32]);
+
+    DelinearizeScalars {
+        rng: rand_chacha::ChaCha20Rng::from_seed(rng_seed),
+        _marker: core::marker::PhantomData,
+    }
+}
+
 /// Delinearize multiple input-output pairs into a single pair.
 ///
 /// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
@@ -370,7 +432,7 @@ where
 /// # WARNING: N=0
 ///
 /// When `ios` is empty, both returned points are the identity (zero point).
-/// Since `sk * O = O` for every secret key, the resulting DLEQ proof degenerates
+/// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
 /// into a Schnorr signature over the additional data -- it binds the public key
 /// to `ad` but provides **no VRF output**. The `Output` is a public constant
 /// (the identity point) and **must not** be used to derive VRF randomness.
@@ -386,60 +448,22 @@ pub fn delinearize<S: Suite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input
         return (ios[0].0, ios[0].1);
     }
 
-    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
-    let n = u32::try_from(ios.len()).expect("too many input-output pairs");
-
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::Delinearize as u8]);
-    hasher.update(n.to_le_bytes());
-
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    for (input, output) in ios {
-        pt_buf.clear();
-        S::Codec::point_encode_into(&input.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-        pt_buf.clear();
-        S::Codec::point_encode_into(&output.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-    }
-    hasher.update(ad);
-    hasher.update([DomSep::End as u8]);
-    let seed = hasher.finalize();
-
-    // Seed a ChaCha20Rng from the hash, then draw 128-bit scalars on the fly.
-    use ark_std::rand::{RngCore, SeedableRng};
-    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
-    let mut rng_seed = [0u8; 32];
-    rng_seed.copy_from_slice(&seed[..32]);
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed(rng_seed);
-
     // MSM has bucket-setup overhead that dominates for small N.
     // Fold is faster below this threshold; MSM wins above it.
     const MSM_THRESHOLD: usize = 16;
 
-    let mut next_scalar = || {
-        let mut buf = [0u8; 16];
-        rng.fill_bytes(&mut buf);
-        S::Codec::scalar_decode(&buf)
-    };
+    let mut scalars = delinearize_scalars::<S>(ios, ad);
 
     let zero = zero.into_group();
     let (input, output) = if ios.len() < MSM_THRESHOLD {
         ios.iter().fold((zero, zero), |(h_acc, g_acc), (inp, out)| {
-            let z = next_scalar();
+            let z = scalars.next();
             (h_acc + inp.0 * z, g_acc + out.0 * z)
         })
     } else {
-        let n = ios.len();
-        let mut scalars = Vec::with_capacity(n);
-        let mut inputs = Vec::with_capacity(n);
-        let mut outputs = Vec::with_capacity(n);
-        for (inp, out) in ios {
-            scalars.push(next_scalar());
-            inputs.push(inp.0);
-            outputs.push(out.0);
-        }
+        let scalars = scalars.take_vec(ios.len());
+        let inputs: Vec<_> = ios.iter().map(|(inp, _)| inp.0).collect();
+        let outputs: Vec<_> = ios.iter().map(|(_, out)| out.0).collect();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
         let input = Group::<S>::msm_unchecked(&inputs, &scalars);
