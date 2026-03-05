@@ -1,10 +1,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::{rand::SeedableRng, UniformRand};
 use ark_vrf::{AffinePoint, Input, Output, Secret};
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_key_from_seed<S: BenchInfo>(c: &mut Criterion) {
     let name = format!("{}/key_from_seed", S::SUITE_NAME);
@@ -79,7 +79,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
         b.iter(|| {
             S::nonce(
                 black_box(secret.scalar()),
-                black_box(input),
+                black_box(&[&input.0]),
                 black_box(b"bench"),
             )
         });
