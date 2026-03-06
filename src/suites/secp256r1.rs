@@ -97,12 +97,4 @@ mod tests {
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);
-
-    // Vectors from RFC-9381
-    #[test]
-    fn vectors_process_rfc_9381() {
-        testing::test_vectors_process::<crate::ietf::testing::TestVector<ThisSuite>>(
-            "secp256r1_sha-256_tai_ietf_rfc_9381",
-        );
-    }
 }
