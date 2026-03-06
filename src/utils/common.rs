@@ -237,9 +237,7 @@ where
 /// * `pts` - Array of curve points to include in the challenge
 /// * `ad` - Additional data to bind to the challenge
 ///
-/// # Returns
-///
-/// A scalar field element derived from the hash of the inputs
+/// Returns a scalar field element derived from the hash of the inputs
 pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
     let mut hasher = S::Hasher::new();
     hasher.update(S::SUITE_ID);
@@ -253,7 +251,7 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
     hasher.update(ad);
     hasher.update([DomSep::End as u8]);
     let hash = hasher.finalize();
-    codec::scalar_decode::<S>(&hash[..S::CHALLENGE_LEN])
+    S::Codec::scalar_decode(&hash[..S::CHALLENGE_LEN])
 }
 
 /// Point to a hash according to RFC-9381 section 5.2.
