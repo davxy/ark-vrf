@@ -256,13 +256,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                     || {
                         let prepared = batch_items[..batch_size]
                             .iter()
-                            .map(|item| {
-                                batch_verifier.prepare(
-                                    item.io,
-                                    &item.ad,
-                                    &item.proof,
-                                )
-                            })
+                            .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
                             .collect::<Vec<_>>();
                         let vk = verifier_key.clone();
                         let verifier = setup.params.verifier(vk);
