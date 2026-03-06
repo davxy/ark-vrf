@@ -92,8 +92,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
                     <ark_vrf::Public<S> as Verifier<S>>::verify(
-                        setup.input,
-                        setup.output,
+                        setup.io,
                         b"ad",
                         black_box(&proof),
                         black_box(&verifier),
@@ -259,8 +258,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                             .iter()
                             .map(|item| {
                                 batch_verifier.prepare(
-                                    item.input,
-                                    item.output,
+                                    item.io,
                                     &item.ad,
                                     &item.proof,
                                 )
