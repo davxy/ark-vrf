@@ -16,12 +16,12 @@
 //! // Proving
 //! use ark_vrf::ietf::Prover;
 //! let input = Input::from_affine(my_data);
-//! let output = secret.output(input);
-//! let proof = secret.prove(input, output, aux_data);
+//! let io = secret.vrf_io(input);
+//! let proof = secret.prove(io, aux_data);
 //!
 //! // Verification
 //! use ark_vrf::ietf::Verifier;
-//! let result = public.verify(input, output, aux_data, &proof);
+//! let result = public.verify(io, aux_data, &proof);
 //! ```
 
 use super::*;
@@ -109,15 +109,16 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
 /// Implementors can create cryptographic proofs that a VRF output
 /// is correctly derived from an input using their secret key.
 pub trait Prover<S: IetfSuite> {
-    /// Generate a proof for the given input/output and additional data.
+    /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Creates a non-interactive zero-knowledge proof binding the input, output,
     /// and additional data to the prover's public key.
     ///
-    /// * `input` - VRF input point
-    /// * `output` - VRF output point (γ = x·H)
+    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    ///
+    /// * `ios` - VRF input/output pairs
     /// * `ad` - Additional data to bind to the proof
-    fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
+    fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
 /// Trait for entities that can verify VRF proofs.
@@ -125,21 +126,21 @@ pub trait Prover<S: IetfSuite> {
 /// Implementors can verify that a VRF output is correctly derived
 /// from an input using a specific public key.
 pub trait Verifier<S: IetfSuite> {
-    /// Verify a proof for the given input/output and additional data.
+    /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Verifies the cryptographic relationship between input, output, and proof
     /// under the verifier's public key.
     ///
-    /// * `input` - VRF input point
-    /// * `output` - Claimed VRF output point
+    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
+    ///
+    /// * `ios` - VRF input/output pairs
     /// * `aux` - Additional data bound to the proof
     /// * `proof` - The proof to verify
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         aux: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
@@ -156,18 +157,26 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// 3. Compute the challenge `c` using all public values, nonce commitments and the
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
-    fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let k = S::nonce(&self.scalar, input, ad.as_ref());
+    ///
+    /// **Deviation from RFC 9381:** The nonce derivation includes the output point
+    /// alongside the input, whereas the RFC only uses the input. Since `prove`
+    /// receives pre-computed outputs rather than recomputing them internally, this
+    /// binds the nonce to the specific output, preventing nonce reuse if different
+    /// outputs are ever provided for the same `(secret, input, ad)` tuple — which
+    /// would otherwise enable secret key recovery. The resulting proof remains
+    /// compatible with RFC 9381 verification.
+    fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
+        let ad = ad.as_ref();
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
+
+        let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad);
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);
         let norms = CurveGroup::normalize_batch(&[k_b, k_h]);
         let (k_b, k_h) = (norms[0], norms[1]);
 
-        let c = S::challenge(
-            &[&self.public.0, &input.0, &output.0, &k_b, &k_h],
-            ad.as_ref(),
-        );
+        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &k_b, &k_h], ad);
         let s = k + c * self.scalar;
         Proof { c, s }
     }
@@ -186,11 +195,13 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
     /// 4. Verify that `c_exp == c` from the proof
     fn verify(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         aux: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
+        let aux = aux.as_ref();
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), aux);
+
         let Proof { c, s } = proof;
 
         let u = S::generator() * s - self.0 * c;
@@ -198,8 +209,8 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 
-        let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], aux.as_ref());
-        (&c_exp == c)
+        let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], aux);
+        (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
     }
@@ -210,18 +221,14 @@ pub mod testing {
     use super::*;
     use crate::testing::{self as common, SuiteExt};
 
-    fn merge<S: IetfSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(ios, ad)
-    }
-
     pub fn prove_verify<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let proof = secret.prove(input, output, b"foo");
-        let result = public.verify(input, output, b"foo", &proof);
+        let proof = secret.prove(io, b"foo");
+        let result = public.verify(io, b"foo", &proof);
         assert!(result.is_ok());
     }
 
@@ -229,29 +236,24 @@ pub mod testing {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
 
-        let (input, output) = merge(&[], b"bar");
-        assert_eq!(input.0, output.0);
-        assert_eq!(input.0, S::Affine::zero());
-        let proof = secret.prove(input, output, b"bar");
+        let ios: [VrfIo<S>; 0] = [];
+        let proof = secret.prove(ios, b"bar");
 
-        assert!(public.verify(input, output, b"bar", &proof).is_ok());
+        assert!(public.verify(ios, b"bar", &proof).is_ok());
 
-        let (bi, bo) = merge(&[], b"baz");
-        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
+        // Wrong ad should fail
+        assert!(public.verify(ios, b"baz", &proof).is_err());
     }
 
-    /// N=1 merge + prove must be byte-identical to standard Prover::prove,
-    /// and cross-verification works in both directions.
+    /// N=1 slice produces same proof as passing a single `VrfIo`.
     pub fn prove_verify_multi_single<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let proof_std = secret.prove(input, output, b"foo");
-        let io = (input, output);
-        let (mi, mo) = merge(&[io], b"foo");
-        let proof_multi = secret.prove(mi, mo, b"foo");
+        let proof_single = secret.prove(io, b"foo");
+        let proof_slice = secret.prove([io], b"foo");
 
         // Byte-identical proofs
         let encode = |p: &ietf::Proof<S>| {
@@ -259,11 +261,11 @@ pub mod testing {
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
-        assert_eq!(encode(&proof_std), encode(&proof_multi));
+        assert_eq!(encode(&proof_single), encode(&proof_slice));
 
         // Cross-verification
-        assert!(public.verify(input, output, b"foo", &proof_multi).is_ok());
-        assert!(public.verify(mi, mo, b"foo", &proof_std).is_ok());
+        assert!(public.verify(io, b"foo", &proof_slice).is_ok());
+        assert!(public.verify([io], b"foo", &proof_single).is_ok());
     }
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
@@ -271,33 +273,32 @@ pub mod testing {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
 
-        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+        let mut ios: Vec<VrfIo<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                (input, secret.output(input))
+                secret.vrf_io(input)
             })
             .collect();
-        ios.push((Input(S::Affine::generator()), Output(public.0)));
+        ios.push(VrfIo {
+            input: Input(S::Affine::generator()),
+            output: Output(public.0),
+        });
 
-        let (input, output) = merge(&ios, b"bar");
-        let proof = secret.prove(input, output, b"bar");
-        assert!(public.verify(input, output, b"bar", &proof).is_ok());
+        let proof = secret.prove(&ios[..], b"bar");
+        assert!(public.verify(&ios[..], b"bar", &proof).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
-        bad_ios[1].1 = secret.output(ios[0].0);
-        let (bi, bo) = merge(&bad_ios, b"bar");
-        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
+        bad_ios[1].output = secret.output(ios[0].input);
+        assert!(public.verify(&bad_ios[..], b"bar", &proof).is_err());
 
         // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
-        bad_ios[0].0 = ios[1].0;
-        let (bi, bo) = merge(&bad_ios, b"bar");
-        assert!(public.verify(bi, bo, b"bar", &proof).is_err());
+        bad_ios[0].input = ios[1].input;
+        assert!(public.verify(&bad_ios[..], b"bar", &proof).is_err());
 
         // Tamper: wrong ad
-        let (bi, bo) = merge(&ios, b"baz");
-        assert!(public.verify(bi, bo, b"baz", &proof).is_err());
+        assert!(public.verify(&ios[..], b"baz", &proof).is_err());
     }
 
     #[macro_export]
@@ -360,11 +361,12 @@ pub mod testing {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
-            // TODO: store constructed types in the vectors
-            let input = Input::from_affine(base.h);
-            let output = Output::from_affine(base.gamma);
+            let io = VrfIo {
+                input: Input::from_affine(base.h),
+                output: Output::from_affine(base.gamma),
+            };
             let sk = Secret::from_scalar(base.sk);
-            let proof: Proof<S> = sk.prove(input, output, ad);
+            let proof: Proof<S> = sk.prove(io, ad);
             Self {
                 base,
                 c: proof.c,
@@ -400,15 +402,17 @@ pub mod testing {
 
         fn run(&self) {
             self.base.run();
-            let input = Input::<S>::from_affine(self.base.h);
-            let output = Output::from_affine(self.base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(self.base.h),
+                output: Output::from_affine(self.base.gamma),
+            };
             let sk = Secret::from_scalar(self.base.sk);
-            let proof = sk.prove(input, output, &self.base.ad);
+            let proof = sk.prove(io, &self.base.ad);
             assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
             assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
 
             let pk = Public(self.base.pk);
-            assert!(pk.verify(input, output, &self.base.ad, &proof).is_ok());
+            assert!(pk.verify(io, &self.base.ad, &proof).is_ok());
         }
     }
 }

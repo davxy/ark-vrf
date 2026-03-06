@@ -27,13 +27,14 @@
 //! // Proving
 //! let prover_key = params.prover_key(&ring);
 //! let prover = params.prover(prover_key, prover_key_index);
-//! let proof = secret.prove(input, output, b"aux data", &prover);
+//! let io = secret.vrf_io(input);
+//! let proof = secret.prove(io, b"aux data", &prover);
 //!
 //! // Verification
 //! use ark_vrf::ring::Verifier;
 //! let verifier_key = params.verifier_key(&ring);
 //! let verifier = params.verifier(verifier_key);
-//! let result = Public::verify(input, output, b"aux data", &proof, &verifier);
+//! let result = Public::verify(io, b"aux data", &proof, &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -150,20 +151,18 @@ pub struct Proof<S: RingSuite> {
 /// Implementors can create anonymous proofs that a VRF output
 /// is correctly derived using a secret key from a ring of public keys.
 pub trait Prover<S: RingSuite> {
-    /// Generate a proof for the given input/output and additional data.
+    /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Creates a zero-knowledge proof that:
     /// 1. The prover knows a secret key for one of the ring's public keys
     /// 2. That secret key was used to compute the VRF output
     ///
-    /// * `input` - VRF input point
-    /// * `output` - VRF output point
+    /// * `ios` - VRF input/output pairs
     /// * `ad` - Additional data to bind to the proof
     /// * `prover` - Ring prover instance for the specific ring position
     fn prove(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         prover: &RingProver<S>,
     ) -> Proof<S>;
@@ -174,23 +173,21 @@ pub trait Prover<S: RingSuite> {
 /// Implementors can verify anonymous proofs that a VRF output
 /// was derived using a secret key from a ring of public keys.
 pub trait Verifier<S: RingSuite> {
-    /// Verify a proof for the given input/output and additional data.
+    /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Verifies that:
     /// 1. The proof was created by a member of the ring
     /// 2. The VRF output is correct for the given input
     /// 3. The additional data matches what was used during proving
     ///
-    /// * `input` - VRF input point
-    /// * `output` - Claimed VRF output point
+    /// * `ios` - VRF input/output pairs
     /// * `ad` - Additional data bound to the proof
     /// * `sig` - The proof to verify
     /// * `verifier` - Ring verifier instance for the specific ring
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         sig: &Proof<S>,
         verifier: &RingVerifier<S>,
@@ -200,14 +197,12 @@ pub trait Verifier<S: RingSuite> {
 impl<S: RingSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         ring_prover: &RingProver<S>,
     ) -> Proof<S> {
         use pedersen::Prover as PedersenProver;
-        let (pedersen_proof, secret_blinding) =
-            <Self as PedersenProver<S>>::prove(self, input, output, ad);
+        let (pedersen_proof, secret_blinding) = <Self as PedersenProver<S>>::prove(self, ios, ad);
         let ring_proof = ring_prover.prove(secret_blinding);
         Proof {
             pedersen_proof,
@@ -218,14 +213,13 @@ impl<S: RingSuite> Prover<S> for Secret<S> {
 
 impl<S: RingSuite> Verifier<S> for Public<S> {
     fn verify(
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
-        <Self as PedersenVerifier<S>>::verify(input, output, ad, &proof.pedersen_proof)?;
+        <Self as PedersenVerifier<S>>::verify(ios, ad, &proof.pedersen_proof)?;
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
         if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
@@ -589,12 +583,11 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// the expensive pairing and MSM checks.
     pub fn prepare(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let pedersen = pedersen::BatchVerifier::prepare(input, output, ad, &proof.pedersen_proof);
+        let pedersen = pedersen::BatchVerifier::prepare(ios, ad, &proof.pedersen_proof);
         let key_commitment = proof.pedersen_proof.key_commitment().into_te();
         let ring = self
             .ring_batch
@@ -609,14 +602,8 @@ impl<S: RingSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(
-        &mut self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
-        let prepared = self.prepare(input, output, ad, proof);
+    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
+        let prepared = self.prepare(ios, ad, proof);
         self.push_prepared(prepared);
     }
 
@@ -818,8 +805,7 @@ pub(crate) mod testing {
     }
 
     struct BatchItem<S: RingSuite> {
-        input: Input<S>,
-        output: Output<S>,
+        io: VrfIo<S>,
         ad: Vec<u8>,
         proof: Proof<S>,
     }
@@ -831,16 +817,11 @@ pub(crate) mod testing {
             rng: &mut dyn ark_std::rand::RngCore,
         ) -> Self {
             let input = Input::from_affine(common::random_val(Some(rng)));
-            let output = secret.output(input);
+            let io = secret.vrf_io(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
-            let proof = secret.prove(input, output, &ad, prover);
-            Self {
-                input,
-                output,
-                ad,
-                proof,
-            }
+            let proof = secret.prove(io, &ad, prover);
+            Self { io, ad, proof }
         }
     }
 
@@ -863,18 +844,11 @@ pub(crate) mod testing {
 
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
-        let result = Public::verify(item.input, item.output, &item.ad, &item.proof, &verifier);
+        let result = Public::verify(item.io, &item.ad, &item.proof, &verifier);
         assert!(result.is_ok());
     }
 
-    fn delinearize<S: RingSuite>(
-        ios: &[(Input<S>, Output<S>)],
-        ad: &[u8],
-    ) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(ios, ad)
-    }
-
-    /// N=3 multi proof via delinearize + ring prove/verify.
+    /// N=3 multi proof via ring prove/verify.
     #[allow(unused)]
     pub fn prove_verify_multi<S: RingSuite>() {
         use ring::{Prover, Verifier};
@@ -895,27 +869,27 @@ pub(crate) mod testing {
         let verifier_key = params.verifier_key(&pks);
         let verifier = params.verifier(verifier_key);
 
-        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+        let mut ios: Vec<VrfIo<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                (input, secret.output(input))
+                secret.vrf_io(input)
             })
             .collect();
-        ios.push((Input(S::Affine::generator()), Output(public.0)));
+        ios.push(VrfIo {
+            input: Input(S::Affine::generator()),
+            output: Output(public.0),
+        });
 
-        let (input, output) = delinearize(&ios, b"bar");
-        let proof = secret.prove(input, output, b"bar", &prover);
-        assert!(Public::verify(input, output, b"bar", &proof, &verifier).is_ok());
+        let proof = secret.prove(&ios[..], b"bar", &prover);
+        assert!(Public::verify(&ios[..], b"bar", &proof, &verifier).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
-        bad_ios[1].1 = secret.output(ios[0].0);
-        let (bi, bo) = delinearize(&bad_ios, b"bar");
-        assert!(Public::verify(bi, bo, b"bar", &proof, &verifier).is_err());
+        bad_ios[1].output = secret.output(ios[0].input);
+        assert!(Public::verify(&bad_ios[..], b"bar", &proof, &verifier).is_err());
 
         // Tamper: wrong ad
-        let (bi, bo) = delinearize(&ios, b"baz");
-        assert!(Public::verify(bi, bo, b"baz", &proof, &verifier).is_err());
+        assert!(Public::verify(&ios[..], b"baz", &proof, &verifier).is_err());
     }
 
     #[allow(unused)]
@@ -955,7 +929,7 @@ pub(crate) mod testing {
 
         // Prove incrementally constructed batches
         for item in batch.iter() {
-            batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
+            batch_verifier.push(item.io, &item.ad, &item.proof);
             let res = batch_verifier.verify();
             assert!(res.is_ok());
         }
@@ -970,7 +944,7 @@ pub(crate) mod testing {
         let start = std::time::Instant::now();
         common::timed("Proofs push", || {
             for item in batch.iter() {
-                batch_verifier.push(item.input, item.output, &item.ad, &item.proof);
+                batch_verifier.push(item.io, &item.ad, &item.proof);
             }
         });
         common::timed("Unprepared batch verification", || batch_verifier.verify());
@@ -985,7 +959,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| batch_verifier.prepare(item.input, item.output, &item.ad, &item.proof))
+                .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
@@ -1036,7 +1010,7 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(common::random_val(Some(rng)));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
         let ring_size = params.max_ring_size();
         let prover_idx = random_val::<usize>(Some(rng)) % ring_size;
@@ -1045,7 +1019,7 @@ pub(crate) mod testing {
 
         let prover_key = params.prover_key(&pks);
         let prover = params.prover(prover_key, prover_idx);
-        let proof = secret.prove(input, output, b"foo", &prover);
+        let proof = secret.prove(io, b"foo", &prover);
 
         // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = params.verifier_key_builder();
@@ -1068,7 +1042,7 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.append(&[extra_pk], &lookup).unwrap_err(), 0);
         let verifier_key = vk_builder.finalize();
         let verifier = params.verifier(verifier_key);
-        let result = Public::verify(input, output, b"foo", &proof, &verifier);
+        let result = Public::verify(io, b"foo", &proof, &verifier);
         assert!(result.is_ok());
     }
 
@@ -1241,8 +1215,10 @@ pub(crate) mod testing {
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
             let public = secret.public();
 
-            let input = Input::<S>::from_affine(pedersen.base.h);
-            let output = Output::from_affine(pedersen.base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(pedersen.base.h),
+                output: Output::from_affine(pedersen.base.gamma),
+            };
 
             let params = <S as RingSuiteExt>::params();
 
@@ -1254,7 +1230,7 @@ pub(crate) mod testing {
 
             let prover_key = params.prover_key(&ring_pks);
             let prover = params.prover(prover_key, prover_idx);
-            let proof = secret.prove(input, output, ad, &prover);
+            let proof = secret.prove(io, ad, &prover);
 
             let verifier_key = params.verifier_key(&ring_pks);
             let ring_pks_com = verifier_key.commitment();
@@ -1302,8 +1278,10 @@ pub(crate) mod testing {
         fn run(&self) {
             self.pedersen.run();
 
-            let input = Input::<S>::from_affine(self.pedersen.base.h);
-            let output = Output::from_affine(self.pedersen.base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(self.pedersen.base.h),
+                output: Output::from_affine(self.pedersen.base.gamma),
+            };
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();
             assert_eq!(public.0, self.pedersen.base.pk);
@@ -1318,7 +1296,7 @@ pub(crate) mod testing {
             let verifier_key = params.verifier_key(&self.ring_pks);
             let verifier = params.verifier(verifier_key);
 
-            let proof = secret.prove(input, output, &self.pedersen.base.ad, &prover);
+            let proof = secret.prove(io, &self.pedersen.base.ad, &prover);
 
             {
                 // Check if Pedersen proof matches
@@ -1338,9 +1316,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            assert!(
-                Public::verify(input, output, &self.pedersen.base.ad, &proof, &verifier).is_ok()
-            );
+            assert!(Public::verify(io, &self.pedersen.base.ad, &proof, &verifier).is_ok());
         }
     }
 }

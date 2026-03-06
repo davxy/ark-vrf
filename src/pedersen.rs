@@ -16,13 +16,13 @@
 //! let secret = Secret::from_seed(b"seed");
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
-//! let output = secret.output(input);
+//! let io = secret.vrf_io(input);
 //!
 //! // Proving
-//! let (proof, blinding) = secret.prove(input, output, b"aux data");
+//! let (proof, blinding) = secret.prove(io, b"aux data");
 //!
 //! // Verification
-//! let result = Public::verify(input, output, b"aux data", &proof);
+//! let result = Public::verify(io, b"aux data", &proof);
 //!
 //! // Verify the proof was created using a specific public key.
 //! // This requires knowledge of the blinding factor.
@@ -31,6 +31,7 @@
 //! ```
 
 use crate::ietf::IetfSuite;
+use crate::utils;
 use crate::*;
 use ark_ec::VariableBaseMSM;
 
@@ -108,20 +109,20 @@ impl<S: PedersenSuite> Proof<S> {
 /// is correctly derived from an input using their secret key,
 /// while hiding the specific public key used.
 pub trait Prover<S: PedersenSuite> {
-    /// Generate a proof for the given input/output and additional data.
+    /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Creates a zero-knowledge proof binding the input, output, and additional data
     /// to a commitment of the prover's public key rather than the key itself.
     ///
-    /// * `input` - VRF input point
-    /// * `output` - VRF output point (γ = x·H)
+    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    ///
+    /// * `ios` - VRF input/output pairs
     /// * `ad` - Additional data to bind to the proof
     ///
     /// Returns the proof together with the associated blinding factor.
     fn prove(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>);
 }
@@ -131,22 +132,22 @@ pub trait Prover<S: PedersenSuite> {
 /// Implementors can verify that a VRF output is correctly derived
 /// from an input using a committed public key.
 pub trait Verifier<S: PedersenSuite> {
-    /// Verify a proof for the given input/output and additional data.
+    /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Verifies the cryptographic relationship between input, output, and proof
     /// without requiring knowledge of which specific public key was used.
     /// Confirms that the secret key used to generate the output is the same as
     /// the one committed to in the proof.
     ///
-    /// * `input` - VRF input point
-    /// * `output` - Claimed VRF output point
+    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
+    ///
+    /// * `ios` - VRF input/output pairs
     /// * `ad` - Additional data bound to the proof
     /// * `proof` - The proof to verify
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
@@ -155,33 +156,32 @@ pub trait Verifier<S: PedersenSuite> {
 impl<S: PedersenSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
         let ad = ad.as_ref();
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
 
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, &input.0, ad);
 
-        // Construct the nonces
-
-        // Bind the blinding factor to the nonce derivation for `k`.
-        // Without it, two proofs with the same (secret, input, ad) but different
-        // blinding factors would reuse `k` with different challenges, enabling
-        // secret key recovery: x = (s1 - s2) / (c1 - c2).
+        // k nonce: bind input, output, and blinding.
+        // The blinding factor is mixed into `ad` so that two proofs with the
+        // same (secret, input, ad) but different blinding factors produce
+        // distinct nonces, preventing secret key recovery via
+        // x = (s1 - s2) / (c1 - c2).
         let blinding_buf = codec::scalar_encode::<S>(&blinding);
         let buf = [blinding_buf.as_slice(), ad].concat();
-        let k = S::nonce(&self.scalar, input, &buf);
+        let k = S::nonce(&self.scalar, &[&input.0, &output.0], &buf);
 
-        // Bind the secret key to the nonce derivation for `kb`.
-        // Without it, two proofs with the same (blinding, input, ad) but different
-        // secret keys would reuse `kb` with different challenges, enabling
-        // blinding factor recovery: b = (sb1 - sb2) / (c1 - c2).
-        // This scenario is unlikely in practice, but worth guarding against.
+        // kb nonce: bind input, output, and secret key.
+        // The secret key is mixed into `ad` so that two proofs with the
+        // same (blinding, input, ad) but different secret keys produce
+        // distinct nonces, preventing blinding factor recovery via
+        // b = (sb1 - sb2) / (c1 - c2).
         let secret_buf = codec::scalar_encode::<S>(&self.scalar);
         let buf = [secret_buf.as_slice(), ad].concat();
-        let kb = S::nonce(&blinding, input, &buf);
+        let kb = S::nonce(&blinding, &[&input.0, &output.0], &buf);
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -220,11 +220,13 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
 
 impl<S: PedersenSuite> Verifier<S> for Public<S> {
     fn verify(
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
+        let ad = ad.as_ref();
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
+
         let Proof {
             pk_com,
             r,
@@ -234,7 +236,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         } = proof;
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad.as_ref());
+        let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad);
 
         // Eq1: Ok + c*O = s*I
         // Verifies that the VRF output O is correctly derived from the input I
@@ -297,14 +299,15 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     /// verification. This is cheap (one hash, no scalar multiplications)
     /// and can be done in parallel.
     pub fn prepare(
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
+        let ad = ad.as_ref();
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
         let c = S::challenge(
             &[&proof.pk_com, &input.0, &output.0, &proof.r, &proof.ok],
-            ad.as_ref(),
+            ad,
         );
         BatchItem {
             c,
@@ -324,14 +327,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(
-        &mut self,
-        input: Input<S>,
-        output: Output<S>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
-        let entry = Self::prepare(input, output, ad, proof);
+    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
+        let entry = Self::prepare(ios, ad, proof);
         self.push_prepared(entry);
     }
 
@@ -441,19 +438,15 @@ pub(crate) mod testing {
     use super::*;
     use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
-    fn merge<S: PedersenSuite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-        utils::delinearize::<S>(ios, ad)
-    }
-
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine(random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let (proof, blinding) = secret.prove(input, output, b"foo");
-        let result = Public::verify(input, output, b"foo", &proof);
+        let (proof, blinding) = secret.prove(io, b"foo");
+        let result = Public::verify(io, b"foo", &proof);
         assert!(result.is_ok());
 
         assert_eq!(
@@ -467,25 +460,25 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine(random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let (proof1, _) = secret.prove(input, output, b"foo");
-        let (proof2, _) = secret.prove(input, output, b"bar");
+        let (proof1, _) = secret.prove(io, b"foo");
+        let (proof2, _) = secret.prove(io, b"bar");
 
         // Single-proof verification still works.
-        assert!(Public::verify(input, output, b"foo", &proof1).is_ok());
-        assert!(Public::verify(input, output, b"bar", &proof2).is_ok());
+        assert!(Public::verify(io, b"foo", &proof1).is_ok());
+        assert!(Public::verify(io, b"bar", &proof2).is_ok());
 
         // Batch using push.
         let mut batch = BatchVerifier::new();
-        batch.push(input, output, b"foo", &proof1);
-        batch.push(input, output, b"bar", &proof2);
+        batch.push(io, b"foo", &proof1);
+        batch.push(io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
         // Batch using prepare + push_prepared.
         let mut batch = BatchVerifier::new();
-        let entry1 = BatchVerifier::prepare(input, output, b"foo", &proof1);
-        let entry2 = BatchVerifier::prepare(input, output, b"bar", &proof2);
+        let entry1 = BatchVerifier::prepare(io, b"foo", &proof1);
+        let entry2 = BatchVerifier::prepare(io, b"bar", &proof2);
         batch.push_prepared(entry1);
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());
@@ -496,24 +489,21 @@ pub(crate) mod testing {
 
         // Bad additional data should fail.
         let mut batch = BatchVerifier::new();
-        batch.push(input, output, b"foo", &proof1);
-        batch.push(input, output, b"wrong", &proof2);
+        batch.push(io, b"foo", &proof1);
+        batch.push(io, b"wrong", &proof2);
         assert!(batch.verify().is_err());
     }
 
-    /// N=1 merge + prove must be byte-identical to standard prove,
-    /// and cross-verification works in both directions.
+    /// N=1 slice produces same proof as passing a single `VrfIo`.
     pub fn prove_verify_multi_single<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine(random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let (proof_std, blinding_std) = secret.prove(input, output, b"foo");
-        let io = (input, output);
-        let (mi, mo) = merge(&[io], b"foo");
-        let (proof_multi, blinding_multi) = secret.prove(mi, mo, b"foo");
+        let (proof_single, blinding_single) = secret.prove(io, b"foo");
+        let (proof_slice, blinding_slice) = secret.prove([io], b"foo");
 
         // Byte-identical proofs and blinding factors
         let encode = |p: &pedersen::Proof<S>| {
@@ -521,12 +511,12 @@ pub(crate) mod testing {
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
-        assert_eq!(encode(&proof_std), encode(&proof_multi));
-        assert_eq!(blinding_std, blinding_multi);
+        assert_eq!(encode(&proof_single), encode(&proof_slice));
+        assert_eq!(blinding_single, blinding_slice);
 
         // Cross-verification
-        assert!(Public::verify(input, output, b"foo", &proof_multi).is_ok());
-        assert!(Public::verify(mi, mo, b"foo", &proof_std).is_ok());
+        assert!(Public::verify(io, b"foo", &proof_slice).is_ok());
+        assert!(Public::verify([io], b"foo", &proof_single).is_ok());
     }
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
@@ -535,33 +525,32 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
 
-        let mut ios: Vec<(Input<S>, Output<S>)> = (0..3u8)
+        let mut ios: Vec<VrfIo<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                (input, secret.output(input))
+                secret.vrf_io(input)
             })
             .collect();
-        ios.push((Input(S::Affine::generator()), Output(secret.public().0)));
+        ios.push(VrfIo {
+            input: Input(S::Affine::generator()),
+            output: Output(secret.public().0),
+        });
 
-        let (input, output) = merge(&ios, b"bar");
-        let (proof, _) = secret.prove(input, output, b"bar");
-        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+        let (proof, _) = secret.prove(&ios[..], b"bar");
+        assert!(Public::verify(&ios[..], b"bar", &proof).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
-        bad_ios[1].1 = secret.output(ios[0].0);
-        let (bi, bo) = merge(&bad_ios, b"bar");
-        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+        bad_ios[1].output = secret.output(ios[0].input);
+        assert!(Public::verify(&bad_ios[..], b"bar", &proof).is_err());
 
         // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
-        bad_ios[0].0 = ios[1].0;
-        let (bi, bo) = merge(&bad_ios, b"bar");
-        assert!(Public::verify(bi, bo, b"bar", &proof).is_err());
+        bad_ios[0].input = ios[1].input;
+        assert!(Public::verify(&bad_ios[..], b"bar", &proof).is_err());
 
         // Tamper: wrong ad
-        let (bi, bo) = merge(&ios, b"baz");
-        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+        assert!(Public::verify(&ios[..], b"baz", &proof).is_err());
     }
 
     /// N=0 reduces to a Schnorr signature over the additional data.
@@ -570,13 +559,13 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
 
-        let (input, output) = merge(&[], b"bar");
-        let (proof, _) = secret.prove(input, output, b"bar");
+        let ios: [VrfIo<S>; 0] = [];
+        let (proof, _) = secret.prove(ios, b"bar");
 
-        assert!(Public::verify(input, output, b"bar", &proof).is_ok());
+        assert!(Public::verify(ios, b"bar", &proof).is_ok());
 
-        let (bi, bo) = merge(&[], b"baz");
-        assert!(Public::verify(bi, bo, b"baz", &proof).is_err());
+        // Wrong ad should fail
+        assert!(Public::verify(ios, b"baz", &proof).is_err());
     }
 
     pub fn blinding_base_check<S: PedersenSuite>()
@@ -664,10 +653,12 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
-            let input = Input::<S>::from_affine(base.h);
-            let output = Output::from_affine(base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(base.h),
+                output: Output::from_affine(base.gamma),
+            };
             let secret = Secret::from_scalar(base.sk);
-            let (proof, blind) = secret.prove(input, output, ad);
+            let (proof, blind) = secret.prove(io, ad);
             Self { base, blind, proof }
         }
 
@@ -725,10 +716,12 @@ pub(crate) mod testing {
 
         fn run(&self) {
             self.base.run();
-            let input = Input::<S>::from_affine(self.base.h);
-            let output = Output::from_affine(self.base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(self.base.h),
+                output: Output::from_affine(self.base.gamma),
+            };
             let sk = Secret::from_scalar(self.base.sk);
-            let (proof, blind) = sk.prove(input, output, &self.base.ad);
+            let (proof, blind) = sk.prove(io, &self.base.ad);
             assert_eq!(self.blind, blind, "Blinding factor mismatch");
             assert_eq!(self.proof.pk_com, proof.pk_com, "Proof pkb mismatch");
             assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
@@ -736,7 +729,7 @@ pub(crate) mod testing {
             assert_eq!(self.proof.s, proof.s, "Proof s mismatch");
             assert_eq!(self.proof.sb, proof.sb, "Proof sb mismatch");
 
-            assert!(Public::verify(input, output, &self.base.ad, &proof).is_ok());
+            assert!(Public::verify(io, &self.base.ad, &proof).is_ok());
         }
     }
 }

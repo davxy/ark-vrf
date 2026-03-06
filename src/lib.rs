@@ -157,7 +157,7 @@ pub trait Suite: Copy {
     ///
     /// The point is guaranteed to be in the correct prime order subgroup
     /// by the `AffineRepr` bound.
-    type Affine: AffineRepr;
+    type Affine: AffineRepr; // + utils::PointFromCoord;
 
     /// Overarching hasher.
     ///
@@ -169,62 +169,6 @@ pub trait Suite: Copy {
     /// Used wherever we need to encode/decode points and scalars.
     type Codec: codec::Codec<Self>;
 
-    /// Nonce generation as described by RFC-9381 section 5.4.2.
-    ///
-    /// The default implementation provides the variant described
-    /// by section 5.4.2.2 of RFC-9381 which in turn is a derived
-    /// from steps 2 and 3 in section 5.1.6 of
-    /// [RFC8032](https://tools.ietf.org/html/rfc8032).
-    ///
-    /// The algorithm generate the nonce value in a deterministic
-    /// pseudorandom fashion.
-    ///
-    /// The `ad` (additional data) parameter is mixed into the nonce
-    /// derivation to ensure that proofs binding different auxiliary
-    /// data to the same input produce distinct nonces. Omitting this
-    /// would allow secret key recovery from two proofs that share
-    /// an input but differ in additional data.
-    ///
-    /// `Hasher` output **MUST** be be at least 64 bytes.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `Hasher` output is less than 64 bytes.
-    #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>, ad: &[u8]) -> ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, &pt.0, ad)
-    }
-
-    /// Challenge generation as described by RCF-9381 section 5.4.3.
-    ///
-    /// Hashes several points on the curve.
-    ///
-    /// This implementation extends the RFC procedure to allow adding
-    /// some optional additional data too the hashing procedure.
-    #[inline(always)]
-    fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    /// Hash data to a curve point.
-    ///
-    /// By default uses "try and increment" method described by RFC-9381.
-    ///
-    /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
-    /// In other words, salt is not applied by this function.
-    #[inline(always)]
-    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    /// Map the point to a hash value using `Self::Hasher`.
-    ///
-    /// By default uses the algorithm described by RFC-9381 without cofactor clearing.
-    #[inline(always)]
-    fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
-
     /// Generator used through all the suite.
     ///
     /// Defaults to Arkworks provided generator.
@@ -232,6 +176,40 @@ pub trait Suite: Copy {
     fn generator() -> AffinePoint<Self> {
         Self::Affine::generator()
     }
+
+    /// Nonce generation.
+    ///
+    /// Generates a deterministic pseudorandom nonce from the secret key,
+    /// curve points, and additional data.
+    ///
+    /// Utility functions available:
+    /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
+    /// - [`utils::nonce_rfc_6979`] — RFC-6979 (requires `rfc-6979` feature)
+    fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+
+    /// Challenge generation.
+    ///
+    /// Hashes curve points and optional additional data to produce a scalar.
+    ///
+    /// Utility functions available:
+    /// - [`utils::challenge_rfc_9381`] — RFC-9381 section 5.4.3
+    fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+
+    /// Hash data to a curve point.
+    ///
+    /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
+    /// In other words, salt is not applied by this function.
+    ///
+    /// Utility functions available:
+    /// - [`utils::hash_to_curve_tai_rfc_9381`] — try-and-increment
+    /// - [`utils::hash_to_curve_ell2_rfc_9380`] — Elligator2
+    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>>;
+
+    /// Map a curve point to a hash value.
+    ///
+    /// Utility functions available:
+    /// - [`utils::point_to_hash_rfc_9381`] — RFC-9381 section 5.2 step 6
+    fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self>;
 }
 
 /// Secret key for VRF operations.
@@ -341,6 +319,14 @@ impl<S: Suite> Secret<S> {
     pub fn output(&self, input: Input<S>) -> Output<S> {
         Output(smul!(input.0, self.scalar).into_affine())
     }
+
+    /// Get the VRF input-output pair relative to input.
+    pub fn vrf_io(&self, input: Input<S>) -> VrfIo<S> {
+        VrfIo {
+            input,
+            output: self.output(input),
+        }
+    }
 }
 
 /// Public key generic over the cipher suite.
@@ -406,6 +392,19 @@ impl<S: Suite> Output<S> {
     }
 }
 
+/// VRF input-output pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+pub struct VrfIo<S: Suite> {
+    pub input: Input<S>,
+    pub output: Output<S>,
+}
+
+impl<S: Suite> AsRef<[VrfIo<S>]> for VrfIo<S> {
+    fn as_ref(&self) -> &[VrfIo<S>] {
+        core::slice::from_ref(self)
+    }
+}
+
 /// Type aliases for the given suite.
 #[macro_export]
 macro_rules! suite_types {
@@ -438,13 +437,17 @@ macro_rules! suite_types {
         pub type ThinBatchItem = $crate::thin::BatchItem<$suite>;
         #[allow(dead_code)]
         pub type ThinBatchVerifier = $crate::thin::BatchVerifier<$suite>;
+        #[allow(dead_code)]
+        pub type VrfIo = $crate::VrfIo<$suite>;
     };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suites::testing::{Input, Secret};
+    use crate::ietf::{Prover, Verifier};
+    use ark_ec::AffineRepr;
+    use suites::testing::{Input, Secret, TestSuite};
     use testing::{TEST_SEED, random_val};
 
     #[test]
@@ -457,5 +460,79 @@ mod tests {
 
         let expected = "71c1b2ee6e46c59e3bd0e2f0e2852b90ab56abb223180b00bd6c8ec6b11af18c";
         assert_eq!(expected, hex::encode(output.hash()));
+    }
+
+    #[test]
+    fn prove_uniqueness_vulnerability() {
+        use ark_ff::BigInteger;
+        use ark_std::{One, Zero};
+
+        type S = TestSuite;
+        type Sc = ScalarField<S>;
+
+        let secret = crate::Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::new(b"uniqueness attack").unwrap();
+        let honest_output = secret.output(input);
+        let ad = b"aux data";
+
+        // 1. Find a low-order point L (order 2 for Ed25519)
+        // For Ed25519, (0, -1) is order 2.
+        let low_order_pt =
+            AffinePoint::<S>::new_unchecked(BaseField::<S>::zero(), -BaseField::<S>::one());
+        assert!(!low_order_pt.is_zero());
+        // Verify it's order 2: 2 * L = O
+        assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
+
+        // 2. Compute gamma' = gamma + L
+        let malicious_output = Output::from_affine((honest_output.0 + low_order_pt).into_affine());
+        assert_ne!(honest_output, malicious_output);
+        assert_ne!(honest_output.hash(), malicious_output.hash());
+
+        // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
+        let mut ctr = 0u64;
+        let (proof, _) = loop {
+            let mut k_seed = [0u8; 8];
+            k_seed.copy_from_slice(&ctr.to_le_bytes());
+            let k = Sc::from_le_bytes_mod_order(&k_seed);
+
+            let k_b = (S::generator() * k).into_affine();
+            let k_h = (input.0 * k).into_affine();
+
+            let c = S::challenge(&[&public.0, &input.0, &malicious_output.0, &k_b, &k_h], ad);
+
+            // We need c to be even so that c * L = identity (since L has order 2)
+            if c.into_bigint().is_even() {
+                let s = k + c * secret.scalar;
+                break (crate::ietf::Proof { c, s }, c);
+            }
+            ctr += 1;
+            if ctr > 1000 {
+                panic!("Grinding failed");
+            }
+        };
+
+        // 4. Verify the malicious proof
+        let malicious_io = VrfIo {
+            input,
+            output: malicious_output,
+        };
+        assert!(public.verify(malicious_io, ad, &proof).is_ok());
+
+        // 5. Verify the honest proof still works
+        let honest_io = VrfIo {
+            input,
+            output: honest_output,
+        };
+        let honest_proof = secret.prove(honest_io, ad);
+        assert!(public.verify(honest_io, ad, &honest_proof).is_ok());
+
+        // SUCCESS! Two different outputs for the same input and public key!
+        println!("Uniqueness BROKEN!");
+        println!("Honest output hash: {}", hex::encode(honest_output.hash()));
+        println!(
+            "Malicious output hash: {}",
+            hex::encode(malicious_output.hash())
+        );
     }
 }
