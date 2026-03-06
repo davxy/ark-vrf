@@ -477,7 +477,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{random_val, TEST_SEED};
+    use testing::{TEST_SEED, random_val};
 
     #[test]
     fn vrf_output_check() {
@@ -542,11 +542,17 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        let malicious_io = VrfIo { input, output: malicious_output };
+        let malicious_io = VrfIo {
+            input,
+            output: malicious_output,
+        };
         assert!(public.verify(malicious_io, ad, &proof).is_ok());
 
         // 5. Verify the honest proof still works
-        let honest_io = VrfIo { input, output: honest_output };
+        let honest_io = VrfIo {
+            input,
+            output: honest_output,
+        };
         let honest_proof = secret.prove(honest_io, ad);
         assert!(public.verify(honest_io, ad, &honest_proof).is_ok());
 

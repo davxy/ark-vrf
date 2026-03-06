@@ -79,16 +79,10 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_prove", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| {
-                    setup
-                        .secret
-                        .prove(setup.io, b"ad", black_box(&prover))
-                });
+                b.iter(|| setup.secret.prove(setup.io, b"ad", black_box(&prover)));
             });
 
-        let proof = setup
-            .secret
-            .prove(setup.io, b"ad", &prover);
+        let proof = setup.secret.prove(setup.io, b"ad", &prover);
         let verifier_key = setup.params.verifier_key(&setup.ring);
         let commitment = verifier_key.commitment();
         let verifier = setup.params.verifier(verifier_key.clone());
@@ -238,9 +232,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|item| {
-                            batch_verifier.prepare(item.io, &item.ad, &item.proof)
-                        })
+                        .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
                         .collect();
                 });
             });
@@ -252,9 +244,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .par_iter()
-                        .map(|item| {
-                            batch_verifier.prepare(item.io, &item.ad, &item.proof)
-                        })
+                        .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
                         .collect();
                 });
             });

@@ -29,9 +29,7 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
     let name = format!("{}/pedersen_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap()
-        });
+        b.iter(|| ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap());
     });
 }
 
@@ -66,9 +64,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| {
-                            BatchVerifier::<S>::prepare(*io, ad, proof)
-                        })
+                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(*io, ad, proof))
                         .collect();
                 });
             });

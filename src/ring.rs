@@ -202,8 +202,7 @@ impl<S: RingSuite> Prover<S> for Secret<S> {
         ring_prover: &RingProver<S>,
     ) -> Proof<S> {
         use pedersen::Prover as PedersenProver;
-        let (pedersen_proof, secret_blinding) =
-            <Self as PedersenProver<S>>::prove(self, ios, ad);
+        let (pedersen_proof, secret_blinding) = <Self as PedersenProver<S>>::prove(self, ios, ad);
         let ring_proof = ring_prover.prove(secret_blinding);
         Proof {
             pedersen_proof,
@@ -603,12 +602,7 @@ impl<S: RingSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(
-        &mut self,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
+    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
         let prepared = self.prepare(ios, ad, proof);
         self.push_prepared(prepared);
     }
@@ -1322,9 +1316,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            assert!(
-                Public::verify(io, &self.pedersen.base.ad, &proof, &verifier).is_ok()
-            );
+            assert!(Public::verify(io, &self.pedersen.base.ad, &proof, &verifier).is_ok());
         }
     }
 }
