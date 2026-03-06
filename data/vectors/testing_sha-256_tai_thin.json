@@ -6,11 +6,11 @@
     "alpha": "",
     "salt": "",
     "ad": "",
-    "h": "9abb8b379b4996df594cfa81df97ae3bcfa93812264d3a792537f129f842f89f",
-    "gamma": "9f6f9462067deed6433aedd542c2fb121a0230162f6b3d56eb641deae5aa4070",
-    "beta": "cff50d1dfd17110fb7557bdab72186f66e5716cb2a3fc8b3c01aa35e395fb4ad",
-    "proof_r": "06fbb9873d55dd1dd0b1a2a76e0a4beb7cbdf9625af47124a243f5e533dd121b",
-    "proof_s": "34c5ab1611fb42a6fb2dd1d53c5189cb62d98af9c41e1d06762289e035696203"
+    "h": "b4333dc5a655002e5cc17ae0880ece8a96c2fb204adb9493fc5f76e9797c80c2",
+    "gamma": "02fbcfef5d133d0c6876d898cf003c49d914eac787b53be439e6527b8316ac85",
+    "beta": "6daa2f8cc4c91b0edf2ae6678a8e63c5953efb71bd633eac4da3157043c6be71",
+    "proof_r": "14ec23d17e2ab74e5ef74051588046baad98ab2686b43c706177649b8ce99c55",
+    "proof_s": "29283ffd21dad3030ccdf16059081e200417b4f462f449319e17172c8feb8b07"
   },
   {
     "comment": "testing_sha-256_tai_thin - vector-2",
@@ -19,11 +19,11 @@
     "alpha": "0a",
     "salt": "",
     "ad": "",
-    "h": "c582a4f5682a913199a5a208fd2203e2f5f3f827676fb3a73b17b05aff2aed7e",
-    "gamma": "a97e77ffec25326812a3702b51c43b0ba8b3a9d509d26f517a93357f1353d03a",
-    "beta": "9bcb45c17c2ede637112b5c6250dd1e6e98ff1543441cec050d1e017e7166c49",
-    "proof_r": "6b8247bb64600333995aa9c47275a3e03d9741cf1d7de7fb406c613017361c70",
-    "proof_s": "24870f35f48e8f7e3ff9cc90089f00533e013a4ce87997c2066c88c90944140d"
+    "h": "7f0c9f5c1cc4547a22373dcec47764d3b0e60f73db90fe23df6344be88ae1a12",
+    "gamma": "2663b00aff18321b9542a3459a71cdb160f9154556041b1aa7d78c2b9004c445",
+    "beta": "34d28a6a763990783f05f757adaeb08a217a76c0a11d56cddea491f9472393af",
+    "proof_r": "8a36e5e448c73929620d641e5a323911f89df61d86f5c5ebb495a62b49ef1aed",
+    "proof_s": "a07d4f5ac3be95f3f62f4855a9e28685928c3258bbbb0095d6fda21a52421b0b"
   },
   {
     "comment": "testing_sha-256_tai_thin - vector-3",
@@ -32,11 +32,11 @@
     "alpha": "",
     "salt": "",
     "ad": "0b8c",
-    "h": "9abb8b379b4996df594cfa81df97ae3bcfa93812264d3a792537f129f842f89f",
-    "gamma": "fd23a28fa40d9174064391dc9e13f11a12390d6f2bf17e4d065804583b107366",
-    "beta": "1d29a4a4d0d673597665159420c6feebc56d4e97dea19babd6c9582575a3cecc",
-    "proof_r": "fb1be45c36651e39f119c03410fa6c24b81bfb21fde30447a4b0f577219be6cc",
-    "proof_s": "2a39f55aba6a460d72c1ab15f129978142c838829364b48a9dc29d35f7ad4400"
+    "h": "b4333dc5a655002e5cc17ae0880ece8a96c2fb204adb9493fc5f76e9797c80c2",
+    "gamma": "a33c7cf7392d8bc4b7803436b4677497e57dcffc9f6675d9f753badc28053f02",
+    "beta": "10352c120bd3956f3cb31840f8c5ff722ce6fa9f23ae363d6215540cb7f51a7c",
+    "proof_r": "166128217cf0cc1a4cd2ae45d6c31ed11318b657fef7654a3f401e9e26470b9b",
+    "proof_s": "97e10213b905f42e3b4af8c159f367da663ee65412215f3328046c7cb6993903"
   },
   {
     "comment": "testing_sha-256_tai_thin - vector-4",

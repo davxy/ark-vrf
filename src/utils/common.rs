@@ -6,11 +6,34 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    short_weierstrass::{Affine as SWAffine, SWCurveConfig},
+    twisted_edwards::{Affine as TEAffine, TECurveConfig},
+    AffineRepr,
 };
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
+
+/// Construct an affine point from a single base field coordinate.
+///
+/// For SW curves the coordinate is x; for TE curves it is y.
+/// Returns the point with the "positive" (smaller) second coordinate,
+/// or `None` if no point exists for the given input.
+pub trait PointFromCoord: AffineRepr {
+    fn from_coord(coord: Self::BaseField) -> Option<Self>;
+}
+
+impl<P: SWCurveConfig> PointFromCoord for SWAffine<P> {
+    fn from_coord(x: Self::BaseField) -> Option<Self> {
+        Self::get_point_from_x_unchecked(x, false)
+    }
+}
+
+impl<P: TECurveConfig> PointFromCoord for TEAffine<P> {
+    fn from_coord(y: Self::BaseField) -> Option<Self> {
+        Self::get_point_from_y_unchecked(y, false)
+    }
+}
 
 /// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
 ///
@@ -93,32 +116,43 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
         .to_vec()
 }
 
-/// Try-And-Increment (TAI) method as defined by RFC 9381 section 5.4.1.1.
+/// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
 ///
-/// Implements ECVRF_encode_to_curve in a simple and generic way that works
-/// for any elliptic curve. This method iteratively attempts to hash the input
-/// with an incrementing counter until a valid curve point is found.
+/// This implementation deviates from RFC-9381 in how the hash output is
+/// interpreted as a field element. The RFC defines a suite-specific
+/// `interpret_hash_value_as_a_point` function (e.g. `string_to_point(0x02 || s)`
+/// for P-256) that treats the hash as a serialized compressed point, coupling
+/// the procedure to the curve type and serialization format.
 ///
-/// To use this algorithm, hash length MUST be at least equal to the field length.
+/// Instead, this implementation:
+/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using `Suite::Hasher`.
+/// 2. Reduces the hash output modulo the base field prime (little-endian) to
+///    obtain a field element. This uses all hash bytes and always produces a
+///    valid field element, introducing a negligible bias of ~`p / 2^hash_bits`
+///    when the hash is larger than the field (e.g. SHA-512 on a 255-bit field).
+/// 3. Interprets the field element as a curve coordinate via [`PointFromCoord`]:
+///    x-coordinate for short Weierstrass, y-coordinate for twisted Edwards.
+///    The "positive" (smaller) second coordinate is always selected.
+/// 4. Clears the cofactor and checks the point is not the identity.
+/// 5. Repeats with an incremented counter (up to 256 attempts) if no valid
+///    point is found.
 ///
-/// The running time of this algorithm depends on input string. For the
-/// ciphersuites specified in Section 5.5, this algorithm is expected to
-/// find a valid curve point after approximately two attempts on average.
-///
-/// May systematically fail if `Suite::Hasher` output is not sufficient to
-/// construct a point according to the `Suite::Codec` in use.
+/// On average, approximately two iterations are needed.
 ///
 /// # Parameters
 ///
 /// * `data` - The input data to hash to a curve point
+///    (typically `salt || alpha` per RFC-9381).
 ///
 /// # Returns
 ///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
-/// * `None` - If no valid point could be found after 256 attempts
-pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
-    use ark_ec::AffineRepr;
-
+/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
+/// * `None` - If no valid point could be found after 256 attempts.
+pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
+where
+    AffinePoint<S>: PointFromCoord,
+    BaseField<S>: ark_ff::PrimeField,
+{
     let prefix = S::Hasher::new()
         .chain_update(S::SUITE_ID)
         .chain_update([DomSep::HashToCurveTai as u8])
@@ -129,11 +163,13 @@ pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S
             .clone()
             .chain_update([ctr, DomSep::End as u8])
             .finalize();
-        if let Ok(pt) = codec::point_decode::<S>(&hash[..]) {
-            let pt = pt.clear_cofactor();
-            if !pt.is_zero() {
-                return Some(pt);
-            }
+        let coord = BaseField::<S>::from_le_bytes_mod_order(&hash);
+        let Some(pt) = AffinePoint::<S>::from_coord(coord) else {
+            continue;
+        };
+        let pt = pt.clear_cofactor();
+        if !pt.is_zero() {
+            return Some(pt);
         }
     }
     None
@@ -170,7 +206,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string

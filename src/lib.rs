@@ -157,7 +157,7 @@ pub trait Suite: Copy {
     ///
     /// The point is guaranteed to be in the correct prime order subgroup
     /// by the `AffineRepr` bound.
-    type Affine: AffineRepr;
+    type Affine: AffineRepr; // + utils::PointFromCoord;
 
     /// Overarching hasher.
     ///
@@ -169,69 +169,6 @@ pub trait Suite: Copy {
     /// Used wherever we need to encode/decode points and scalars.
     type Codec: codec::Codec<Self>;
 
-    /// Nonce generation as described by RFC-9381 section 5.4.2.
-    ///
-    /// The default implementation provides the variant described
-    /// by section 5.4.2.2 of RFC-9381 which in turn is a derived
-    /// from steps 2 and 3 in section 5.1.6 of
-    /// [RFC8032](https://tools.ietf.org/html/rfc8032).
-    ///
-    /// The algorithm generate the nonce value in a deterministic
-    /// pseudorandom fashion.
-    ///
-    /// The `pts` parameter accepts a slice of points that are all
-    /// hashed into the nonce derivation. Each scheme passes exactly
-    /// the points it needs: IETF and Thin pass the single input point,
-    /// while Pedersen passes both input and output to bind the nonce
-    /// to the VRF output and prevent nonce reuse across different
-    /// output values.
-    ///
-    /// The `ad` (additional data) parameter is mixed into the nonce
-    /// derivation to ensure that proofs binding different auxiliary
-    /// data to the same input produce distinct nonces. Omitting this
-    /// would allow secret key recovery from two proofs that share
-    /// an input but differ in additional data.
-    ///
-    /// `Hasher` output **MUST** be be at least 64 bytes.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `Hasher` output is less than 64 bytes.
-    #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
-    }
-
-    /// Challenge generation as described by RCF-9381 section 5.4.3.
-    ///
-    /// Hashes several points on the curve.
-    ///
-    /// This implementation extends the RFC procedure to allow adding
-    /// some optional additional data too the hashing procedure.
-    #[inline(always)]
-    fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self> {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    /// Hash data to a curve point.
-    ///
-    /// By default uses "try and increment" method described by RFC-9381.
-    ///
-    /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
-    /// In other words, salt is not applied by this function.
-    #[inline(always)]
-    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    /// Map the point to a hash value using `Self::Hasher`.
-    ///
-    /// By default uses the algorithm described by RFC-9381 without cofactor clearing.
-    #[inline(always)]
-    fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
-
     /// Generator used through all the suite.
     ///
     /// Defaults to Arkworks provided generator.
@@ -239,6 +176,40 @@ pub trait Suite: Copy {
     fn generator() -> AffinePoint<Self> {
         Self::Affine::generator()
     }
+
+    /// Nonce generation.
+    ///
+    /// Generates a deterministic pseudorandom nonce from the secret key,
+    /// curve points, and additional data.
+    ///
+    /// Utility functions available:
+    /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
+    /// - [`utils::nonce_rfc_6979`] — RFC-6979 (requires `rfc-6979` feature)
+    fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+
+    /// Challenge generation.
+    ///
+    /// Hashes curve points and optional additional data to produce a scalar.
+    ///
+    /// Utility functions available:
+    /// - [`utils::challenge_rfc_9381`] — RFC-9381 section 5.4.3
+    fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+
+    /// Hash data to a curve point.
+    ///
+    /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
+    /// In other words, salt is not applied by this function.
+    ///
+    /// Utility functions available:
+    /// - [`utils::hash_to_curve_tai_rfc_9381`] — try-and-increment
+    /// - [`utils::hash_to_curve_ell2_rfc_9380`] — Elligator2
+    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>>;
+
+    /// Map a curve point to a hash value.
+    ///
+    /// Utility functions available:
+    /// - [`utils::point_to_hash_rfc_9381`] — RFC-9381 section 5.2 step 6
+    fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self>;
 }
 
 /// Secret key for VRF operations.
@@ -477,7 +448,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {

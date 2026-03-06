@@ -77,6 +77,14 @@ impl Suite for ThisSuite {
     fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
         utils::nonce_rfc_8032::<Self>(sk, pts, ad)
     }
+
+    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
+        utils::challenge_rfc_9381::<Self>(pts, ad)
+    }
+
+    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
+        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+    }
 }
 
 impl PedersenSuite for ThisSuite {
