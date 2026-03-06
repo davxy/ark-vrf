@@ -6,10 +6,10 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     short_weierstrass::{Affine as SWAffine, SWCurveConfig},
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
+    AffineRepr,
 };
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
@@ -142,7 +142,7 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 /// # Parameters
 ///
 /// * `data` - The input data to hash to a curve point
-///    (typically `salt || alpha` per RFC-9381).
+///   (typically `salt || alpha` per RFC-9381).
 ///
 /// # Returns
 ///
@@ -206,7 +206,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
