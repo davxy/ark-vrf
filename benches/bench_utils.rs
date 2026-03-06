@@ -64,7 +64,7 @@ impl BenchInfo for ark_vrf::suites::secp256r1::Secp256r1Sha256Tai {
     const DATA_TO_POINT_TAG: &'static str = "tai_rfc_9381";
     const CHALLENGE_TAG: &'static str = "rfc_9381";
     const POINT_TO_HASH_TAG: &'static str = "rfc_9381";
-    const NONCE_TAG: &'static str = "rfc_6979";
+    const NONCE_TAG: &'static str = "transcript";
 }
 
 /// Dispatches a benchmark function for all enabled suites.

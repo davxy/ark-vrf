@@ -65,13 +65,14 @@ fn merge<S: ThinVrfSuite>(
     public: &AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
+    transcript: Option<S::Transcript>,
 ) -> (Input<S>, Output<S>) {
     let schnorr = core::iter::once(VrfIo {
         input: Input(S::generator()),
         output: Output(*public),
     });
     let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
-    utils::delinearize::<S>(chained, ad.as_ref())
+    utils::delinearize::<S>(chained, ad.as_ref(), transcript)
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -94,7 +95,8 @@ pub trait Verifier<S: ThinVrfSuite> {
 impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad);
+        let t = S::Transcript::new(S::SUITE_ID);
+        let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad, Some(t.clone()));
 
         // Nonce
         let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad);
@@ -103,7 +105,7 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
         let r = smul!(merged_input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad, Some(t));
 
         // Response
         let s = k + c * self.scalar;
@@ -122,10 +124,11 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         let Proof { r, s } = proof;
         let ad = ad.as_ref();
 
-        let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad);
+        let t = S::Transcript::new(S::SUITE_ID);
+        let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad, Some(t.clone()));
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, r], ad);
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, r], ad, Some(t));
 
         // Verify: R + c*O_m == s*I_m
         if *r + merged_output.0 * c != merged_input.0 * s {
@@ -180,8 +183,9 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         proof: &Proof<S>,
     ) -> BatchItem<S> {
         let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&public.0, ios, ad);
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &proof.r], ad);
+        let t = S::Transcript::new(S::SUITE_ID);
+        let (merged_input, merged_output) = merge::<S>(&public.0, ios, ad, Some(t.clone()));
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &proof.r], ad, Some(t));
         BatchItem {
             c,
             i_m: merged_input.0,
@@ -218,8 +222,6 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
-        use ark_std::rand::{RngCore, SeedableRng};
-
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
@@ -227,27 +229,18 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 
         let n = items.len();
 
-        // Deterministic RNG seeded from all (c, s) pairs.
-        let mut hasher = S::Hasher::new();
-        let mut buf = Vec::with_capacity(2 * S::Codec::SCALAR_ENCODED_LEN);
+        // Deterministic random scalars derived from all (c, s) pairs.
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(b"thin-batch");
         for e in items {
-            buf.clear();
-            S::Codec::scalar_encode_into(&e.c, &mut buf);
-            S::Codec::scalar_encode_into(&e.s, &mut buf);
-            hasher.update(&buf);
+            t.absorb_serialize(&e.c);
+            t.absorb_serialize(&e.s);
         }
-        let hash = hasher.finalize();
-        let mut seed = [0u8; 32];
-        let copy_len = hash.len().min(32);
-        seed[..copy_len].copy_from_slice(&hash[..copy_len]);
-
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-
         // 128-bit random weights for Schwartz-Zippel soundness.
         let random_scalars: Vec<ScalarField<S>> = (0..n)
             .map(|_| {
                 let mut buf = [0u8; 16];
-                rng.fill_bytes(&mut buf);
+                t.squeeze_raw(&mut buf);
                 ScalarField::<S>::from_le_bytes_mod_order(&buf)
             })
             .collect();
@@ -279,7 +272,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
@@ -567,10 +560,10 @@ pub(crate) mod testing {
         let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
         let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
 
-        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad);
+        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad, None);
         let (z0, z1) = (zs.next(), zs.next());
 
-        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad);
+        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad, None);
         let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
         assert_eq!(merged_input.0, expected_merged_input);
 
@@ -584,7 +577,7 @@ pub(crate) mod testing {
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (merged_input.0 * k).into_affine();
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad, None);
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };

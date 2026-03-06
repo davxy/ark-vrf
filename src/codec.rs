@@ -1,6 +1,7 @@
 //! Points and scalars encoding.
 
 use ark_ec::short_weierstrass::SWCurveConfig;
+use ark_std::io;
 use utils::te_sw_map;
 
 use super::*;
@@ -57,6 +58,24 @@ pub trait Codec<S: Suite> {
 
     /// Scalar decode.
     fn scalar_decode(buf: &[u8]) -> ScalarField<S>;
+
+    /// Encode a point directly into a writer.
+    ///
+    /// The default implementation encodes to a temporary buffer. Codecs
+    /// that use the native arkworks serialization can override this to
+    /// write directly, avoiding the intermediate allocation.
+    fn write_point(pt: &AffinePoint<S>, writer: &mut impl io::Write) {
+        let buf = Self::point_encode(pt);
+        writer.write_all(&buf).unwrap();
+    }
+
+    /// Encode a scalar directly into a writer.
+    ///
+    /// Same as [`write_point`](Self::write_point) but for scalars.
+    fn write_scalar(sc: &ScalarField<S>, writer: &mut impl io::Write) {
+        let buf = Self::scalar_encode(sc);
+        writer.write_all(&buf).unwrap();
+    }
 }
 
 /// Number of flag bits used in arkworks compressed point serialization.
@@ -111,6 +130,14 @@ where
 
     fn scalar_decode(buf: &[u8]) -> ScalarField<S> {
         ScalarField::<S>::from_le_bytes_mod_order(buf)
+    }
+
+    fn write_point(pt: &AffinePoint<S>, writer: &mut impl io::Write) {
+        pt.serialize_compressed(writer).unwrap();
+    }
+
+    fn write_scalar(sc: &ScalarField<S>, writer: &mut impl io::Write) {
+        sc.serialize_compressed(writer).unwrap();
     }
 }
 

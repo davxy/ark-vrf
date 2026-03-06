@@ -63,7 +63,7 @@ impl Suite for ThisSuite {
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
-    type Hasher = sha2::Sha512;
+    type Transcript = utils::HashTranscript<sha2::Sha512>;
     type Codec = codec::ArkworksCodec;
 
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
@@ -71,19 +71,23 @@ impl Suite for ThisSuite {
         // "XMD" for expand_message_xmd (Section 5.3.1).
         // "RO" for random oracle (Section 3 - hash_to_curve method)
         let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
-        utils::hash_to_curve_ell2_rfc_9380::<Self>(data, h2c_suite_id)
+        utils::hash_to_curve_ell2_rfc_9380::<Self, sha2::Sha512>(data, h2c_suite_id)
     }
 
     fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
         utils::nonce_rfc_8032::<Self>(sk, pts, ad)
     }
 
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
+    fn challenge(
+        pts: &[&AffinePoint],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField {
+        utils::challenge_rfc_9381::<Self>(pts, ad, transcript)
     }
 
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+    fn point_to_hash<const N: usize>(pt: &AffinePoint) -> [u8; N] {
+        utils::point_to_hash_rfc_9381::<Self, N>(pt, false)
     }
 }
 
@@ -155,10 +159,8 @@ pub(crate) mod tests {
     fn elligator2_hash_to_curve() {
         use crate::testing::CheckPoint;
         let raw = crate::testing::random_vec(42, None);
-        assert!(
-            ThisSuite::data_to_point(&raw)
-                .map(|p| p.check(true).ok())
-                .is_some()
-        );
+        assert!(ThisSuite::data_to_point(&raw)
+            .map(|p| p.check(true).ok())
+            .is_some());
     }
 }

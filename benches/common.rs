@@ -3,10 +3,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::{rand::SeedableRng, UniformRand};
 use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_key_from_seed<S: BenchInfo>(c: &mut Criterion) {
     let name = format!("{}/key_from_seed", S::SUITE_NAME);
@@ -57,6 +57,7 @@ fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
                     &generator,
                 ]),
                 b"ad",
+                None,
             )
         });
     });
@@ -68,7 +69,7 @@ fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/point_to_hash", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| S::point_to_hash(black_box(&point)));
+        b.iter(|| S::point_to_hash::<32>(black_box(&point)));
     });
 }
 
@@ -147,7 +148,7 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
             .bench_function(BenchmarkId::from_parameter(size), |b| {
                 b.iter(|| {
                     let iter = ios[..size].iter().copied();
-                    ark_vrf::utils::delinearize::<S>(black_box(iter), b"ad")
+                    ark_vrf::utils::delinearize::<S>(black_box(iter), b"ad", None)
                 });
             });
     }

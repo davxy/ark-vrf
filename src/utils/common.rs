@@ -4,15 +4,17 @@
 //! used throughout the VRF schemes, including hashing, challenge generation,
 //! and hash-to-curve algorithms.
 
+use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     short_weierstrass::{Affine as SWAffine, SWCurveConfig},
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
+    AffineRepr,
 };
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
+use generic_array::typenum::Unsigned;
 
 /// Construct an affine point from a single base field coordinate.
 ///
@@ -94,28 +96,6 @@ pub(crate) enum DomSep {
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
-/// Generic hash wrapper.
-///
-/// Computes a hash of the provided data using the specified hash function.
-pub fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
-    H::new().chain_update(data).finalize()
-}
-
-/// Generic HMAC wrapper.
-///
-/// Computes an HMAC of the provided data using the specified key and hash function.
-/// Used for deterministic nonce generation in RFC-6979.
-#[cfg(feature = "rfc-6979")]
-fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
-    use hmac::{Mac, SimpleHmac};
-    SimpleHmac::<H>::new_from_slice(sk)
-        .expect("HMAC can take key of any size")
-        .chain_update(data)
-        .finalize()
-        .into_bytes()
-        .to_vec()
-}
-
 /// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
 ///
 /// This implementation deviates from RFC-9381 in how the hash output is
@@ -125,7 +105,7 @@ fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> 
 /// the procedure to the curve type and serialization format.
 ///
 /// Instead, this implementation:
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using `Suite::Hasher`.
+/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using the suite's transcript.
 /// 2. Reduces the hash output modulo the base field prime (little-endian) to
 ///    obtain a field element. This uses all hash bytes and always produces a
 ///    valid field element, introducing a negligible bias of ~`p / 2^hash_bits`
@@ -153,16 +133,16 @@ where
     AffinePoint<S>: PointFromCoord,
     BaseField<S>: ark_ff::PrimeField,
 {
-    let prefix = S::Hasher::new()
-        .chain_update(S::SUITE_ID)
-        .chain_update([DomSep::HashToCurveTai as u8])
-        .chain_update(data);
+    let mut prefix = S::Transcript::new(S::SUITE_ID);
+    prefix.absorb_raw(&[DomSep::HashToCurveTai as u8]);
+    prefix.absorb_raw(data);
 
+    let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
     for ctr in 0..=255u8 {
-        let hash = prefix
-            .clone()
-            .chain_update([ctr, DomSep::End as u8])
-            .finalize();
+        let mut t = prefix.clone();
+        t.absorb_raw(&[ctr, DomSep::End as u8]);
+        let mut hash = ark_std::vec![0u8; hash_len];
+        t.squeeze_raw(&mut hash);
         let coord = BaseField::<S>::from_le_bytes_mod_order(&hash);
         let Some(pt) = AffinePoint::<S>::from_coord(coord) else {
             continue;
@@ -184,6 +164,10 @@ where
 /// The specific choice of the hash-to-curve option (called the Suite ID in RFC-9380)
 /// is given by the h2c_suite_ID_string parameter.
 ///
+/// This function requires an additional `Hasher` type parameter because the arkworks
+/// hash-to-curve API (`DefaultFieldHasher`) needs a raw `Digest` type. This is separate
+/// from the suite's transcript.
+///
 /// # Parameters
 ///
 /// * `data` - The input data to hash to a curve point
@@ -195,18 +179,18 @@ where
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
 /// * `None` - If the hash-to-curve operation fails
 #[allow(unused)]
-pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(
+pub fn hash_to_curve_ell2_rfc_9380<S: Suite, H>(
     data: &[u8],
     h2c_suite_id: &[u8],
 ) -> Option<AffinePoint<S>>
 where
-    <S as Suite>::Hasher: Default + Clone + FixedOutputReset + 'static,
+    H: Digest + Default + Clone + FixedOutputReset + 'static,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
     CurveConfig<S>: Elligator2Config,
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -214,7 +198,7 @@ where
 
     MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
-        DefaultFieldHasher<<S as Suite>::Hasher, 128>,
+        DefaultFieldHasher<H, 128>,
         Elligator2Map<CurveConfig<S>>,
     >::new(&dst)
     .and_then(|hasher| hasher.hash(data))
@@ -226,32 +210,31 @@ where
 /// Generates a challenge scalar by hashing a sequence of curve points and additional data.
 /// This is used in the Schnorr-like signature scheme for VRF proofs.
 ///
-/// The function follows the procedure specified in RFC-9381:
-/// 1. Start with a domain separator and suite ID
-/// 2. Append the encoded form of each provided point
-/// 3. Append the additional data
-/// 4. Hash the result and interpret it as a scalar
+/// When `transcript` is `Some`, uses the pre-built transcript which may already
+/// carry shared state. When `None`, creates a fresh transcript from `SUITE_ID`.
 ///
 /// # Parameters
 ///
+/// * `transcript` - Optional pre-built transcript with accumulated state
 /// * `pts` - Array of curve points to include in the challenge
 /// * `ad` - Additional data to bind to the challenge
 ///
 /// Returns a scalar field element derived from the hash of the inputs
-pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::Challenge as u8]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+pub fn challenge_rfc_9381<S: Suite>(
+    pts: &[&AffinePoint<S>],
+    ad: &[u8],
+    transcript: Option<S::Transcript>,
+) -> ScalarField<S> {
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
+    t.absorb_raw(&[DomSep::Challenge as u8]);
     for p in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(p, &mut pt_buf);
-        hasher.update(&pt_buf);
+        t.absorb_serialize(*p);
     }
-    hasher.update(ad);
-    hasher.update([DomSep::End as u8]);
-    let hash = hasher.finalize();
-    S::Codec::scalar_decode(&hash[..S::CHALLENGE_LEN])
+    t.absorb_raw(ad);
+    t.absorb_raw(&[DomSep::End as u8]);
+    let mut hash = ark_std::vec![0u8; S::CHALLENGE_LEN];
+    t.squeeze_raw(&mut hash);
+    S::Codec::scalar_decode(&hash)
 }
 
 /// Point to a hash according to RFC-9381 section 5.2.
@@ -279,23 +262,22 @@ pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> Scala
 /// # Returns
 ///
 /// A hash value derived from the encoded point
-pub fn point_to_hash_rfc_9381<S: Suite>(
+pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
     pt: &AffinePoint<S>,
     mul_by_cofactor: bool,
-) -> HashOutput<S> {
+) -> [u8; N] {
     use ark_std::borrow::Cow::*;
     let pt = match mul_by_cofactor {
         false => Borrowed(pt),
         true => Owned(pt.mul_by_cofactor()),
     };
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::PointToHash as u8]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    S::Codec::point_encode_into(&pt, &mut pt_buf);
-    hasher.update(&pt_buf);
-    hasher.update([DomSep::End as u8]);
-    hasher.finalize()
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[DomSep::PointToHash as u8]);
+    t.absorb_serialize(&*pt);
+    t.absorb_raw(&[DomSep::End as u8]);
+    let mut out = [0; N];
+    t.squeeze_raw(&mut out);
+    out
 }
 
 /// Nonce generation according to RFC-9381 section 5.4.2.2.
@@ -322,52 +304,41 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 ///
 /// # Panics
 ///
-/// This function panics if `Suite::Hasher` output is less than 64 bytes.
+/// This function panics if the transcript output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
     pts: &[&AffinePoint<S>],
     ad: &[u8],
 ) -> ScalarField<S> {
+    let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
     assert!(
-        S::Hasher::output_size() >= 64,
-        "Suite::Hasher output is required to be >= 64 bytes"
+        hash_len >= 64,
+        "Transcript output is required to be >= 64 bytes"
     );
 
-    let sk_buf = codec::scalar_encode::<S>(sk);
-    let sk_hash = hash::<S::Hasher>(&sk_buf);
+    // First hash: H(sk)
+    let mut t1 = S::Transcript::new(b"");
+    t1.absorb_serialize(sk);
+    let mut sk_hash = ark_std::vec![0u8; hash_len];
+    t1.squeeze_raw(&mut sk_hash);
 
-    let mut hasher = S::Hasher::new();
-    hasher.update(&sk_hash[32..]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+    // Second hash: H(sk_hash[32..] || pts || ad)
+    let mut t2 = S::Transcript::new(b"");
+    t2.absorb_raw(&sk_hash[32..]);
     for pt in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(pt, &mut pt_buf);
-        hasher.update(&pt_buf);
+        t2.absorb_serialize(*pt);
     }
-    hasher.update(ad);
-    let h = hasher.finalize();
+    t2.absorb_raw(ad);
+    let mut h = ark_std::vec![0u8; hash_len];
+    t2.squeeze_raw(&mut h);
 
     S::Codec::scalar_decode(&h)
 }
 
-/// Nonce generation according to RFC 9381 section 5.4.2.1.
+/// Nonce generation using transcript-based deterministic derivation.
 ///
-/// This procedure is based on section 3.2 of RFC 6979: "Deterministic Usage of
-/// the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature
-/// Algorithm (ECDSA)".
-///
-/// It generates a deterministic nonce using HMAC-based extraction, which provides
-/// strong security guarantees against nonce reuse or biased nonce generation.
-///
-/// The `ad` (additional data) is mixed into the initial hash to ensure distinct
-/// nonces when the same secret key and input are used with different auxiliary data.
-///
-/// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
-/// `from_(le/be)_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
-/// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
-/// rejected and trigger a retry; here they are instead reduced to a valid scalar.
-/// This introduces a negligible bias for curves where `q` is close to `2^(8*qbytes)`
-/// (e.g. secp256r1, where the probability of hitting `>= q` is ~2^{-128}).
+/// Replacement for RFC-6979 HMAC-DRBG. Uses the suite's transcript to derive
+/// a deterministic nonce from the secret key, points, and additional data.
 ///
 /// # Parameters
 ///
@@ -378,81 +349,40 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// # Returns
 ///
 /// A scalar field element to be used as a nonce
-#[cfg(feature = "rfc-6979")]
-pub fn nonce_rfc_6979<S: Suite>(
+pub fn nonce_transcript<S: Suite>(
     sk: &ScalarField<S>,
     pts: &[&AffinePoint<S>],
     ad: &[u8],
-) -> ScalarField<S>
-where
-    S::Hasher: digest::core_api::BlockSizeUser,
-{
-    let mut h1_hasher = S::Hasher::new();
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+) -> ScalarField<S> {
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(b"nonce");
+    t.absorb_serialize(sk);
     for pt in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(pt, &mut pt_buf);
-        h1_hasher.update(&pt_buf);
+        t.absorb_serialize(*pt);
     }
-    h1_hasher.update(ad);
-    let h1 = h1_hasher.finalize();
+    t.absorb_raw(ad);
 
-    let v = [1; 32];
-    let k = [0; 32];
-
-    // K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
-    let x = codec::scalar_encode::<S>(sk);
-    let raw = [&v[..], &[0x00], &x[..], &h1[..]].concat();
-    let k = hmac::<S::Hasher>(&k, &raw);
-
-    // V = HMAC_K(V)
-    let v = hmac::<S::Hasher>(&k, &v);
-
-    // K = HMAC_K(V || 0x01 || int2octets(x) || bits2octets(h1))
-    let raw = [&v[..], &[0x01], &x[..], &h1[..]].concat();
-    let mut k = hmac::<S::Hasher>(&k, &raw);
-
-    // V = HMAC_K(V)
-    let mut v = hmac::<S::Hasher>(&k, &v);
-
-    // RFC 6979 section 3.2 step h
-    // qlen: bit length of q; qbytes: byte length (used for T construction)
-    let qlen = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
-    let qbytes = qlen.div_ceil(8);
+    let scalar_len = S::Codec::SCALAR_ENCODED_LEN;
+    let mut buf = ark_std::vec![0u8; scalar_len];
     loop {
-        // h.1: T = empty
-        let mut t = Vec::with_capacity(qbytes);
-        // h.2: while tlen < qlen, V = HMAC_K(V), T = T || V
-        while t.len() * 8 < qlen {
-            v = hmac::<S::Hasher>(&k, &v);
-            t.extend_from_slice(&v);
-        }
-        // h.3: k = bits2int(T), check k in [1, q-1]
-        let nonce = S::Codec::scalar_decode(&t[..qbytes]);
+        t.squeeze_raw(&mut buf);
+        let nonce = S::Codec::scalar_decode(&buf);
         if !nonce.is_zero() {
             return nonce;
         }
-        // K = HMAC_K(V || 0x00), V = HMAC_K(V)
-        let data = [&v[..], &[0x00]].concat();
-        k = hmac::<S::Hasher>(&k, &data);
-        v = hmac::<S::Hasher>(&k, &v);
     }
 }
 
-/// Stateful stream of 128-bit delinearization scalars backed by a seeded
-/// ChaCha20 PRNG. Created by [`delinearize_scalars`].
+/// Stateful stream of 128-bit delinearization scalars backed by a transcript's
+/// squeeze stream. Created by [`delinearize_scalars`].
 pub(crate) struct DelinearizeScalars<S: Suite> {
-    rng: rand_chacha::ChaCha20Rng,
-    _marker: core::marker::PhantomData<S>,
+    transcript: S::Transcript,
 }
 
 impl<S: Suite> DelinearizeScalars<S> {
     /// Draw the next 128-bit scalar.
     pub fn next(&mut self) -> ScalarField<S> {
-        use ark_std::rand::RngCore;
-        let mut buf = [0u8; 16];
-        self.rng.fill_bytes(&mut buf);
-        S::Codec::scalar_decode(&buf)
+        super::transcript::squeeze_scalar::<S>(&mut self.transcript, 16)
     }
 
     /// Collect `n` scalars into a `Vec`.
@@ -461,44 +391,28 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 }
 
-/// Seed a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
-/// and auxiliary data. The seed is derived deterministically by hashing all
-/// encoded points together with `ad`.
+/// Create a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
+/// and auxiliary data. The scalars are derived deterministically by hashing all
+/// encoded points together with `ad` and squeezing from the transcript.
 pub(crate) fn delinearize_scalars<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>>,
     ad: &[u8],
+    transcript: Option<S::Transcript>,
 ) -> DelinearizeScalars<S> {
-    use ark_std::rand::SeedableRng;
-
     let n = u32::try_from(iter.len()).expect("too many input-output pairs");
 
-    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::Delinearize as u8]);
-    hasher.update(n.to_le_bytes());
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
+    t.absorb_raw(&[DomSep::Delinearize as u8]);
+    t.absorb_raw(&n.to_le_bytes());
 
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
     for io in iter {
-        pt_buf.clear();
-        S::Codec::point_encode_into(&io.input.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-        pt_buf.clear();
-        S::Codec::point_encode_into(&io.output.0, &mut pt_buf);
-        hasher.update(&pt_buf);
+        t.absorb_serialize(&io.input.0);
+        t.absorb_serialize(&io.output.0);
     }
-    hasher.update(ad);
-    hasher.update([DomSep::End as u8]);
-    let seed = hasher.finalize();
+    t.absorb_raw(ad);
+    t.absorb_raw(&[DomSep::End as u8]);
 
-    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
-    let mut rng_seed = [0u8; 32];
-    rng_seed.copy_from_slice(&seed[..32]);
-
-    DelinearizeScalars {
-        rng: rand_chacha::ChaCha20Rng::from_seed(rng_seed),
-        _marker: core::marker::PhantomData,
-    }
+    DelinearizeScalars { transcript: t }
 }
 
 /// Delinearize multiple input-output pairs into a single pair.
@@ -531,6 +445,7 @@ pub(crate) fn delinearize_scalars<S: Suite>(
 pub fn delinearize<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: &[u8],
+    transcript: Option<S::Transcript>,
 ) -> (Input<S>, Output<S>) {
     let zero = AffinePoint::<S>::zero();
     let n = iter.len();
@@ -548,7 +463,7 @@ pub fn delinearize<S: Suite>(
     // Fold is faster below this threshold; MSM wins above it.
     const MSM_THRESHOLD: usize = 16;
 
-    let mut scalars = delinearize_scalars(iter.clone(), ad);
+    let mut scalars = delinearize_scalars(iter.clone(), ad, transcript);
 
     let zero = zero.into_group();
     let (input, output) = if n < MSM_THRESHOLD {

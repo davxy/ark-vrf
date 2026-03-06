@@ -60,7 +60,7 @@ impl Suite for ThisSuite {
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_secp256r1::Affine;
-    type Hasher = sha2::Sha256;
+    type Transcript = utils::HashTranscript<sha2::Sha256>;
     type Codec = codec::ArkworksCodec;
 
     fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
@@ -68,25 +68,29 @@ impl Suite for ThisSuite {
     }
 
     fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_6979::<Self>(sk, pts, ad)
+        utils::nonce_transcript::<Self>(sk, pts, ad)
     }
 
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
+    fn challenge(
+        pts: &[&AffinePoint],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField {
+        utils::challenge_rfc_9381::<Self>(pts, ad, transcript)
     }
 
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+    fn point_to_hash<const N: usize>(pt: &AffinePoint) -> [u8; N] {
+        utils::point_to_hash_rfc_9381::<Self, N>(pt, false)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "95187957096665074159061186139846442527694851276419702609190570290926802675575"
+            "80948873931275244066692207568309514751953447356028278197059198866060546609898"
         );
         const Y: BaseField = MontFp!(
-            "22637183691431553647030264448144964635393094958723692863687382854070539649579"
+            "40642108454097538106086466053576958908062605116290766426121549986906713017280"
         );
         AffinePoint::new_unchecked(X, Y)
     };

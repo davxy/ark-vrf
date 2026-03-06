@@ -45,18 +45,17 @@
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
 //! let output = secret.output(input);
-//! let hash_bytes = output.hash();
+//! let hash_bytes: [u8; 32] = output.hash();
 //! ```
 //!
 //! ## Features
 //!
 //! - `default`: `std`
-//! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `rfc-6979`, `test-vectors`.
+//! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `test-vectors`.
 //! - `secret-split`: Point scalar multiplication with secret split. Secret scalar is split into the sum
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
 //!   sensible scalar multiplications, but provides side channel defenses.
 //! - `ring`: Ring-VRF for the curves supporting it.
-//! - `rfc-6979`: Support for nonce generation according to RFC-9381 section 5.4.2.1.
 //! - `test-vectors`: Deterministic ring-vrf proof. Useful for reproducible test vectors generation.
 //!
 //! ### Curves
@@ -84,7 +83,8 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 
-use digest::Digest;
+use generic_array::typenum::Unsigned;
+use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
 pub mod codec;
@@ -120,7 +120,8 @@ pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
 /// Suite's hash output type.
-pub type HashOutput<S> = digest::Output<<S as Suite>::Hasher>;
+pub type HashOutput<S> =
+    generic_array::GenericArray<u8, <<S as Suite>::Transcript as Transcript>::OutputSize>;
 
 /// Overarching errors.
 #[derive(Debug)]
@@ -159,10 +160,12 @@ pub trait Suite: Copy {
     /// by the `AffineRepr` bound.
     type Affine: AffineRepr; // + utils::PointFromCoord;
 
-    /// Overarching hasher.
+    /// Fiat-Shamir transcript.
     ///
-    /// Used wherever an hash is required: nonce, challenge, MAC, etc.
-    type Hasher: Digest + Clone;
+    /// Provides absorb/squeeze interface with ChaCha20 extension for
+    /// unlimited output. Used for challenge generation, nonce derivation,
+    /// delinearization, and other hash-based operations.
+    type Transcript: Transcript;
 
     /// Overarching codec.
     ///
@@ -184,16 +187,24 @@ pub trait Suite: Copy {
     ///
     /// Utility functions available:
     /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
-    /// - [`utils::nonce_rfc_6979`] — RFC-6979 (requires `rfc-6979` feature)
+    /// - [`utils::nonce_transcript`] — Transcript-based deterministic nonce
     fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
 
     /// Challenge generation.
     ///
     /// Hashes curve points and optional additional data to produce a scalar.
     ///
+    /// When `transcript` is `Some`, uses the pre-built transcript (which may
+    /// already carry shared state from earlier protocol steps). When `None`,
+    /// constructs a fresh transcript from `SUITE_ID`.
+    ///
     /// Utility functions available:
     /// - [`utils::challenge_rfc_9381`] — RFC-9381 section 5.4.3
-    fn challenge(pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+    fn challenge(
+        pts: &[&AffinePoint<Self>],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField<Self>;
 
     /// Hash data to a curve point.
     ///
@@ -209,7 +220,7 @@ pub trait Suite: Copy {
     ///
     /// Utility functions available:
     /// - [`utils::point_to_hash_rfc_9381`] — RFC-9381 section 5.2 step 6
-    fn point_to_hash(pt: &AffinePoint<Self>) -> HashOutput<Self>;
+    fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N];
 }
 
 /// Secret key for VRF operations.
@@ -272,9 +283,9 @@ impl<S: Suite> Secret<S> {
 
     /// Derives a `Secret` scalar deterministically from a seed.
     ///
-    /// The seed is hashed using `Suite::Hasher`, and the output is reduced
-    /// modulo the curve's order to produce a valid scalar in the range
-    /// `[1, n - 1]`. No clamping or multiplication by the cofactor is
+    /// The seed is hashed using the suite's transcript, and the output is
+    /// reduced modulo the curve's order to produce a valid scalar in the
+    /// range `[1, n - 1]`. No clamping or multiplication by the cofactor is
     /// performed, regardless of the curve.
     ///
     /// The caller is responsible for ensuring that the resulting scalar is
@@ -283,12 +294,14 @@ impl<S: Suite> Secret<S> {
     pub fn from_seed(seed: &[u8]) -> Self {
         let mut cnt = 0_u8;
         let scalar = loop {
-            let mut hasher = S::Hasher::new();
-            hasher.update(seed);
+            let mut transcript = S::Transcript::new(b"ark-vrf-keygen");
+            transcript.absorb_raw(seed);
             if cnt > 0 {
-                hasher.update([cnt]);
+                transcript.absorb_raw(&[cnt]);
             }
-            let bytes = hasher.finalize();
+            let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
+            let mut bytes = ark_std::vec![0u8; hash_len];
+            transcript.squeeze_raw(&mut bytes);
             let scalar = ScalarField::<S>::from_le_bytes_mod_order(&bytes[..]);
             if !scalar.is_zero() {
                 break scalar;
@@ -387,7 +400,7 @@ impl<S: Suite> Output<S> {
 
 impl<S: Suite> Output<S> {
     /// Hash the output point to a deterministic byte string.
-    pub fn hash(&self) -> HashOutput<S> {
+    pub fn hash<const N: usize>(&self) -> [u8; N] {
         S::point_to_hash(&self.0)
     }
 }
@@ -448,7 +461,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {
@@ -458,8 +471,8 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "71c1b2ee6e46c59e3bd0e2f0e2852b90ab56abb223180b00bd6c8ec6b11af18c";
-        assert_eq!(expected, hex::encode(output.hash()));
+        let expected = "ceb5c6a77b7e790ea9493acb6d87625566b6301027d27e40dac1b24bed54c610";
+        assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 
     #[test]
@@ -487,7 +500,7 @@ mod tests {
         // 2. Compute gamma' = gamma + L
         let malicious_output = Output::from_affine((honest_output.0 + low_order_pt).into_affine());
         assert_ne!(honest_output, malicious_output);
-        assert_ne!(honest_output.hash(), malicious_output.hash());
+        assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
 
         // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
         let mut ctr = 0u64;
@@ -499,7 +512,11 @@ mod tests {
             let k_b = (S::generator() * k).into_affine();
             let k_h = (input.0 * k).into_affine();
 
-            let c = S::challenge(&[&public.0, &input.0, &malicious_output.0, &k_b, &k_h], ad);
+            let c = S::challenge(
+                &[&public.0, &input.0, &malicious_output.0, &k_b, &k_h],
+                ad,
+                None,
+            );
 
             // We need c to be even so that c * L = identity (since L has order 2)
             if c.into_bigint().is_even() {
@@ -529,10 +546,10 @@ mod tests {
 
         // SUCCESS! Two different outputs for the same input and public key!
         println!("Uniqueness BROKEN!");
-        println!("Honest output hash: {}", hex::encode(honest_output.hash()));
+        println!("Honest output hash: {}", hex::encode(honest_output.hash::<32>()));
         println!(
             "Malicious output hash: {}",
-            hex::encode(malicious_output.hash())
+            hex::encode(malicious_output.hash::<32>())
         );
     }
 }
