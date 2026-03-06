@@ -67,7 +67,11 @@ impl Suite for ThisSuite {
         utils::hash_to_curve_tai_rfc_9381::<Self>(data)
     }
 
-    fn nonce(sk: &crate::ScalarField<Self>, pts: &[&crate::AffinePoint<Self>], ad: &[u8]) -> crate::ScalarField<Self> {
+    fn nonce(
+        sk: &crate::ScalarField<Self>,
+        pts: &[&crate::AffinePoint<Self>],
+        ad: &[u8],
+    ) -> crate::ScalarField<Self> {
         utils::nonce_rfc_8032::<Self>(sk, pts, ad)
     }
 
