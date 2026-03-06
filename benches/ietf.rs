@@ -10,11 +10,11 @@ fn bench_ietf_prove<S: BenchInfo>(c: &mut Criterion) {
 
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input);
+    let io = secret.vrf_io(input);
 
     let name = format!("{}/ietf_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| secret.prove(black_box(input), black_box(output), b"ad"));
+        b.iter(|| secret.prove(black_box(io), b"ad"));
     });
 }
 
@@ -24,19 +24,14 @@ fn bench_ietf_verify<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input);
-    let proof = secret.prove(input, output, b"ad");
+    let io = secret.vrf_io(input);
+    let proof = secret.prove(io, b"ad");
 
     let name = format!("{}/ietf_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
             public
-                .verify(
-                    black_box(input),
-                    black_box(output),
-                    b"ad",
-                    black_box(&proof),
-                )
+                .verify(black_box(io), b"ad", black_box(&proof))
                 .unwrap()
         });
     });

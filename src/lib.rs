@@ -542,13 +542,13 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        assert!(public.verify(input, malicious_output, ad, &proof).is_ok());
+        let malicious_io = VrfIo { input, output: malicious_output };
+        assert!(public.verify(malicious_io, ad, &proof).is_ok());
 
         // 5. Verify the honest proof still works
-        let honest_proof = secret.prove(input, honest_output, ad);
-        assert!(public
-            .verify(input, honest_output, ad, &honest_proof)
-            .is_ok());
+        let honest_io = VrfIo { input, output: honest_output };
+        let honest_proof = secret.prove(honest_io, ad);
+        assert!(public.verify(honest_io, ad, &honest_proof).is_ok());
 
         // SUCCESS! Two different outputs for the same input and public key!
         println!("Uniqueness BROKEN!");
