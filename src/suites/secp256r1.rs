@@ -61,7 +61,7 @@ impl Suite for ThisSuite {
 
     type Affine = ark_secp256r1::Affine;
     type Hasher = sha2::Sha256;
-    type Codec = codec::Sec1Codec;
+    type Codec = codec::ArkworksCodec;
 
     fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
         utils::nonce_rfc_6979::<Self>(sk, pts, ad)
@@ -97,12 +97,4 @@ mod tests {
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);
-
-    // Vectors from RFC-9381
-    #[test]
-    fn vectors_process_rfc_9381() {
-        testing::test_vectors_process::<crate::ietf::testing::TestVector<ThisSuite>>(
-            "secp256r1_sha-256_tai_ietf_rfc_9381",
-        );
-    }
 }
