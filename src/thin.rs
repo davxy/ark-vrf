@@ -27,13 +27,13 @@
 //! let secret = Secret::from_seed(b"seed");
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
-//! let output = secret.output(input);
+//! let io = secret.vrf_io(input);
 //!
 //! // Proving
-//! let proof = secret.prove(input, output, b"aux data");
+//! let proof = secret.prove(io, b"aux data");
 //!
 //! // Verification
-//! let result = public.verify(input, output, b"aux data", &proof);
+//! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
 use crate::*;
@@ -59,47 +59,51 @@ pub struct Proof<S: ThinVrfSuite> {
     pub s: ScalarField<S>,
 }
 
-/// Merge the VRF I/O pair and Schnorr key pair into a single delinearized pair.
-fn merged_pairs<S: ThinVrfSuite>(
+/// Merge VRF I/O pairs and Schnorr key pair into a single delinearized pair.
+#[inline(always)]
+fn merge<S: ThinVrfSuite>(
     public: &AffinePoint<S>,
-    input: Input<S>,
-    output: Output<S>,
-    ad: &[u8],
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
 ) -> (Input<S>, Output<S>) {
-    let ios = [(Input(S::generator()), Output(*public)), (input, output)];
-    utils::delinearize::<S>(&ios, ad)
+    let schnorr = core::iter::once(VrfIo {
+        input: Input(S::generator()),
+        output: Output(*public),
+    });
+    let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
+    utils::delinearize::<S>(chained, ad.as_ref())
 }
 
 /// Trait for types that can generate Thin VRF proofs.
 pub trait Prover<S: ThinVrfSuite> {
-    /// Generate a proof for the given input/output and additional data.
-    fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S>;
+    /// Generate a proof for the given VRF I/O pairs and additional data.
+    fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
 /// Trait for entities that can verify Thin VRF proofs.
 pub trait Verifier<S: ThinVrfSuite> {
-    /// Verify a proof for the given input/output and additional data.
+    /// Verify a proof for the given VRF I/O pairs and additional data.
     fn verify(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
 }
 
 impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
-    fn prove(&self, input: Input<S>, output: Output<S>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (merged_input, _) = merged_pairs::<S>(&self.public.0, input, output, ad.as_ref());
+    fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
+        let ad = ad.as_ref();
+        let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, merged_input, ad.as_ref());
+        let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad);
 
         // R = k * I_m (secret nonce)
         let r = smul!(merged_input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &r], ad.as_ref());
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
 
         // Response
         let s = k + c * self.scalar;
@@ -111,17 +115,17 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
 impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
     fn verify(
         &self,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
+        let ad = ad.as_ref();
 
-        let (merged_input, merged_output) = merged_pairs::<S>(&self.0, input, output, ad.as_ref());
+        let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[&self.0, &input.0, &output.0, r], ad.as_ref());
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, r], ad);
 
         // Verify: R + c*O_m == s*I_m
         if *r + merged_output.0 * c != merged_input.0 * s {
@@ -171,14 +175,13 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     /// in parallel.
     pub fn prepare(
         public: &Public<S>,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let (merged_input, merged_output) =
-            merged_pairs::<S>(&public.0, input, output, ad.as_ref());
-        let c = S::challenge(&[&public.0, &input.0, &output.0, &proof.r], ad.as_ref());
+        let ad = ad.as_ref();
+        let (merged_input, merged_output) = merge::<S>(&public.0, ios, ad);
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &proof.r], ad);
         BatchItem {
             c,
             i_m: merged_input.0,
@@ -197,12 +200,11 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     pub fn push(
         &mut self,
         public: &Public<S>,
-        input: Input<S>,
-        output: Output<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) {
-        let entry = Self::prepare(public, input, output, ad, proof);
+        let entry = Self::prepare(public, ios, ad, proof);
         self.push_prepared(entry);
     }
 
@@ -285,10 +287,10 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let proof = secret.prove(input, output, b"foo");
-        let result = public.verify(input, output, b"foo", &proof);
+        let proof = secret.prove(io, b"foo");
+        let result = public.verify(io, b"foo", &proof);
         assert!(result.is_ok());
     }
 
@@ -298,25 +300,25 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine(random_val(None));
-        let output = secret.output(input);
+        let io = secret.vrf_io(input);
 
-        let proof1 = secret.prove(input, output, b"foo");
-        let proof2 = secret.prove(input, output, b"bar");
+        let proof1 = secret.prove(io, b"foo");
+        let proof2 = secret.prove(io, b"bar");
 
         // Single-proof verification still works.
-        assert!(public.verify(input, output, b"foo", &proof1).is_ok());
-        assert!(public.verify(input, output, b"bar", &proof2).is_ok());
+        assert!(public.verify(io, b"foo", &proof1).is_ok());
+        assert!(public.verify(io, b"bar", &proof2).is_ok());
 
         // Batch using push.
         let mut batch = BatchVerifier::new();
-        batch.push(&public, input, output, b"foo", &proof1);
-        batch.push(&public, input, output, b"bar", &proof2);
+        batch.push(&public, io, b"foo", &proof1);
+        batch.push(&public, io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
         // Batch using prepare + push_prepared.
         let mut batch = BatchVerifier::new();
-        let entry1 = BatchVerifier::prepare(&public, input, output, b"foo", &proof1);
-        let entry2 = BatchVerifier::prepare(&public, input, output, b"bar", &proof2);
+        let entry1 = BatchVerifier::prepare(&public, io, b"foo", &proof1);
+        let entry2 = BatchVerifier::prepare(&public, io, b"bar", &proof2);
         batch.push_prepared(entry1);
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());
@@ -327,9 +329,79 @@ pub(crate) mod testing {
 
         // Bad additional data should fail.
         let mut batch = BatchVerifier::new();
-        batch.push(&public, input, output, b"foo", &proof1);
-        batch.push(&public, input, output, b"wrong", &proof2);
+        batch.push(&public, io, b"foo", &proof1);
+        batch.push(&public, io, b"wrong", &proof2);
         assert!(batch.verify().is_err());
+    }
+
+    /// N=1 slice produces same proof as passing a single `VrfIo`.
+    pub fn prove_verify_multi_single<S: ThinVrfSuite>() {
+        use thin::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::from_affine(random_val(None));
+        let io = secret.vrf_io(input);
+
+        let proof_single = secret.prove(io, b"foo");
+        let proof_slice = secret.prove([io], b"foo");
+
+        // Byte-identical proofs
+        let encode = |p: &thin::Proof<S>| {
+            let mut buf = Vec::new();
+            p.serialize_compressed(&mut buf).unwrap();
+            buf
+        };
+        assert_eq!(encode(&proof_single), encode(&proof_slice));
+
+        // Cross-verification
+        assert!(public.verify(io, b"foo", &proof_slice).is_ok());
+        assert!(public.verify([io], b"foo", &proof_single).is_ok());
+    }
+
+    /// N=3 VRF pairs: verify succeeds; tampered output/input/ad fails.
+    pub fn prove_verify_multi<S: ThinVrfSuite>() {
+        use thin::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+
+        let ios: Vec<VrfIo<S>> = (0..3u8)
+            .map(|i| {
+                let input = Input::new(&[i + 1]).unwrap();
+                secret.vrf_io(input)
+            })
+            .collect();
+
+        let proof = secret.prove(&ios[..], b"bar");
+        assert!(public.verify(&ios[..], b"bar", &proof).is_ok());
+
+        // Tamper: wrong output on ios[1]
+        let mut bad_ios = ios.clone();
+        bad_ios[1].output = secret.output(ios[0].input);
+        assert!(public.verify(&bad_ios[..], b"bar", &proof).is_err());
+
+        // Tamper: wrong input on ios[0]
+        let mut bad_ios = ios.clone();
+        bad_ios[0].input = ios[1].input;
+        assert!(public.verify(&bad_ios[..], b"bar", &proof).is_err());
+
+        // Tamper: wrong ad
+        assert!(public.verify(&ios[..], b"baz", &proof).is_err());
+    }
+
+    /// N=0 VRF pairs degenerates to Schnorr signature over ad.
+    pub fn prove_verify_multi_empty<S: ThinVrfSuite>() {
+        use thin::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+
+        let proof = secret.prove([], b"bar");
+        assert!(public.verify([], b"bar", &proof).is_ok());
+
+        // Wrong ad should fail
+        assert!(public.verify([], b"baz", &proof).is_err());
     }
 
     #[macro_export]
@@ -341,6 +413,21 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::thin::testing::prove_verify::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_single() {
+                    $crate::thin::testing::prove_verify_multi_single::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi() {
+                    $crate::thin::testing::prove_verify_multi::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_empty() {
+                    $crate::thin::testing::prove_verify_multi_empty::<$suite>();
                 }
 
                 #[test]
@@ -382,10 +469,12 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
-            let input = Input::<S>::from_affine(base.h);
-            let output = Output::from_affine(base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(base.h),
+                output: Output::from_affine(base.gamma),
+            };
             let secret = Secret::from_scalar(base.sk);
-            let proof: Proof<S> = secret.prove(input, output, ad);
+            let proof: Proof<S> = secret.prove(io, ad);
             Self {
                 base,
                 proof_r: proof.r,
@@ -424,15 +513,17 @@ pub(crate) mod testing {
 
         fn run(&self) {
             self.base.run();
-            let input = Input::<S>::from_affine(self.base.h);
-            let output = Output::from_affine(self.base.gamma);
+            let io = VrfIo {
+                input: Input::<S>::from_affine(self.base.h),
+                output: Output::from_affine(self.base.gamma),
+            };
             let sk = Secret::from_scalar(self.base.sk);
-            let proof = sk.prove(input, output, &self.base.ad);
+            let proof = sk.prove(io, &self.base.ad);
             assert_eq!(self.proof_r, proof.r, "Thin VRF proof R mismatch");
             assert_eq!(self.proof_s, proof.s, "Thin VRF proof s mismatch");
 
             let pk = Public(self.base.pk);
-            assert!(pk.verify(input, output, &self.base.ad, &proof).is_ok());
+            assert!(pk.verify(io, &self.base.ad, &proof).is_ok());
         }
     }
 
@@ -474,10 +565,12 @@ pub(crate) mod testing {
         //
         // merged_pairs passes [(G, pk), (I, O')] to delinearize.
         let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
-        let mut zs = utils::delinearize_scalars::<S>(&ios, ad);
+        let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
+
+        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad);
         let (z0, z1) = (zs.next(), zs.next());
 
-        let (merged_input, _) = utils::delinearize::<S>(&ios, ad);
+        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad);
         let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
         assert_eq!(merged_input.0, expected_merged_input);
 
@@ -491,7 +584,7 @@ pub(crate) mod testing {
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (merged_input.0 * k).into_affine();
-        let c = S::challenge(&[&pk, &input_pt, &fake_output_pt, &r], ad);
+        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };
@@ -513,8 +606,12 @@ pub(crate) mod testing {
         //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
         //       = RHS
         let public = Public::<S>(pk);
+        let fake_io = VrfIo {
+            input,
+            output: fake_output,
+        };
         assert!(
-            public.verify(input, fake_output, ad, &forged_proof).is_ok(),
+            public.verify(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"
         );
     }

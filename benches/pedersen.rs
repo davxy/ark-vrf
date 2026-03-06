@@ -2,7 +2,7 @@
 mod bench_utils;
 
 use ark_std::{UniformRand, rand::SeedableRng};
-use ark_vrf::{AffinePoint, Input, Public, Secret, pedersen::PedersenSuite};
+use ark_vrf::{AffinePoint, Input, Secret, pedersen::PedersenSuite};
 use bench_utils::BenchInfo;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -11,11 +11,11 @@ fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input);
+    let io = secret.vrf_io(input);
 
     let name = format!("{}/pedersen_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| secret.prove(black_box(input), black_box(output), b"ad"));
+        b.iter(|| secret.prove(black_box(io), b"ad"));
     });
 }
 
@@ -24,20 +24,12 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input);
-    let (proof, _blinding) = secret.prove(input, output, b"ad");
+    let io = secret.vrf_io(input);
+    let (proof, _blinding) = secret.prove(io, b"ad");
 
     let name = format!("{}/pedersen_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            Public::<S>::verify(
-                black_box(input),
-                black_box(output),
-                b"ad",
-                black_box(&proof),
-            )
-            .unwrap()
-        });
+        b.iter(|| ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap());
     });
 }
 
@@ -53,10 +45,10 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
             let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
-            let output = secret.output(input);
+            let io = secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
-            let (proof, _) = secret.prove(input, output, &ad);
-            (input, output, ad, proof)
+            let (proof, _) = secret.prove(io, &ad);
+            (io, ad, proof)
         })
         .collect();
 
@@ -72,17 +64,15 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(input, output, ad, proof)| {
-                            BatchVerifier::<S>::prepare(*input, *output, ad, proof)
-                        })
+                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(*io, ad, proof))
                         .collect();
                 });
             });
 
         {
             let mut bv = BatchVerifier::<S>::new();
-            for (input, output, ad, proof) in &batch_items[..batch_size] {
-                bv.push(*input, *output, ad, proof);
+            for (io, ad, proof) in &batch_items[..batch_size] {
+                bv.push(*io, ad, proof);
             }
 
             c.benchmark_group(&verify_group)

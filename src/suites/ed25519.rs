@@ -62,15 +62,35 @@ impl Suite for ThisSuite {
     type Affine = ark_ed25519::EdwardsAffine;
     type Hasher = sha2::Sha512;
     type Codec = codec::ArkworksCodec;
+
+    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
+        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
+    }
+
+    fn nonce(
+        sk: &crate::ScalarField<Self>,
+        pts: &[&crate::AffinePoint<Self>],
+        ad: &[u8],
+    ) -> crate::ScalarField<Self> {
+        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
+    }
+
+    fn challenge(pts: &[&crate::AffinePoint<Self>], ad: &[u8]) -> crate::ScalarField<Self> {
+        utils::challenge_rfc_9381::<Self>(pts, ad)
+    }
+
+    fn point_to_hash(pt: &crate::AffinePoint<Self>) -> crate::HashOutput<Self> {
+        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+    }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "52417091031015867055192825304177001039906336859819158874861527659737645967040"
+            "34964248752573453964991712365053444197578929845336037029678529379743871798804"
         );
         const Y: BaseField = MontFp!(
-            "24364467899048426341436922427697710961180476432856951893648702734568269272170"
+            "55999826975077435406782459267347332622048692966399536187484076777078341641749"
         );
         AffinePoint::new_unchecked(X, Y)
     };

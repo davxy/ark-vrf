@@ -1,8 +1,10 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 #[macro_use]
 mod bench_utils;
 
 use ark_std::{UniformRand, rand::SeedableRng};
-use ark_vrf::{AffinePoint, Input, Output, Secret};
+use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -79,7 +81,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
         b.iter(|| {
             S::nonce(
                 black_box(secret.scalar()),
-                black_box(input),
+                black_box(&[&input.0]),
                 black_box(b"bench"),
             )
         });
@@ -132,11 +134,10 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     let max_size = DELINEARIZE_SIZES[DELINEARIZE_SIZES.len() - 1];
 
     let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let ios: Vec<(Input<S>, Output<S>)> = (0..max_size)
+    let ios: Vec<_> = (0..max_size)
         .map(|_| {
             let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
-            let output = secret.output(input);
-            (input, output)
+            secret.vrf_io(input)
         })
         .collect();
 
@@ -144,7 +145,10 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     for &size in DELINEARIZE_SIZES {
         c.benchmark_group(&group_name)
             .bench_function(BenchmarkId::from_parameter(size), |b| {
-                b.iter(|| ark_vrf::utils::delinearize::<S>(black_box(&ios[..size]), b"ad"));
+                b.iter(|| {
+                    let iter = ios[..size].iter().copied();
+                    ark_vrf::utils::delinearize::<S>(black_box(iter), b"ad")
+                });
             });
     }
 }

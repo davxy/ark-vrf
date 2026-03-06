@@ -9,8 +9,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "e7aa5154103450f0a0525a36a441f827296ee489ef30ed8787cff8df1bef223f",
     "beta": "fdeb377a4ffd7f95ebe48e5b43a88d069ce62188e49493500315ad55ee04d7442b93c4c91d5475370e9380496f4bc0b838c2483bce4e133c6f18b0adbb9e4722",
-    "proof_c": "92baeaa10808b5718a57567250438565",
-    "proof_s": "b4259fdb16ea4b29a8628e07ecd21f204a1e066c4d0389ed0606bd4d11776215"
+    "proof_c": "bfa32d4c8673bfa941198a64d7d78aeb",
+    "proof_s": "851775b206803c08ff7e991dd991a98fd4038777f7c697eafaa2e5151fb15118"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "8c1d1425374f01d86b23bfeab770c60b58d2eeb9afc5900c8b8a918d09a6086b",
     "gamma": "60f32f5ad3e9694b82ccc0a735edb2f940f757ab333cc5f7b0a41158b80f574f",
     "beta": "44f3728bc5ad550aeeb89f8db340b2fceffc946be3e2d8c5d99b47c1fce344b3c7fcee223a9b29a64fe4a86a9994784bc165bb0fba03ca0a493f75bee89a0946",
-    "proof_c": "bc17f48e82606f4de480d4c9957aa907",
-    "proof_s": "8f3486acd7aa8d255dccd0cff917852efd40e4783f8872825695351f66a44e09"
+    "proof_c": "f40be719b054a2bdd0f16e157132c9a9",
+    "proof_s": "fad7eaf5f0c8dc91afb1ef1f0d063c8bd250f20f2a59bcc00ab0d3098c01b900"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "67a348e256d908eb695d15ee0d869efef2bcf9f0fea646e788f967abbc0464dd",
     "beta": "edde0178045133eb03ef4d1ad8b978a56ee80ec4eab8830d6bc6c080031388416657d3c449d9398cc4385d1c8a2bb19bcf61ff086e5a6c477a0302ce270d1abf",
-    "proof_c": "15e84cf94dbc7dfb279d3cc45e8f7f9b",
-    "proof_s": "bbea17e311d6b08ea1147135f484adfc054389ee976a8e39de84fc5a9fe0eb01"
+    "proof_c": "0cfdf29a4ee0ec8f8a784c724f34bbab",
+    "proof_s": "ccb444bdb2e8a2e9015be1f96a9aea9182232f8fe87504a0161a02f174262b17"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "672e8c7a8e6d3eca67df38f11d50f3d7dbb26fa8e27565a5424e6f8ac4555dcc",
     "gamma": "4d3e0524fc59374f1fdad8e471c695469b45ecf69c1de85c6c1230e888dd4cbe",
     "beta": "36127f8aee7c61048984f0a208bf6d334db9dacbeeeef9ff2d17117e812328321462eb3ef602f5911d77ab11f815eb4154ba95c934e414198ef000a61b4de31a",
-    "proof_c": "f8de8d1b7fb67eee17572babd8082309",
-    "proof_s": "8f314a54c056f3d3ca3d304665e144ed192e5ed12b82a08beb966b29e69ea219"
+    "proof_c": "fb7dc9c179e6d470318b5c93bef7654b",
+    "proof_s": "82ab0176038088a79722fa8e5ea50d213cb89ec954354268d514388cb5797410"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "9508104b820469687488d83f729288d9f70fc0523318beff44a47da10d490b3c",
     "beta": "4ee61f3c000544aa48c565e143e05c6501a623bdbf02a0a408b97433660b4907715f75890cc0e45cdd7116e3da15b15c3c637782e8e05d05c0d5895e5fe583d1",
-    "proof_c": "ad49fa81bbd514951b01dd5a5fd5653a",
-    "proof_s": "188db4514195485196d2422fee075057d9dc68638ec798e82699d7e992d6c60e"
+    "proof_c": "f9c44d68f19a34ae9d90b2e235fdc47b",
+    "proof_s": "0e9e529fe51263791b3c7cc80af148495447d52ad7af5a60e6b1aa50e5112e17"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "9508104b820469687488d83f729288d9f70fc0523318beff44a47da10d490b3c",
     "beta": "4ee61f3c000544aa48c565e143e05c6501a623bdbf02a0a408b97433660b4907715f75890cc0e45cdd7116e3da15b15c3c637782e8e05d05c0d5895e5fe583d1",
-    "proof_c": "6deea90536b31be676d73dc7fcb686eb",
-    "proof_s": "80367acb434da08e4c1c68962ba3ac26fc9e16b7a1d8472b5bf4ba5a61370807"
+    "proof_c": "8b6c1b5e5dbf0dd67a22feffe06a3c0d",
+    "proof_s": "f62c72eb7722326dc2ce88b179b48e80d3efb179cc7333fd0f6c5280a4c7d011"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "6d1dd583bea262323c7dc9e94e57a472e09874e435719010eeafae503c433f16",
     "beta": "09106f062ac07846f3f841f64765527b333575143483855d633f99ccc2e8e306e6239ff79a1272cff931e8d0ac6c390328486329118ad40a18b85184da1837ff",
-    "proof_c": "cba4b50a98b7f33f80e176a0cf6b1def",
-    "proof_s": "571ff91738a82cc9ea38a4ed46e5cf959f6ab49b63776148d3db34ed3c7db312"
+    "proof_c": "fedaa937ac60018e5282d2c8dfa74b41",
+    "proof_s": "03e2c531db6e3bc837cb9cd61b63fa5b7727cf83d2a0f3213bbcc07bd6668812"
   }
 ]
