@@ -157,11 +157,19 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// 3. Compute the challenge `c` using all public values, nonce commitments and the
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
+    ///
+    /// **Deviation from RFC 9381:** The nonce derivation includes the output point
+    /// alongside the input, whereas the RFC only uses the input. Since `prove`
+    /// receives pre-computed outputs rather than recomputing them internally, this
+    /// binds the nonce to the specific output, preventing nonce reuse if different
+    /// outputs are ever provided for the same `(secret, input, ad)` tuple — which
+    /// would otherwise enable secret key recovery. The resulting proof remains
+    /// compatible with RFC 9381 verification.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let ad = ad.as_ref();
         let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
 
-        let k = S::nonce(&self.scalar, &[&input.0], ad);
+        let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad);
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);
