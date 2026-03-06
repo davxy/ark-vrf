@@ -160,8 +160,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
         let ad = ad.as_ref();
-        let (input, output) =
-            utils::delinearize_from_iter(ios.as_ref().iter().copied(), ad);
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
 
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, &input.0, ad);
@@ -226,8 +225,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         proof: &Proof<S>,
     ) -> Result<(), Error> {
         let ad = ad.as_ref();
-        let (input, output) =
-            utils::delinearize_from_iter(ios.as_ref().iter().copied(), ad);
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
 
         let Proof {
             pk_com,
@@ -306,8 +304,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         proof: &Proof<S>,
     ) -> BatchItem<S> {
         let ad = ad.as_ref();
-        let (input, output) =
-            utils::delinearize_from_iter(ios.as_ref().iter().copied(), ad);
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
         let c = S::challenge(
             &[&proof.pk_com, &input.0, &output.0, &proof.r, &proof.ok],
             ad,
@@ -330,12 +327,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(
-        &mut self,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) {
+    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
         let entry = Self::prepare(ios, ad, proof);
         self.push_prepared(entry);
     }

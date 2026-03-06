@@ -71,7 +71,7 @@ fn merge<S: ThinVrfSuite>(
         output: Output(*public),
     });
     let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
-    utils::delinearize_from_iter::<S>(chained, ad.as_ref())
+    utils::delinearize::<S>(chained, ad.as_ref())
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -565,10 +565,12 @@ pub(crate) mod testing {
         //
         // merged_pairs passes [(G, pk), (I, O')] to delinearize.
         let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
-        let mut zs = utils::delinearize_scalars::<S>(&ios, ad);
+        let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
+
+        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad);
         let (z0, z1) = (zs.next(), zs.next());
 
-        let (merged_input, merged_output) = utils::delinearize::<S>(&ios, ad);
+        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad);
         let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
         assert_eq!(merged_input.0, expected_merged_input);
 

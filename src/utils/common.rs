@@ -6,8 +6,8 @@
 
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
@@ -170,7 +170,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -430,7 +430,7 @@ impl<S: Suite> DelinearizeScalars<S> {
 /// Seed a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
 /// and auxiliary data. The seed is derived deterministically by hashing all
 /// encoded points together with `ad`.
-pub(crate) fn delinearize_scalars_from_iter<S: Suite>(
+pub(crate) fn delinearize_scalars<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>>,
     ad: &[u8],
 ) -> DelinearizeScalars<S> {
@@ -467,27 +467,34 @@ pub(crate) fn delinearize_scalars_from_iter<S: Suite>(
     }
 }
 
-/// Seed a [`DelinearizeScalars`] stream for the given I/O pairs and
-/// auxiliary data. The seed is derived deterministically by hashing all
-/// encoded points together with `ad`.
-pub(crate) fn delinearize_scalars<S: Suite>(
-    ios: &[(Input<S>, Output<S>)],
-    ad: &[u8],
-) -> DelinearizeScalars<S> {
-    delinearize_scalars_from_iter(
-        ios.iter().map(|&(input, output)| VrfIo { input, output }),
-        ad,
-    )
-}
-
-/// Delinearize multiple input-output pairs (from an iterator) into a single pair.
+/// Delinearize multiple input-output pairs into a single pair.
 ///
-/// Same semantics as [`delinearize`] but accepts an iterator instead of a slice,
-/// enabling zero-allocation composition (e.g. chaining a Schnorr pair with VRF pairs).
+/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
+/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
+/// The resulting `(Input, Output)` can be passed directly to a scheme's
+/// `prove` / `verify` to obtain or check a single proof covering all pairs.
+///
+/// The ordering of items matters: the delinearization scalars are derived from
+/// the hash of the pairs in the given order, so the prover and verifier must
+/// use the same ordering to obtain the same merged pair.
+///
+/// - N=0: returns the identity point for both input and output.
+/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
+/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
+///   and returns their linear combination.
 ///
 /// The iterator must be `ExactSizeIterator` (to know N) and `Clone` (for the
 /// two-pass hash-then-fold without allocation).
-pub fn delinearize_from_iter<S: Suite>(
+///
+/// # WARNING: N=0
+///
+/// When the iterator is empty, both returned points are the identity (zero point).
+/// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
+/// into a Schnorr signature over the additional data -- it binds the public key
+/// to `ad` but provides **no VRF output**. The `Output` is a public constant
+/// (the identity point) and **must not** be used to derive VRF randomness.
+/// Doing so would produce a predictable, key-independent value.
+pub fn delinearize<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: &[u8],
 ) -> (Input<S>, Output<S>) {
@@ -507,7 +514,7 @@ pub fn delinearize_from_iter<S: Suite>(
     // Fold is faster below this threshold; MSM wins above it.
     const MSM_THRESHOLD: usize = 16;
 
-    let mut scalars = delinearize_scalars_from_iter(iter.clone(), ad);
+    let mut scalars = delinearize_scalars(iter.clone(), ad);
 
     let zero = zero.into_group();
     let (input, output) = if n < MSM_THRESHOLD {
@@ -517,8 +524,7 @@ pub fn delinearize_from_iter<S: Suite>(
         })
     } else {
         let scalars = scalars.take_vec(n);
-        let (inputs, outputs): (Vec<_>, Vec<_>) =
-            iter.map(|io| (io.input.0, io.output.0)).unzip();
+        let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
         let input = Group::<S>::msm_unchecked(&inputs, &scalars);
@@ -527,37 +533,6 @@ pub fn delinearize_from_iter<S: Suite>(
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);
     (Input(norms[0]), Output(norms[1]))
-}
-
-/// Delinearize multiple input-output pairs into a single pair.
-///
-/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
-/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
-/// The resulting `(Input, Output)` can be passed directly to a scheme's
-/// `prove` / `verify` to obtain or check a single proof covering all pairs.
-///
-/// The ordering of `ios` matters: the delinearization scalars are derived from
-/// the hash of the pairs in the given order, so the prover and verifier must
-/// use the same ordering to obtain the same merged pair.
-///
-/// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
-/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
-///   and returns their linear combination.
-///
-/// # WARNING: N=0
-///
-/// When `ios` is empty, both returned points are the identity (zero point).
-/// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
-/// into a Schnorr signature over the additional data -- it binds the public key
-/// to `ad` but provides **no VRF output**. The `Output` is a public constant
-/// (the identity point) and **must not** be used to derive VRF randomness.
-/// Doing so would produce a predictable, key-independent value.
-pub fn delinearize<S: Suite>(ios: &[(Input<S>, Output<S>)], ad: &[u8]) -> (Input<S>, Output<S>) {
-    delinearize_from_iter(
-        ios.iter().map(|&(input, output)| VrfIo { input, output }),
-        ad,
-    )
 }
 
 #[cfg(test)]
