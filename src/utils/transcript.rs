@@ -4,6 +4,7 @@ use crate::codec::Codec;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io;
 use digest::Digest;
+use sha2::Sha512;
 use generic_array::{ArrayLength, GenericArray};
 use rand_chacha::ChaCha20Rng;
 
@@ -189,7 +190,7 @@ impl<H: Digest + Clone, R: SeedableRng + RngCore + Clone> Transcript for HashTra
 
 /// Squeeze bytes from a transcript and decode them as a scalar field element.
 pub fn squeeze_scalar<S: crate::Suite>(transcript: &mut impl Transcript) -> crate::ScalarField<S> {
-    let mut buf = [0u8; S::CHALLENGE_LEN];
+    let mut buf = ark_std::vec![0u8; S::CHALLENGE_LEN];
     transcript.squeeze_raw(&mut buf);
     S::Codec::scalar_decode(&buf)
 }

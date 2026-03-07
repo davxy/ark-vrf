@@ -82,72 +82,6 @@ where
 {
 }
 
-/// Construct an affine point from a single base field coordinate.
-///
-/// For SW curves the coordinate is x; for TE curves it is y.
-/// Returns the point with the "positive" (smaller) second coordinate,
-/// or `None` if no point exists for the given input.
-pub trait PointFromCoord: AffineRepr {
-    fn from_coord(coord: Self::BaseField) -> Option<Self>;
-}
-
-impl<P: SWCurveConfig> PointFromCoord for SWAffine<P> {
-    fn from_coord(x: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_x_unchecked(x, false)
-    }
-}
-
-impl<P: TECurveConfig> PointFromCoord for TEAffine<P> {
-    fn from_coord(y: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_y_unchecked(y, false)
-    }
-}
-
-/// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
-///
-/// Safe because the constituent iterators are both `ExactSizeIterator`
-/// with small lengths (VRF I/O pairs), so overflow is not a concern.
-#[derive(Clone)]
-pub struct ExactChain<A, B>(Chain<A, B>, usize);
-
-impl<A, B> ExactChain<A, B>
-where
-    A: ExactSizeIterator,
-    B: ExactSizeIterator<Item = A::Item>,
-{
-    pub fn new(a: A, b: B) -> Self {
-        let len = a.len() + b.len();
-        Self(a.chain(b), len)
-    }
-}
-
-impl<A, B> Iterator for ExactChain<A, B>
-where
-    A: Iterator,
-    B: Iterator<Item = A::Item>,
-{
-    type Item = A::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.0.next();
-        if item.is_some() {
-            self.1 -= 1;
-        }
-        item
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.1, Some(self.1))
-    }
-}
-
-impl<A, B> ExactSizeIterator for ExactChain<A, B>
-where
-    A: Iterator,
-    B: Iterator<Item = A::Item>,
-{
-}
-
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
@@ -381,7 +315,7 @@ pub fn nonce_rfc_8032<S: Suite>(
     let mut t2 = S::Transcript::new(b"");
     t2.absorb_raw(&sk_hash[32..]);
     for io in ios {
-        t2.absorb_serialize(&io);
+        t2.absorb_serialize(io);
     }
     t2.absorb_raw(ad);
     let mut h = [0u8; 64];
@@ -437,7 +371,7 @@ pub(crate) struct DelinearizeScalars<S: Suite> {
 impl<S: Suite> DelinearizeScalars<S> {
     /// Draw the next 128-bit scalar.
     pub fn next(&mut self) -> ScalarField<S> {
-        super::transcript::squeeze_scalar::<S>(&mut self.transcript, 16)
+        super::transcript::squeeze_scalar::<S>(&mut self.transcript)
     }
 
     /// Collect `n` scalars into a `Vec`.
@@ -503,12 +437,15 @@ pub fn delinearize<S: Suite>(
     let n = iter.len();
 
     if n == 0 {
-        return (Input(zero), Output(zero));
+        return VrfIo {
+            input: Input(zero),
+            output: Output(zero),
+        };
     }
 
     if n == 1 {
         let io = iter.clone().next().unwrap();
-        return (io.input, io.output);
+        return io;
     }
 
     // MSM has bucket-setup overhead that dominates for small N.

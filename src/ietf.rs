@@ -168,7 +168,8 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let ad = ad.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (input, output) = (io.input, io.output);
 
         let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad);
 
@@ -204,9 +205,10 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let aux = aux.as_ref();
+        let ad = ad.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (input, output) = (io.input, io.output);
 
         let Proof { c, s } = proof;
 

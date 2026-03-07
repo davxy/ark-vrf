@@ -59,6 +59,7 @@ pub trait PedersenSuite: IetfSuite {
         transcript: Option<Self::Transcript>,
     ) -> ScalarField<Self> {
         use crate::utils::common::DomSep;
+        let mut t = transcript.unwrap_or_else(|| Self::Transcript::new(Self::SUITE_ID));
         t.absorb_raw(&[DomSep::PedersenBlinding as u8]);
         t.absorb_serialize(secret);
         t.absorb_serialize(input);
@@ -146,10 +147,6 @@ pub trait Verifier<S: PedersenSuite> {
     ) -> Result<(), Error>;
 }
 
-fn get_secrets<S: PedersenSuite>(t: S::Transcript) -> (ScalarField<S>, ScalarField<S>) {
-    t.absorb_serialize()
-}
-
 impl<S: PedersenSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
@@ -158,7 +155,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
     ) -> (Proof<S>, ScalarField<S>) {
         let ad = ad.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (input, output) = (io.input, io.output);
 
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, &input.0, ad, Some(t.clone()));
@@ -224,7 +222,8 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         let ad = ad.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (input, output) = (io.input, io.output);
 
         let Proof {
             pk_com,
