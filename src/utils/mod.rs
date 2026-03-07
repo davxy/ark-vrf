@@ -5,6 +5,7 @@
 
 pub mod common;
 pub mod te_sw_map;
+pub mod transcript;
 
 /// Standard cryptographic procedures.
 ///
@@ -17,6 +18,9 @@ pub use common::*;
 /// Provides bidirectional mappings between different curve representations,
 /// allowing operations to be performed in the most convenient form.
 pub use te_sw_map::*;
+
+/// Fiat-Shamir transcript abstraction.
+pub use transcript::*;
 
 /// Point scalar multiplication with optional secret splitting.
 ///

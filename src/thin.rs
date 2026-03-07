@@ -59,19 +59,23 @@ pub struct Proof<S: ThinVrfSuite> {
     pub s: ScalarField<S>,
 }
 
-/// Merge VRF I/O pairs and Schnorr key pair into a single delinearized pair.
+/// Merge Schnorr key pair and VRF I/O pairs via `vrf_transcript`.
+///
+/// Prepends `(G, pk)` to the VRF ios, then calls `vrf_transcript` so that
+/// delinearization runs once over the full set. Returns the shared transcript
+/// and the merged input/output.
 #[inline(always)]
-fn merge<S: ThinVrfSuite>(
-    public: &AffinePoint<S>,
+fn vrf_transcript<S: ThinVrfSuite>(
+    public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
-) -> (Input<S>, Output<S>) {
+) -> (S::Transcript, VrfIo<S>) {
     let schnorr = core::iter::once(VrfIo {
         input: Input(S::generator()),
-        output: Output(*public),
+        output: Output(public),
     });
     let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
-    utils::delinearize::<S>(chained, ad.as_ref())
+    utils::vrf_transcript_from_iter::<S>(chained, ad)
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -93,17 +97,16 @@ pub trait Verifier<S: ThinVrfSuite> {
 
 impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad);
+        let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad);
+        let k = S::nonce(&self.scalar, Some(t.clone()));
 
         // R = k * I_m (secret nonce)
-        let r = smul!(merged_input.0, k).into_affine();
+        let r = smul!(io.input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let c = S::challenge(&[&r], Some(t));
 
         // Response
         let s = k + c * self.scalar;
@@ -120,15 +123,13 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         proof: &Proof<S>,
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
-        let ad = ad.as_ref();
-
-        let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad);
+        let (t, io) = vrf_transcript::<S>(self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, r], ad);
+        let c = S::challenge(&[r], Some(t));
 
         // Verify: R + c*O_m == s*I_m
-        if *r + merged_output.0 * c != merged_input.0 * s {
+        if *r + io.output.0 * c != io.input.0 * s {
             return Err(Error::VerificationFailure);
         }
 
@@ -179,13 +180,12 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&public.0, ios, ad);
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &proof.r], ad);
+        let (t, io) = vrf_transcript::<S>(public.0, ios, ad);
+        let c = S::challenge(&[&proof.r], Some(t));
         BatchItem {
             c,
-            i_m: merged_input.0,
-            o_m: merged_output.0,
+            i_m: io.input.0,
+            o_m: io.output.0,
             r: proof.r,
             s: proof.s,
         }
@@ -218,8 +218,6 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
-        use ark_std::rand::{RngCore, SeedableRng};
-
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
@@ -227,27 +225,18 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 
         let n = items.len();
 
-        // Deterministic RNG seeded from all (c, s) pairs.
-        let mut hasher = S::Hasher::new();
-        let mut buf = Vec::with_capacity(2 * S::Codec::SCALAR_ENCODED_LEN);
+        // Deterministic random scalars derived from all (c, s) pairs.
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(b"thin-batch");
         for e in items {
-            buf.clear();
-            S::Codec::scalar_encode_into(&e.c, &mut buf);
-            S::Codec::scalar_encode_into(&e.s, &mut buf);
-            hasher.update(&buf);
+            t.absorb_serialize(&e.c);
+            t.absorb_serialize(&e.s);
         }
-        let hash = hasher.finalize();
-        let mut seed = [0u8; 32];
-        let copy_len = hash.len().min(32);
-        seed[..copy_len].copy_from_slice(&hash[..copy_len]);
-
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-
         // 128-bit random weights for Schwartz-Zippel soundness.
         let random_scalars: Vec<ScalarField<S>> = (0..n)
             .map(|_| {
                 let mut buf = [0u8; 16];
-                rng.fill_bytes(&mut buf);
+                t.squeeze_raw(&mut buf);
                 ScalarField::<S>::from_le_bytes_mod_order(&buf)
             })
             .collect();
@@ -485,7 +474,7 @@ pub(crate) mod testing {
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
             let proof_r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let proof_s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
+            let proof_s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self {
                 base,
                 proof_r,
@@ -554,37 +543,46 @@ pub(crate) mod testing {
         let honest_output = (input_pt * sk).into_affine();
 
         // Attacker picks a DIFFERENT output: O' = t * G, with t != sk * d.
-        let t = Sc::from(1234);
-        let fake_output_pt = (g * t).into_affine();
+        let t_scalar = Sc::from(1234);
+        let fake_output_pt = (g * t_scalar).into_affine();
         assert_ne!(fake_output_pt, honest_output);
         let fake_output = Output::<S>::from_affine(fake_output_pt);
 
         let ad: &[u8] = b"attack";
+        let fake_io = VrfIo {
+            input,
+            output: fake_output,
+        };
+
+        // Replicate what prove/verify do.
+        let (transcript, io) = vrf_transcript::<S>(pk, fake_io, ad);
 
         // Extract delinearization coefficients z0, z1.
-        //
-        // merged_pairs passes [(G, pk), (I, O')] to delinearize.
-        let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
-        let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
-
-        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad);
+        // merge prepends (G, pk) to the ios, then calls vrf_transcript which
+        // calls delinearize with a fresh SUITE_ID transcript clone.
+        let schnorr = core::iter::once(VrfIo {
+            input: Input::<S>(g),
+            output: Output::<S>(pk),
+        });
+        let chained = utils::common::ExactChain::new(schnorr, core::iter::once(fake_io));
+        let fresh = <S as Suite>::Transcript::new(S::SUITE_ID);
+        let mut zs = utils::delinearize_scalars::<S>(chained, Some(fresh));
         let (z0, z1) = (zs.next(), zs.next());
 
-        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad);
         let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
-        assert_eq!(merged_input.0, expected_merged_input);
+        assert_eq!(io.input.0, expected_merged_input);
 
         // --- Forge the proof ---
         //
         // Because I = d*G, the merged input is I_m = (z0 + z1*d) * G and the
         // merged output is O_m = (z0*sk + z1*t) * G, both multiples of G.
         // The effective DLEQ secret is x = (z0*sk + z1*t) / (z0 + z1*d).
-        let x = (z0 * sk + z1 * t) * (z0 + z1 * d).inverse().unwrap();
+        let x = (z0 * sk + z1 * t_scalar) * (z0 + z1 * d).inverse().unwrap();
 
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
-        let r = (merged_input.0 * k).into_affine();
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let r = (io.input.0 * k).into_affine();
+        let c = S::challenge(&[&r], Some(transcript));
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };
@@ -606,10 +604,6 @@ pub(crate) mod testing {
         //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
         //       = RHS
         let public = Public::<S>(pk);
-        let fake_io = VrfIo {
-            input,
-            output: fake_output,
-        };
         assert!(
             public.verify(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"

@@ -56,37 +56,20 @@ pub struct Secp256r1Sha256Tai;
 type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = &[0x01];
+    const SUITE_ID: &'static [u8] = b"Secp256r1_SHA-256_TAI";
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_secp256r1::Affine;
-    type Hasher = sha2::Sha256;
-    type Codec = codec::ArkworksCodec;
-
-    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_6979::<Self>(sk, pts, ad)
-    }
-
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
+    type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "95187957096665074159061186139846442527694851276419702609190570290926802675575"
+            "37999231702853397133391534653856847550187757694289952310725272235758659041366"
         );
         const Y: BaseField = MontFp!(
-            "22637183691431553647030264448144964635393094958723692863687382854070539649579"
+            "68387563229346532762740826704974254833213165828356416599609224038509478670745"
         );
         AffinePoint::new_unchecked(X, Y)
     };

@@ -56,7 +56,7 @@ fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
                     &generator,
                     &generator,
                 ]),
-                b"ad",
+                None,
             )
         });
     });
@@ -68,7 +68,7 @@ fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/point_to_hash", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| S::point_to_hash(black_box(&point)));
+        b.iter(|| S::point_to_hash::<32>(black_box(&point)));
     });
 }
 
@@ -78,13 +78,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
 
     let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            S::nonce(
-                black_box(secret.scalar()),
-                black_box(&[&input.0]),
-                black_box(b"bench"),
-            )
-        });
+        b.iter(|| S::nonce(black_box(secret.scalar()), None));
     });
 }
 
@@ -147,7 +141,7 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
             .bench_function(BenchmarkId::from_parameter(size), |b| {
                 b.iter(|| {
                     let iter = ios[..size].iter().copied();
-                    ark_vrf::utils::delinearize::<S>(black_box(iter), b"ad")
+                    ark_vrf::utils::delinearize::<S>(black_box(iter), None)
                 });
             });
     }

@@ -1243,7 +1243,6 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            // TODO: also dump the verifier pks commitment
             Self {
                 pedersen,
                 ring_pks: ring_pks.try_into().unwrap(),

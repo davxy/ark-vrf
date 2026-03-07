@@ -59,33 +59,16 @@ impl Suite for ThisSuite {
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
-    type Hasher = sha2::Sha512;
-    type Codec = codec::ArkworksCodec;
-
-    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
-    }
-
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
+    type Transcript = utils::HashTranscript;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "37791828864254608560512771045116976813822653252235145186847263146550774983573"
+            "42257337814662035284373945156525735092765968053982822992704750832078779438788"
         );
         const Y: BaseField = MontFp!(
-            "50281913639439767680904572037590409137260543547209066044189908038266865562866"
+            "47476395315228831116309413527962830333178159651930104661512857647213254194102"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -97,19 +80,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "50008126318621921789650212178911280404845722060756705823229864813583862671008"
+            "46194868970636137215665291958977045607402791989805288388161474094918623165215"
         );
         const Y: BaseField = MontFp!(
-            "41012592374371064331685030146264227241724139137619547652567048787727972666716"
+            "25076105280846228970329523770418275693120076470674973696258471026983323652479"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
-        const X: BaseField =
-            MontFp!("1579641385451470422997368464254681757635356627098777421858237888879067551015");
+        const X: BaseField = MontFp!(
+            "29457445426702359580423699774559186616331674592397285916231493776142609373871"
+        );
         const Y: BaseField = MontFp!(
-            "29815194172647243959461075220326959546380827704355488508192118227246739677800"
+            "35786798678243451862860591331740861701769099764458806489168460821196579577970"
         );
         AffinePoint::new_unchecked(X, Y)
     };

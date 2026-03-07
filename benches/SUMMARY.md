@@ -58,6 +58,20 @@ Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scal
 | batch_prepare        | 0.91 us  | 1.84 us  | 3.65 us  | 6.73 us  | 13.4 us  | 27.3 us  | 60.2 us  | 115.6 us | 229.6 us |
 | batch_verify         | 507.6 us | 600.2 us | 711.9 us | 1.63 ms  | 1.98 ms  | 3.36 ms  | 6.24 ms  | 8.41 ms  | 14.8 ms  |
 
+## Thin VRF Operations (`thin.rs`)
+
+| Benchmark              |     Time |
+|:-----------------------|---------:|
+| thin_prove             | 294.6 us |
+| thin_verify            | 337.1 us |
+
+### Batch Verification
+
+| Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
+|:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
+| batch_prepare        | 180.5 us | 392.0 us | 793.9 us | 1.56 ms  | 3.14 ms  | 6.15 ms  | 11.76 ms | 25.63 ms | 50.41 ms |
+| batch_verify         | 429.8 us | 484.3 us | 600.4 us | 822.3 us | 1.82 ms  | 2.14 ms  | 3.64 ms  | 6.75 ms  | 9.65 ms  |
+
 ## Ring VRF Operations (`ring.rs`)
 
 | Benchmark              | n=255     | n=1023    | n=2047    |

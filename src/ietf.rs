@@ -57,12 +57,7 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let (c, zero) = if S::Codec::ENDIANNESS.is_little() {
-            c_buf.split_at(S::CHALLENGE_LEN)
-        } else {
-            let (high, low) = c_buf.split_at(c_buf.len() - S::CHALLENGE_LEN);
-            (low, high)
-        };
+        let (c, zero) = c_buf.split_at(S::CHALLENGE_LEN);
         if zero.iter().any(|&b| b != 0) {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
@@ -86,7 +81,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let c = S::Codec::scalar_decode(&c_buf);
+        let c = codec::scalar_decode::<S>(&c_buf);
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,
@@ -166,17 +161,16 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// would otherwise enable secret key recovery. The resulting proof remains
     /// compatible with RFC 9381 verification.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let ad = ad.as_ref();
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
+        let (t, io) = utils::vrf_transcript(ios, ad);
 
-        let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad);
+        let k = S::nonce(&self.scalar, Some(t.clone()));
 
         let k_b = smul!(S::generator(), k);
-        let k_h = smul!(input.0, k);
+        let k_h = smul!(io.input.0, k);
         let norms = CurveGroup::normalize_batch(&[k_b, k_h]);
         let (k_b, k_h) = (norms[0], norms[1]);
 
-        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &k_b, &k_h], ad);
+        let c = S::challenge(&[&self.public.0, &k_b, &k_h], Some(t));
         let s = k + c * self.scalar;
         Proof { c, s }
     }
@@ -196,20 +190,19 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
-        aux: impl AsRef<[u8]>,
+        ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let aux = aux.as_ref();
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), aux);
+        let (t, io) = utils::vrf_transcript(ios, ad);
 
         let Proof { c, s } = proof;
 
         let u = S::generator() * s - self.0 * c;
-        let v = input.0 * s - output.0 * c;
+        let v = io.input.0 * s - io.output.0 * c;
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 
-        let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], aux);
+        let c_exp = S::challenge(&[&self.0, &u, &v], Some(t));
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
@@ -376,19 +369,14 @@ pub mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let c = S::Codec::scalar_decode(&map.get_bytes("proof_c"));
-            let s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
+            let c = codec::scalar_decode::<S>(&map.get_bytes("proof_c"));
+            let s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self { base, c, s }
         }
 
         fn to_map(&self) -> common::TestVectorMap {
             let buf = codec::scalar_encode::<S>(&self.c);
-            let proof_c = if S::Codec::ENDIANNESS.is_big() {
-                let len = buf.len();
-                &buf[len - S::CHALLENGE_LEN..]
-            } else {
-                &buf[..S::CHALLENGE_LEN]
-            };
+            let proof_c = &buf[..S::CHALLENGE_LEN];
             let items = [
                 ("proof_c", hex::encode(proof_c)),
                 ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),

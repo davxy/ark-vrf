@@ -194,7 +194,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let alpha = alpha.to_vec();
         let output = sk.output(input);
         let gamma = output.0;
-        let beta = output.hash().to_vec();
+        let beta = output.hash::<32>().to_vec();
 
         TestVector {
             comment: comment.to_string(),
@@ -266,7 +266,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let output = sk.output(input);
         assert_eq!(self.gamma, output.0, "VRF pre-output ('gamma') mismatch");
 
-        let beta = output.hash().to_vec();
+        let beta = output.hash::<32>().to_vec();
         assert_eq!(self.beta, beta, "VRF output ('beta') mismatch");
     }
 }
