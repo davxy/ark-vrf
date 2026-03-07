@@ -148,7 +148,7 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
             .bench_function(BenchmarkId::from_parameter(size), |b| {
                 b.iter(|| {
                     let iter = ios[..size].iter().copied();
-                    ark_vrf::utils::delinearize::<S>(black_box(iter), b"ad", None)
+                    ark_vrf::utils::delinearize::<S>(black_box(iter), None)
                 });
             });
     }

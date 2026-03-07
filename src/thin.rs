@@ -72,7 +72,7 @@ fn merge<S: ThinVrfSuite>(
         output: Output(*public),
     });
     let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
-    let io = utils::delinearize::<S>(chained, ad.as_ref(), transcript);
+    let io = utils::delinearize::<S>(chained, transcript);
     (io.input, io.output)
 }
 
@@ -560,10 +560,10 @@ pub(crate) mod testing {
         let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
         let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
 
-        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad, None);
+        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), None);
         let (z0, z1) = (zs.next(), zs.next());
 
-        let merged = utils::delinearize::<S>(iter, ad, None);
+        let merged = utils::delinearize::<S>(iter, None);
         let (merged_input, merged_output) = (merged.input, merged.output);
         let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
         assert_eq!(merged_input.0, expected_merged_input);

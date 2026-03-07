@@ -98,20 +98,21 @@ pub(crate) enum DomSep {
 
 /// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Creates a transcript from `SUITE_ID`, delinearizes the I/O pairs,
-/// then absorbs the merged pair and length-prefixed additional data so
-/// that all subsequent forks (nonce, blinding, challenge) inherit the
-/// same state.
+/// Creates a transcript from `SUITE_ID`, delinearizes the I/O pairs into a
+/// single merged pair (so that delinearization is stable for a given I/O set,
+/// independent of `ad`), absorbs the merged pair, then absorbs the
+/// length-prefixed additional data so that all subsequent forks (nonce,
+/// blinding, challenge) inherit the same state.
 pub fn vrf_transcript<S: Suite>(
-    ios: &[VrfIo<S>],
-    ad: &[u8],
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     let mut t = S::Transcript::new(S::SUITE_ID);
-    let io = delinearize(ios.iter().copied(), ad, Some(t.clone()));
+    let io = delinearize(ios.as_ref().iter().copied(), Some(t.clone()));
     t.absorb_serialize(&io);
-    let ad_len = u32::try_from(ad.len()).expect("ad too long");
+    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
     t.absorb_raw(&ad_len.to_le_bytes());
-    t.absorb_raw(ad);
+    t.absorb_raw(ad.as_ref());
     (t, io)
 }
 
@@ -400,12 +401,11 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 }
 
-/// Create a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
-/// and auxiliary data. The scalars are derived deterministically by hashing all
-/// encoded points together with `ad` and squeezing from the transcript.
+/// Create a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs.
+/// The scalars are derived deterministically by hashing all encoded points
+/// and squeezing from the transcript.
 pub(crate) fn delinearize_scalars<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>>,
-    ad: &[u8],
     transcript: Option<S::Transcript>,
 ) -> DelinearizeScalars<S> {
     let n = u32::try_from(iter.len()).expect("too many input-output pairs");
@@ -416,7 +416,6 @@ pub(crate) fn delinearize_scalars<S: Suite>(
     for io in iter {
         t.absorb_serialize(&io);
     }
-    t.absorb_raw(ad);
     t.absorb_raw(&[DomSep::End as u8]);
     DelinearizeScalars { transcript: t }
 }
@@ -445,12 +444,11 @@ pub(crate) fn delinearize_scalars<S: Suite>(
 /// When the iterator is empty, both returned points are the identity (zero point).
 /// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
 /// into a Schnorr signature over the additional data -- it binds the public key
-/// to `ad` but provides **no VRF output**. The `Output` is a public constant
+/// but provides **no VRF output**. The `Output` is a public constant
 /// (the identity point) and **must not** be used to derive VRF randomness.
 /// Doing so would produce a predictable, key-independent value.
 pub fn delinearize<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    ad: &[u8],
     transcript: Option<S::Transcript>,
 ) -> VrfIo<S> {
     let zero = AffinePoint::<S>::zero();
@@ -472,7 +470,7 @@ pub fn delinearize<S: Suite>(
     // Fold is faster below this threshold; MSM wins above it.
     const MSM_THRESHOLD: usize = 16;
 
-    let mut scalars = delinearize_scalars(iter.clone(), ad, transcript);
+    let mut scalars = delinearize_scalars(iter.clone(), transcript);
 
     let zero = zero.into_group();
     let (input, output) = if n < MSM_THRESHOLD {
@@ -507,5 +505,40 @@ mod tests {
         // Check that `pt` is in the prime subgroup
         assert!(pt.is_on_curve());
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())
+    }
+
+    #[test]
+    fn vrf_transcript_delinearize_equivalence() {
+        use crate::{Input, Output, VrfIo};
+
+        let sk = ScalarField::<TestSuite>::from(42u64);
+        let ios: Vec<VrfIo<TestSuite>> = (0..3u8)
+            .map(|i| {
+                let input = TestSuite::data_to_point(&[i]).unwrap();
+                let output = (input * sk).into_affine();
+                VrfIo {
+                    input: Input(input),
+                    output: Output(output),
+                }
+            })
+            .collect();
+
+        let ad = b"foo";
+
+        // Path 1: delinearize first, then vrf_transcript with the single merged io
+        let merged = delinearize::<TestSuite>(ios.iter().copied(), None);
+        let (mut t1, io1) = vrf_transcript::<TestSuite>(merged, ad);
+
+        // Path 2: vrf_transcript directly with all 3 ios
+        let (mut t2, io2) = vrf_transcript::<TestSuite>(&ios, ad);
+
+        assert_eq!(io1, io2, "merged I/O pair mismatch");
+
+        // Verify transcript states match by squeezing the same amount
+        let mut out1 = [0u8; 32];
+        let mut out2 = [0u8; 32];
+        t1.squeeze_raw(&mut out1);
+        t2.squeeze_raw(&mut out2);
+        assert_eq!(out1, out2, "transcript state mismatch");
     }
 }
