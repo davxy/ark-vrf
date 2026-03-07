@@ -187,7 +187,9 @@ pub trait Suite: Copy {
     ///
     /// Utility functions available:
     /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
+    /// TODO: remove this?
     /// - [`utils::nonce_transcript`] — Transcript-based deterministic nonce
+    /// TODO: add transcript param
     fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
 
     /// Challenge generation.
@@ -221,6 +223,8 @@ pub trait Suite: Copy {
     /// Utility functions available:
     /// - [`utils::point_to_hash_rfc_9381`] — RFC-9381 section 5.2 step 6
     fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N];
+
+    // TODO: add `sample()` to pick scalar with the given security bits .
 }
 
 /// Secret key for VRF operations.
@@ -546,10 +550,87 @@ mod tests {
 
         // SUCCESS! Two different outputs for the same input and public key!
         println!("Uniqueness BROKEN!");
-        println!("Honest output hash: {}", hex::encode(honest_output.hash::<32>()));
+        println!(
+            "Honest output hash: {}",
+            hex::encode(honest_output.hash::<32>())
+        );
         println!(
             "Malicious output hash: {}",
             hex::encode(malicious_output.hash::<32>())
+        );
+    }
+
+    #[test]
+    fn prove_uniqueness_vulnerability() {
+        use ark_ff::BigInteger;
+        use ark_std::{One, Zero};
+
+        type S = TestSuite;
+        type Sc = ScalarField<S>;
+
+        let secret = crate::Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::new(b"uniqueness attack").unwrap();
+        let honest_output = secret.output(input);
+        let ad = b"aux data";
+
+        // 1. Find a low-order point L (order 2 for Ed25519)
+        // For Ed25519, (0, -1) is order 2.
+        let low_order_pt =
+            AffinePoint::<S>::new_unchecked(BaseField::<S>::zero(), -BaseField::<S>::one());
+        assert!(!low_order_pt.is_zero());
+        // Verify it's order 2: 2 * L = O
+        assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
+
+        // 2. Compute gamma' = gamma + L
+        let malicious_output = Output::from_affine((honest_output.0 + low_order_pt).into_affine());
+        assert_ne!(honest_output, malicious_output);
+        assert_ne!(honest_output.hash(), malicious_output.hash());
+
+        // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
+        let mut ctr = 0u64;
+        let (proof, _) = loop {
+            let mut k_seed = [0u8; 8];
+            k_seed.copy_from_slice(&ctr.to_le_bytes());
+            let k = Sc::from_le_bytes_mod_order(&k_seed);
+
+            let k_b = (S::generator() * k).into_affine();
+            let k_h = (input.0 * k).into_affine();
+
+            let c = S::challenge(&[&public.0, &input.0, &malicious_output.0, &k_b, &k_h], ad);
+
+            // We need c to be even so that c * L = identity (since L has order 2)
+            if c.into_bigint().is_even() {
+                let s = k + c * secret.scalar;
+                break (crate::ietf::Proof { c, s }, c);
+            }
+            ctr += 1;
+            if ctr > 1000 {
+                panic!("Grinding failed");
+            }
+        };
+
+        // 4. Verify the malicious proof
+        let malicious_io = VrfIo {
+            input,
+            output: malicious_output,
+        };
+        assert!(public.verify(malicious_io, ad, &proof).is_ok());
+
+        // 5. Verify the honest proof still works
+        let honest_io = VrfIo {
+            input,
+            output: honest_output,
+        };
+        let honest_proof = secret.prove(honest_io, ad);
+        assert!(public.verify(honest_io, ad, &honest_proof).is_ok());
+
+        // SUCCESS! Two different outputs for the same input and public key!
+        println!("Uniqueness BROKEN!");
+        println!("Honest output hash: {}", hex::encode(honest_output.hash()));
+        println!(
+            "Malicious output hash: {}",
+            hex::encode(malicious_output.hash())
         );
     }
 }

@@ -177,7 +177,11 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
         let norms = CurveGroup::normalize_batch(&[k_b, k_h]);
         let (k_b, k_h) = (norms[0], norms[1]);
 
-        let c = S::challenge(&[&self.public.0, &input.0, &output.0, &k_b, &k_h], ad, Some(t));
+        let c = S::challenge(
+            &[&self.public.0, &input.0, &output.0, &k_b, &k_h],
+            ad,
+            Some(t),
+        );
         let s = k + c * self.scalar;
         Proof { c, s }
     }
@@ -197,12 +201,12 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
-        aux: impl AsRef<[u8]>,
+        ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
         let aux = aux.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), aux, Some(t.clone()));
+        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
 
         let Proof { c, s } = proof;
 
@@ -211,7 +215,7 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 
-        let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], aux, Some(t));
+        let c_exp = S::challenge(&[&self.0, &input.0, &output.0, &u, &v], ad, Some(t));
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)

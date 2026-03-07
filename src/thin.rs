@@ -123,7 +123,6 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
         let ad = ad.as_ref();
-
         let t = S::Transcript::new(S::SUITE_ID);
         let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad, Some(t.clone()));
 

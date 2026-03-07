@@ -22,6 +22,12 @@ pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript with the given domain label.
     fn new(label: &[u8]) -> Self;
 
+    fn fork(&self, label: &[u8]) -> Self {
+        let mut t = self.clone();
+        t.absorb_raw(label);
+        t
+    }
+
     /// Absorb data into the transcript.
     ///
     /// # Panics
@@ -70,7 +76,10 @@ pub trait Transcript: Clone + io::Read + io::Write {
 /// With ChaCha20Rng (S=32) and SHA-512 (H=64): 32 direct bytes, then ChaCha20.
 /// With ChaCha20Rng (S=32) and SHA-256 (H=32): pure ChaCha20 (0 direct bytes).
 #[derive(Clone)]
-pub struct HashTranscript<H: Digest + Clone, R: SeedableRng + RngCore + Clone = ChaCha20Rng> {
+pub struct HashTranscript<
+    H: Digest + Clone = Sha512,
+    R: SeedableRng + RngCore + Clone = ChaCha20Rng,
+> {
     state: State<H, R>,
 }
 
@@ -179,11 +188,8 @@ impl<H: Digest + Clone, R: SeedableRng + RngCore + Clone> Transcript for HashTra
 }
 
 /// Squeeze bytes from a transcript and decode them as a scalar field element.
-pub fn squeeze_scalar<S: crate::Suite>(
-    transcript: &mut impl Transcript,
-    len: usize,
-) -> crate::ScalarField<S> {
-    let mut buf = ark_std::vec![0u8; len];
+pub fn squeeze_scalar<S: crate::Suite>(transcript: &mut impl Transcript) -> crate::ScalarField<S> {
+    let mut buf = [0u8; S::CHALLENGE_LEN];
     transcript.squeeze_raw(&mut buf);
     S::Codec::scalar_decode(&buf)
 }

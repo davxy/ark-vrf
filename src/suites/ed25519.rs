@@ -60,7 +60,7 @@ impl Suite for ThisSuite {
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_ed25519::EdwardsAffine;
-    type Transcript = utils::HashTranscript<sha2::Sha512>;
+    type Transcript = utils::HashTranscript;
     type Codec = codec::ArkworksCodec;
 
     fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {

@@ -33,6 +33,14 @@ impl Suite for TestSuite {
     fn point_to_hash<const N: usize>(pt: &crate::AffinePoint<Self>) -> [u8; N] {
         utils::point_to_hash_rfc_9381::<Self, N>(pt, false)
     }
+
+    fn challenge(pts: &[&crate::AffinePoint<Self>], ad: &[u8]) -> crate::ScalarField<Self> {
+        utils::challenge_rfc_9381::<Self>(pts, ad)
+    }
+
+    fn point_to_hash(pt: &crate::AffinePoint<Self>) -> crate::HashOutput<Self> {
+        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+    }
 }
 
 impl PedersenSuite for TestSuite {
@@ -40,9 +48,8 @@ impl PedersenSuite for TestSuite {
         const X: BaseField = MontFp!(
             "55796432992313178130943166032098615698323779464960409153950097760136172959634"
         );
-        const Y: BaseField = MontFp!(
-            "4697052430764732321227694573644607884798525818653590884850734528949659500180"
-        );
+        const Y: BaseField =
+            MontFp!("4697052430764732321227694573644607884798525818653590884850734528949659500180");
         AffinePoint::new_unchecked(X, Y)
     };
 }

@@ -56,16 +56,16 @@ pub trait PedersenSuite: IetfSuite {
         secret: &ScalarField<Self>,
         input: &AffinePoint<Self>,
         aux: &[u8],
+        transcript: Option<Self::Transcript>,
     ) -> ScalarField<Self> {
         use crate::utils::common::DomSep;
-        use crate::utils::transcript::Transcript;
-        let mut t = Self::Transcript::new(Self::SUITE_ID);
         t.absorb_raw(&[DomSep::PedersenBlinding as u8]);
         t.absorb_serialize(secret);
         t.absorb_serialize(input);
         t.absorb_raw(aux);
         t.absorb_raw(&[DomSep::End as u8]);
         let scalar_len = Self::Codec::SCALAR_ENCODED_LEN;
+        // TODO: use squeeze scalar
         let mut hash = ark_std::vec![0u8; scalar_len];
         t.squeeze_raw(&mut hash);
         codec::scalar_decode::<Self>(&hash)
@@ -146,6 +146,10 @@ pub trait Verifier<S: PedersenSuite> {
     ) -> Result<(), Error>;
 }
 
+fn get_secrets<S: PedersenSuite>(t: S::Transcript) -> (ScalarField<S>, ScalarField<S>) {
+    t.absorb_serialize()
+}
+
 impl<S: PedersenSuite> Prover<S> for Secret<S> {
     fn prove(
         &self,
@@ -157,7 +161,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
 
         // Build blinding factor
-        let blinding = S::blinding(&self.scalar, &input.0, ad);
+        let blinding = S::blinding(&self.scalar, &input.0, ad, Some(t.clone()));
 
         // k nonce: bind input, output, and blinding.
         // The blinding factor is mixed into `ad` so that two proofs with the
@@ -300,16 +304,22 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ) -> BatchItem<S> {
         let ad = ad.as_ref();
         let t = S::Transcript::new(S::SUITE_ID);
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
         let c = S::challenge(
-            &[&proof.pk_com, &input.0, &output.0, &proof.r, &proof.ok],
+            &[
+                &proof.pk_com,
+                &io.input.0,
+                &io.output.0,
+                &proof.r,
+                &proof.ok,
+            ],
             ad,
             Some(t),
         );
         BatchItem {
             c,
-            input: input.0,
-            output: output.0,
+            input: io.input.0,
+            output: io.output.0,
             pk_com: proof.pk_com,
             r: proof.r,
             ok: proof.ok,

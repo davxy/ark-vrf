@@ -59,7 +59,7 @@ impl Suite for ThisSuite {
     const CHALLENGE_LEN: usize = 16;
 
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
-    type Transcript = utils::HashTranscript<sha2::Sha512>;
+    type Transcript = utils::HashTranscript;
     type Codec = codec::ArkworksCodec;
 
     fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
@@ -88,9 +88,8 @@ impl PedersenSuite for ThisSuite {
         const X: BaseField = MontFp!(
             "50516327614647796103719901384335687916110735746142578563302227483576370674486"
         );
-        const Y: BaseField = MontFp!(
-            "880697013400039248694574920285330335583155195626100037148734390857957264439"
-        );
+        const Y: BaseField =
+            MontFp!("880697013400039248694574920285330335583155195626100037148734390857957264439");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -113,9 +112,8 @@ impl crate::ring::RingSuite for ThisSuite {
         const X: BaseField = MontFp!(
             "28141041775614978075631765735377019936860674739577013059320570752333255767706"
         );
-        const Y: BaseField = MontFp!(
-            "2852539795896374012039194768507150796948225632384341345046585897728809851821"
-        );
+        const Y: BaseField =
+            MontFp!("2852539795896374012039194768507150796948225632384341345046585897728809851821");
         AffinePoint::new_unchecked(X, Y)
     };
 }

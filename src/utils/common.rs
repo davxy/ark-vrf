@@ -82,6 +82,72 @@ where
 {
 }
 
+/// Construct an affine point from a single base field coordinate.
+///
+/// For SW curves the coordinate is x; for TE curves it is y.
+/// Returns the point with the "positive" (smaller) second coordinate,
+/// or `None` if no point exists for the given input.
+pub trait PointFromCoord: AffineRepr {
+    fn from_coord(coord: Self::BaseField) -> Option<Self>;
+}
+
+impl<P: SWCurveConfig> PointFromCoord for SWAffine<P> {
+    fn from_coord(x: Self::BaseField) -> Option<Self> {
+        Self::get_point_from_x_unchecked(x, false)
+    }
+}
+
+impl<P: TECurveConfig> PointFromCoord for TEAffine<P> {
+    fn from_coord(y: Self::BaseField) -> Option<Self> {
+        Self::get_point_from_y_unchecked(y, false)
+    }
+}
+
+/// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
+///
+/// Safe because the constituent iterators are both `ExactSizeIterator`
+/// with small lengths (VRF I/O pairs), so overflow is not a concern.
+#[derive(Clone)]
+pub struct ExactChain<A, B>(Chain<A, B>, usize);
+
+impl<A, B> ExactChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = A::Item>,
+{
+    pub fn new(a: A, b: B) -> Self {
+        let len = a.len() + b.len();
+        Self(a.chain(b), len)
+    }
+}
+
+impl<A, B> Iterator for ExactChain<A, B>
+where
+    A: Iterator,
+    B: Iterator<Item = A::Item>,
+{
+    type Item = A::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.0.next();
+        if item.is_some() {
+            self.1 -= 1;
+        }
+        item
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.1, Some(self.1))
+    }
+}
+
+impl<A, B> ExactSizeIterator for ExactChain<A, B>
+where
+    A: Iterator,
+    B: Iterator<Item = A::Item>,
+{
+}
+
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
@@ -105,7 +171,7 @@ use ark_std::vec::Vec;
 /// the procedure to the curve type and serialization format.
 ///
 /// Instead, this implementation:
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using the suite's transcript.
+/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using `Suite::Hasher`.
 /// 2. Reduces the hash output modulo the base field prime (little-endian) to
 ///    obtain a field element. This uses all hash bytes and always produces a
 ///    valid field element, introducing a negligible bias of ~`p / 2^hash_bits`
@@ -116,13 +182,6 @@ use ark_std::vec::Vec;
 /// 4. Clears the cofactor and checks the point is not the identity.
 /// 5. Repeats with an incremented counter (up to 256 attempts) if no valid
 ///    point is found.
-///
-/// On average, approximately two iterations are needed.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point
-///    (typically `salt || alpha` per RFC-9381).
 ///
 /// # Returns
 ///
@@ -141,6 +200,7 @@ where
     for ctr in 0..=255u8 {
         let mut t = prefix.clone();
         t.absorb_raw(&[ctr, DomSep::End as u8]);
+        // TODO: remove this hash_len and use the sample technique with security level bits
         let mut hash = ark_std::vec![0u8; hash_len];
         t.squeeze_raw(&mut hash);
         let coord = BaseField::<S>::from_le_bytes_mod_order(&hash);
@@ -232,6 +292,7 @@ pub fn challenge_rfc_9381<S: Suite>(
     }
     t.absorb_raw(ad);
     t.absorb_raw(&[DomSep::End as u8]);
+    // TODO: sample using security level bits
     let mut hash = ark_std::vec![0u8; S::CHALLENGE_LEN];
     t.squeeze_raw(&mut hash);
     S::Codec::scalar_decode(&hash)
@@ -307,31 +368,24 @@ pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
 /// This function panics if the transcript output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
-    pts: &[&AffinePoint<S>],
+    ios: &[VrfIo<S>],
     ad: &[u8],
 ) -> ScalarField<S> {
-    let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
-    assert!(
-        hash_len >= 64,
-        "Transcript output is required to be >= 64 bytes"
-    );
-
     // First hash: H(sk)
     let mut t1 = S::Transcript::new(b"");
     t1.absorb_serialize(sk);
-    let mut sk_hash = ark_std::vec![0u8; hash_len];
+    let mut sk_hash = [0u8; 64];
     t1.squeeze_raw(&mut sk_hash);
 
     // Second hash: H(sk_hash[32..] || pts || ad)
     let mut t2 = S::Transcript::new(b"");
     t2.absorb_raw(&sk_hash[32..]);
-    for pt in pts {
-        t2.absorb_serialize(*pt);
+    for io in ios {
+        t2.absorb_serialize(&io);
     }
     t2.absorb_raw(ad);
-    let mut h = ark_std::vec![0u8; hash_len];
+    let mut h = [0u8; 64];
     t2.squeeze_raw(&mut h);
-
     S::Codec::scalar_decode(&h)
 }
 
@@ -349,6 +403,7 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// # Returns
 ///
 /// A scalar field element to be used as a nonce
+/// TODO: makes sense to keep?
 pub fn nonce_transcript<S: Suite>(
     sk: &ScalarField<S>,
     pts: &[&AffinePoint<S>],
@@ -404,14 +459,11 @@ pub(crate) fn delinearize_scalars<S: Suite>(
     let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
     t.absorb_raw(&[DomSep::Delinearize as u8]);
     t.absorb_raw(&n.to_le_bytes());
-
     for io in iter {
-        t.absorb_serialize(&io.input.0);
-        t.absorb_serialize(&io.output.0);
+        t.absorb_serialize(&io);
     }
     t.absorb_raw(ad);
     t.absorb_raw(&[DomSep::End as u8]);
-
     DelinearizeScalars { transcript: t }
 }
 
@@ -446,7 +498,7 @@ pub fn delinearize<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: &[u8],
     transcript: Option<S::Transcript>,
-) -> (Input<S>, Output<S>) {
+) -> VrfIo<S> {
     let zero = AffinePoint::<S>::zero();
     let n = iter.len();
 
@@ -481,7 +533,10 @@ pub fn delinearize<S: Suite>(
         (input, output)
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);
-    (Input(norms[0]), Output(norms[1]))
+    VrfIo {
+        input: Input(norms[0]),
+        output: Output(norms[1]),
+    }
 }
 
 #[cfg(test)]
