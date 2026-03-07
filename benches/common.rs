@@ -56,7 +56,6 @@ fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
                     &generator,
                     &generator,
                 ]),
-                b"ad",
                 None,
             )
         });
@@ -82,8 +81,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
         b.iter(|| {
             S::nonce(
                 black_box(secret.scalar()),
-                black_box(&[&input.0]),
-                black_box(b"bench"),
+                None,
             )
         });
     });

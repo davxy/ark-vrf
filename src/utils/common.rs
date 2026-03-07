@@ -123,9 +123,9 @@ pub fn vrf_transcript<S: Suite>(
     vrf_transcript_from_iter(ios.as_ref().iter().copied(), ad)
 }
 
-/// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
+/// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
 ///
-/// This implementation deviates from RFC-9381 in how the hash output is
+/// This implementation deviates from the RFC in how the hash output is
 /// interpreted as a field element. The RFC defines a suite-specific
 /// `interpret_hash_value_as_a_point` function (e.g. `string_to_point(0x02 || s)`
 /// for P-256) that treats the hash as a serialized compressed point, coupling
@@ -148,7 +148,7 @@ pub fn vrf_transcript<S: Suite>(
 ///
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
 /// * `None` - If no valid point could be found after 256 attempts.
-pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
+pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     AffinePoint<S>: PointFromCoord,
     BaseField<S>: ark_ff::PrimeField,
@@ -176,7 +176,7 @@ where
     None
 }
 
-/// Elligator2 method as defined by RFC-9380 and further refined in RFC-9381 section 5.4.1.2.
+/// Elligator2 hash-to-curve, inspired by RFC-9380 and RFC-9381 section 5.4.1.2.
 ///
 /// Implements ECVRF_encode_to_curve using one of the several hash-to-curve options defined
 /// in RFC-9380. This method provides a constant-time hash-to-curve implementation that is
@@ -200,7 +200,7 @@ where
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
 /// * `None` - If the hash-to-curve operation fails
 #[allow(unused)]
-pub fn hash_to_curve_ell2_rfc_9380<S: Suite, H>(
+pub fn hash_to_curve_ell2<S: Suite, H>(
     data: &[u8],
     h2c_suite_id: &[u8],
 ) -> Option<AffinePoint<S>>
@@ -226,22 +226,17 @@ where
     .ok()
 }
 
-/// Challenge generation according to RFC-9381 section 5.4.3.
+/// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
-/// Generates a challenge scalar by hashing a sequence of curve points and additional data.
-/// This is used in the Schnorr-like signature scheme for VRF proofs.
+/// Generates a challenge scalar by absorbing curve points into the transcript
+/// and squeezing. Used in the Schnorr-like proofs for VRF schemes.
 ///
-/// When `transcript` is `Some`, uses the pre-built transcript which may already
-/// carry shared state. When `None`, creates a fresh transcript from `SUITE_ID`.
+/// When `transcript` is `Some`, uses the pre-built transcript (which typically
+/// carries shared state from `vrf_transcript`). When `None`, creates a fresh
+/// transcript from `SUITE_ID`.
 ///
-/// # Parameters
-///
-/// * `transcript` - Optional pre-built transcript with accumulated state
-/// * `pts` - Array of curve points to include in the challenge
-/// * `ad` - Additional data to bind to the challenge
-///
-/// Returns a scalar field element derived from the hash of the inputs
-pub fn challenge_rfc_9381<S: Suite>(
+/// Returns a scalar field element derived from the hash of the inputs.
+pub fn challenge<S: Suite>(
     pts: &[&AffinePoint<S>],
     transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
@@ -257,32 +252,15 @@ pub fn challenge_rfc_9381<S: Suite>(
     S::Codec::scalar_decode(&hash)
 }
 
-/// Point to a hash according to RFC-9381 section 5.2.
+/// Point-to-hash inspired by RFC-9381 section 5.2.
 ///
-/// Converts an elliptic curve point to a hash value, following the procedure in RFC-9381.
-/// This is used to derive the final VRF output bytes from the VRF output point.
+/// Converts an elliptic curve point to a hash value. Used to derive the
+/// final VRF output bytes from the VRF output point.
 ///
-/// According to the RFC, the input point `pt` should be multiplied by the cofactor
-/// before being hashed. However, in typical usage, the hashed point is the result
-/// of a scalar multiplication on a point produced by the `Suite::data_to_point`
-/// (also referred to as the _hash-to-curve_ or _h2c_) algorithm, which is expected
-/// to yield a point that already belongs to the prime order subgroup of the curve.
-///
-/// Therefore, assuming the `data_to_point` function is implemented correctly, the
-/// input point `pt` will inherently reside in the prime order subgroup, making the
-/// cofactor multiplication unnecessary and redundant in terms of security. The primary
-/// purpose of multiplying by the cofactor is as a safeguard against potential issues
-/// with an incorrect implementation of `data_to_point`.
-///
-/// # Parameters
-///
-/// * `pt` - The elliptic curve point to hash
-/// * `mul_by_cofactor` - Whether to multiply the point by the cofactor before hashing
-///
-/// # Returns
-///
-/// A hash value derived from the encoded point
-pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
+/// The `mul_by_cofactor` flag optionally multiplies the point by the cofactor
+/// before hashing, as specified in the RFC. In practice this is unnecessary
+/// when `data_to_point` already yields a prime-order subgroup point.
+pub fn point_to_hash<S: Suite, const N: usize>(
     pt: &AffinePoint<S>,
     mul_by_cofactor: bool,
 ) -> [u8; N] {
@@ -300,35 +278,13 @@ pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
     out
 }
 
-/// Nonce generation according to RFC-9381 section 5.4.2.2.
+/// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
 ///
-/// This procedure is based on section 5.1.6 of RFC 8032: "Edwards-Curve Digital
-/// Signature Algorithm (EdDSA)". It generates a deterministic nonce by hashing
-/// the secret key and input point together.
-///
-/// The deterministic generation ensures that the same nonce is never used twice
-/// with the same secret key for different inputs, which is critical for security.
-///
-/// The `ad` (additional data) is mixed into the hash to ensure distinct nonces
-/// when the same secret key and input are used with different auxiliary data.
-///
-/// # Parameters
-///
-/// * `sk` - The secret scalar key
-/// * `pts` - Points to bind into the nonce derivation
-/// * `ad` - Additional data bound to the proof
-///
-/// # Returns
-///
-/// A scalar field element to be used as a nonce
-///
-/// # Panics
-///
-/// This function panics if the transcript output is less than 64 bytes.
-pub fn nonce_rfc_8032<S: Suite>(
-    sk: &ScalarField<S>,
-    transcript: Option<S::Transcript>,
-) -> ScalarField<S> {
+/// Hashes the secret key to derive a 64-byte expanded key, then absorbs the
+/// upper half into the transcript and squeezes a nonce. The transcript typically
+/// carries shared state from `vrf_transcript`, binding the nonce to the I/O
+/// pairs and additional data.
+pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -> ScalarField<S> {
     // First hash: H(sk)
     let mut t1 = S::Transcript::new(b"");
     t1.absorb_serialize(sk);
@@ -341,39 +297,6 @@ pub fn nonce_rfc_8032<S: Suite>(
     let mut h = [0u8; 64];
     t2.squeeze_raw(&mut h);
     S::Codec::scalar_decode(&h)
-}
-
-/// Nonce generation using transcript-based deterministic derivation.
-///
-/// Replacement for RFC-6979 HMAC-DRBG. Uses the suite's transcript to derive
-/// a deterministic nonce from the secret key, points, and additional data.
-///
-/// # Parameters
-///
-/// * `sk` - The secret scalar key
-/// * `pts` - Points to bind into the nonce derivation
-/// * `ad` - Additional data bound to the proof
-///
-/// # Returns
-///
-/// A scalar field element to be used as a nonce
-pub fn nonce_transcript<S: Suite>(
-    sk: &ScalarField<S>,
-    transcript: Option<S::Transcript>,
-) -> ScalarField<S> {
-    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
-    t.absorb_raw(b"nonce");
-    t.absorb_serialize(sk);
-
-    let scalar_len = S::Codec::SCALAR_ENCODED_LEN;
-    let mut buf = ark_std::vec![0u8; scalar_len];
-    loop {
-        t.squeeze_raw(&mut buf);
-        let nonce = S::Codec::scalar_decode(&buf);
-        if !nonce.is_zero() {
-            return nonce;
-        }
-    }
 }
 
 /// Stateful stream of 128-bit delinearization scalars backed by a transcript's
@@ -494,7 +417,7 @@ mod tests {
 
     #[test]
     fn hash_to_curve_tai_works() {
-        let pt = hash_to_curve_tai_rfc_9381::<TestSuite>(b"hello world").unwrap();
+        let pt = hash_to_curve_tai::<TestSuite>(b"hello world").unwrap();
         // Check that `pt` is in the prime subgroup
         assert!(pt.is_on_curve());
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())

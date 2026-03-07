@@ -9,8 +9,8 @@
     "h": "f40d579ac39346991c5d05dcfa53709ca0a65f283d984e8a7b6adc07a42b17af",
     "gamma": "01d60d63320ace8f772653dd0f3b2e2bc5a4cbdbb7f3bdd31b4b7caaec467b18",
     "beta": "728325ea3c378f453e3c5709790e27773ef970fa91b4a24206bfd256770f28a2",
-    "proof_c": "21ff504a3893b3e7724d5b3238ea6bf2",
-    "proof_s": "b5bd168e424da02780c14134e012f554de3a34d6751f65cde1cd2df722ed3d03"
+    "proof_c": "4bde8cddbee6f38213fbc069f03913be",
+    "proof_s": "53a4b5aa4eecb7be0fe42babb15ce645146e8f29c763f76d91b92eb26737db01"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "3aacb9f66d3cac593c48c3e4c687f7e7da0822af55bf2eb1b528cf00c03b298a",
     "gamma": "aa5fc375e84ad6cb897a92cf8a57988ed9031caae6d8b5fee4532c008d3ba38b",
     "beta": "7ab00fc54511650ec26f0de2b6b4e0dd78245e630e22cbac174861ac6bf7cded",
-    "proof_c": "0c84efbb8df154c21e0fb73860660a8c",
-    "proof_s": "71f620530d455dbb5436e2a90cff3a9718610023e8a8b35324006d02c9eadb01"
+    "proof_c": "473284756c1770aa3efe5e7ca4aed6eb",
+    "proof_s": "dbfb4103e3a9cb9f7ea62b927c9677c1d19e7a63c3d958dc644bc31f6c4fd803"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "f40d579ac39346991c5d05dcfa53709ca0a65f283d984e8a7b6adc07a42b17af",
     "gamma": "974829349e8f5009e18dfb86969853f7789b86a1e7cfe00690a0cbd8721fb68f",
     "beta": "82bfc392cd72888e78cef991b7a7761786c1930a8aabb6273b0dd426541e3528",
-    "proof_c": "161b8f04efc493e465f37b987498eb59",
-    "proof_s": "9e57f679a6f0d9269b5d3e053cb3760eca7659985aee6d912cd1de7749dc7203"
+    "proof_c": "5725a03f8a078f1fbd6b03487f91272b",
+    "proof_s": "16a63624ffa7a8b30c13b0a4e8aee173c40aff5e82eee84ff1961db621bdd902"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "96435e230483cfef19c3fa2240788bf14a2c8fb67b2e7bc0e260b9d49d7aae80",
     "gamma": "c326df377986ecf38c525366ae0d808abacdcf8cad10b8bf4ded950cfdcb7089",
     "beta": "063d9c16da6555d19b7e4559a567c2677029b418a6520a7bb59650cafe7f107c",
-    "proof_c": "7622349cf449f082d7ff55025c51cba9",
-    "proof_s": "505f1fbb9d3fd13ccbc4c791bd921fd13848208856c17bfc02ca7f14c06a9502"
+    "proof_c": "b8ae28466302f0ce3f80f7fbccd7a2b3",
+    "proof_s": "d4690d56b0d596aa78d0013c4cd21fc8a5e1c0244501bdaefebd649d71539d02"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "167a9b4eff0d9ca557ca650dc8091761fa25fe7179afa302afbee0ad92f6851d",
     "beta": "928da3197c78a066e346890a433314da684a97a6df7583d761396d1982cf9888",
-    "proof_c": "d862ff80297bd4c373276a16ffb33d53",
-    "proof_s": "858d7da1f119dbb4fdc1d4db576365204e43dc6fcdea691802d5be23f23b3705"
+    "proof_c": "e5bea1c3b85ded8c98803f82092d92ad",
+    "proof_s": "6e8ef6abe187a1e84a03b13f13cf77afa5493cec85ac425ce664bc4cbccde802"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "167a9b4eff0d9ca557ca650dc8091761fa25fe7179afa302afbee0ad92f6851d",
     "beta": "928da3197c78a066e346890a433314da684a97a6df7583d761396d1982cf9888",
-    "proof_c": "44b93e99709b9ff381725333bb47306c",
-    "proof_s": "f8360893a5ee316585e42063a7fa7a3e70368c54433b13c02da1f20071b3ec05"
+    "proof_c": "b1d3ab789ceb74619d84e4e8ee19faf7",
+    "proof_s": "e19bd073396c5ec1baa33aed451c012b2bbfd1f27152c08a5bfffeef381a2302"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "0a00c8f14371add04f19138308c05244a3b721d487cdf5bdffb713360afe542d",
     "beta": "581f082f87af430acaf74e991eeb1620073e6d79c54d93a1260ae52b956b59cc",
-    "proof_c": "ff7b61a46a64f94e11b186d31c7e653d",
-    "proof_s": "d48bbb79b7103ec18eb4f7f9a7d319bb448f4296f68d966add6faaefa3af6c02"
+    "proof_c": "2891d787681c1ccc3b9fdb4928cf6812",
+    "proof_s": "917a595d93e1f78c60d5982fa7f382747e84650fa110fd7baa95bf616796b203"
   }
 ]

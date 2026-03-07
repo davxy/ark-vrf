@@ -180,37 +180,26 @@ pub trait Suite: Copy {
         Self::Affine::generator()
     }
 
-    /// Nonce generation.
+    /// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
     ///
-    /// Generates a deterministic pseudorandom nonce from the secret key,
-    /// curve points, and additional data.
-    ///
-    /// When `transcript` is `Some`, uses the pre-built transcript (which may
-    /// already carry shared state from earlier protocol steps). When `None`,
-    /// constructs a fresh transcript.
-    ///
-    /// Utility functions available:
-    /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
-    /// - [`utils::nonce_transcript`] — Transcript-based deterministic nonce
-    fn nonce(
-        sk: &ScalarField<Self>,
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField<Self>;
+    /// The transcript typically carries shared state from `vrf_transcript`,
+    /// binding the nonce to the I/O pairs and additional data.
+    #[inline(always)]
+    fn nonce(sk: &ScalarField<Self>, transcript: Option<Self::Transcript>) -> ScalarField<Self> {
+        utils::nonce::<Self>(sk, transcript)
+    }
 
-    /// Challenge generation.
+    /// Challenge generation inspired by RFC-9381 section 5.4.3.
     ///
-    /// Hashes curve points to produce a scalar.
-    ///
-    /// When `transcript` is `Some`, uses the pre-built transcript (which may
-    /// already carry shared state from earlier protocol steps). When `None`,
-    /// constructs a fresh transcript from `SUITE_ID`.
-    ///
-    /// Utility functions available:
-    /// - [`utils::challenge_rfc_9381`] — RFC-9381 section 5.4.3
+    /// Absorbs curve points into the transcript and squeezes a scalar.
+    /// The transcript typically carries shared state from `vrf_transcript`.
+    #[inline(always)]
     fn challenge(
         pts: &[&AffinePoint<Self>],
         transcript: Option<Self::Transcript>,
-    ) -> ScalarField<Self>;
+    ) -> ScalarField<Self> {
+        utils::challenge::<Self>(pts, transcript)
+    }
 
     /// Hash data to a curve point.
     ///
@@ -218,14 +207,14 @@ pub trait Suite: Copy {
     /// In other words, salt is not applied by this function.
     ///
     /// Utility functions available:
-    /// - [`utils::hash_to_curve_tai_rfc_9381`] — try-and-increment
-    /// - [`utils::hash_to_curve_ell2_rfc_9380`] — Elligator2
+    /// - [`utils::hash_to_curve_tai`] — try-and-increment
+    /// - [`utils::hash_to_curve_ell2`] — Elligator2
     fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>>;
 
     /// Map a curve point to a hash value.
     ///
     /// Utility functions available:
-    /// - [`utils::point_to_hash_rfc_9381`] — RFC-9381 section 5.2 step 6
+    /// - [`utils::point_to_hash`]
     fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N];
 
     // TODO: add `sample()` to pick scalar with the given security bits .

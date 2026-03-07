@@ -15,25 +15,11 @@ impl Suite for TestSuite {
     type Codec = codec::ArkworksCodec;
 
     fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    fn nonce(
-        sk: &ScalarField,
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField {
-        utils::nonce_transcript::<Self>(sk, transcript)
-    }
-
-    fn challenge(
-        pts: &[&crate::AffinePoint<Self>],
-        transcript: Option<Self::Transcript>,
-    ) -> crate::ScalarField<Self> {
-        utils::challenge_rfc_9381::<Self>(pts, transcript)
+        utils::hash_to_curve_tai::<Self>(data)
     }
 
     fn point_to_hash<const N: usize>(pt: &crate::AffinePoint<Self>) -> [u8; N] {
-        utils::point_to_hash_rfc_9381::<Self, N>(pt, false)
+        utils::point_to_hash::<Self, N>(pt, false)
     }
 }
 

@@ -71,25 +71,11 @@ impl Suite for ThisSuite {
         // "XMD" for expand_message_xmd (Section 5.3.1).
         // "RO" for random oracle (Section 3 - hash_to_curve method)
         let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
-        utils::hash_to_curve_ell2_rfc_9380::<Self, sha2::Sha512>(data, h2c_suite_id)
-    }
-
-    fn nonce(
-        sk: &ScalarField,
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, transcript)
-    }
-
-    fn challenge(
-        pts: &[&AffinePoint],
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, transcript)
+        utils::hash_to_curve_ell2::<Self, sha2::Sha512>(data, h2c_suite_id)
     }
 
     fn point_to_hash<const N: usize>(pt: &AffinePoint) -> [u8; N] {
-        utils::point_to_hash_rfc_9381::<Self, N>(pt, false)
+        utils::point_to_hash::<Self, N>(pt, false)
     }
 }
 
