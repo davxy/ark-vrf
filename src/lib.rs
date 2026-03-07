@@ -514,6 +514,16 @@ mod tests {
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
 
         // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
+        //
+        // Build the transcript exactly as verify does: vrf_transcript absorbs
+        // the delinearized io and ad, then the challenge absorbs only the
+        // public key and nonce commitments.
+        let malicious_io = VrfIo {
+            input,
+            output: malicious_output,
+        };
+        let (t, _) = utils::vrf_transcript(malicious_io, ad);
+
         let mut ctr = 0u64;
         let (proof, _) = loop {
             let mut k_seed = [0u8; 8];
@@ -523,11 +533,7 @@ mod tests {
             let k_b = (S::generator() * k).into_affine();
             let k_h = (input.0 * k).into_affine();
 
-            let c = S::challenge(
-                &[&public.0, &input.0, &malicious_output.0, &k_b, &k_h],
-                ad,
-                None,
-            );
+            let c = S::challenge(&[&public.0, &k_b, &k_h], &[], Some(t.clone()));
 
             // We need c to be even so that c * L = identity (since L has order 2)
             if c.into_bigint().is_even() {
@@ -541,10 +547,6 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        let malicious_io = VrfIo {
-            input,
-            output: malicious_output,
-        };
         assert!(public.verify(malicious_io, ad, &proof).is_ok());
 
         // 5. Verify the honest proof still works
