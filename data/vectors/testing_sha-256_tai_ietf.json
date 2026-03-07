@@ -19,11 +19,11 @@
     "alpha": "0a",
     "salt": "",
     "ad": "",
-    "h": "6d1494692e797f4381a7df1777f648363998afa3bb54d232cb6415f579568527",
-    "gamma": "ee4099ab4ba35af570e504e7553d2a72f0dbc4e62c000508269ac937afd1934a",
-    "beta": "b51760ac5ffae975978725d64d2bde43a374b6abf1e4beb4b610a1b5eb1f8342",
-    "proof_c": "5609bb70399b9aa7b1736f41ddc2b000",
-    "proof_s": "a4ee85bcd8f7ecdcffd9b09f776638b97993851ca9cb97baba66aa4792ca880f"
+    "h": "d8a58be2a8f2a93870edeeccee05b7a6f66966612edaa81a8db278b1f527f58a",
+    "gamma": "8709107a2ee9a041c411439c283868d5b7a5795854b7e2a4d2f8763a0850ff15",
+    "beta": "f0765f0d3e7f33c2a323523c94260d97c2f3f6291911dbd20acb9c5700ce5236",
+    "proof_c": "c2b03d81bdd568a0c86020f41b6cd2ce",
+    "proof_s": "320261e8e2d484bacb9021c5384ade209838fc543bcca0e12b09aaa5bade1e0c"
   },
   {
     "comment": "testing_sha-256_tai_ietf - vector-3",
@@ -58,11 +58,11 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "",
-    "h": "c278f7f8d7345c7f331e071efc3238987156ca325845e3ad74d7e74816a1b5ec",
-    "gamma": "6e7dc6d0d8cefb457e2b472e3b0de99dbf30761a54268c194ded5f86e8942196",
-    "beta": "21ce85135f472175b8e861a065945640e828411ac7109abab0a3a77458bcb20a",
-    "proof_c": "f86a69dbaa0ab871a4d899e74d1de2d7",
-    "proof_s": "72ecaacc5fd00b39bed0a76f22808e69424682a4393977bc619e5928e86c430a"
+    "h": "6b5ad5d579f430d7457ae6ead11eb2cadc3ee87efd4e60bc98a1b8c47ab513da",
+    "gamma": "3a1efdbc2b94d753ecf178a0ce28e50f2fe6151ccfc68114db9d56ff74f23ec0",
+    "beta": "e5b72c7a5c96cd9dfeb3fc11b4db86996c1b8f1d168944e958ae0cf4fb0a8da5",
+    "proof_c": "08ea4ff1f3dae7148f8a5ee39ffc7d39",
+    "proof_s": "9ac24a547d60e3831269e55adcb02aee4fd14f6fdb8f3138284557085179de01"
   },
   {
     "comment": "testing_sha-256_tai_ietf - vector-6",
@@ -71,11 +71,11 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "1f42",
-    "h": "c278f7f8d7345c7f331e071efc3238987156ca325845e3ad74d7e74816a1b5ec",
-    "gamma": "6e7dc6d0d8cefb457e2b472e3b0de99dbf30761a54268c194ded5f86e8942196",
-    "beta": "21ce85135f472175b8e861a065945640e828411ac7109abab0a3a77458bcb20a",
-    "proof_c": "4bf99ed075905d9b85ad4206b0f4f69a",
-    "proof_s": "0580a383dfa8f3ab009d5b8d53d00be9c154aed732066de103ea7b0720d4e10d"
+    "h": "6b5ad5d579f430d7457ae6ead11eb2cadc3ee87efd4e60bc98a1b8c47ab513da",
+    "gamma": "3a1efdbc2b94d753ecf178a0ce28e50f2fe6151ccfc68114db9d56ff74f23ec0",
+    "beta": "e5b72c7a5c96cd9dfeb3fc11b4db86996c1b8f1d168944e958ae0cf4fb0a8da5",
+    "proof_c": "a5e975eba7973dd5215e69fb1041ce83",
+    "proof_s": "07d3ac418226fb68b93b131ca0fd6d242a7bed3050833cdf7099d8b71da9fa0b"
   },
   {
     "comment": "testing_sha-256_tai_ietf - vector-7",
@@ -84,10 +84,10 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "1f42",
-    "h": "c278f7f8d7345c7f331e071efc3238987156ca325845e3ad74d7e74816a1b5ec",
-    "gamma": "f62b55d5a118acf39d3556b2d1c19f6eb665519a83246743c6f0e2b0b9d24cf3",
-    "beta": "43d676f52f9de1e843b45f54a75ebd5e84d25e5e4099470e551627f4b3195dbe",
-    "proof_c": "1011bbffc1513e9108ac83509a63e65f",
-    "proof_s": "d6c8d691fe7f2aa79074655d5756a2d056d785f3bc0289e4343f7187f123960a"
+    "h": "6b5ad5d579f430d7457ae6ead11eb2cadc3ee87efd4e60bc98a1b8c47ab513da",
+    "gamma": "f4c5c11e3f56ac473dabf4e121f33b636ffb3bcee62bce05b354eb84d3ae6966",
+    "beta": "aadd5c5e32102658423db12cc1b0e5ea3ce0292800a3ec751424292324b6c02c",
+    "proof_c": "d0ce0426fe90ef7aa92741e5cf39d3b9",
+    "proof_s": "7f08e75e2a99caa8bd705d0cd64d812209dc2ee2c8cb6db447b60506e9681a03"
   }
 ]

@@ -6,11 +6,11 @@
     "alpha": "",
     "salt": "",
     "ad": "",
-    "h": "e43fca3dd67d515855367f51e01b063d07ba94f9229e7cec3b02f4dfb4227cd8",
-    "gamma": "04efd0ccbb11797be484c3c93df232501cf8770f3d60d06e7d1a252115cf4927",
-    "beta": "47d5480af7b17aedb3c49c88b77cb7f6d0abf1dfdb69a7e0fc0402f60937caaa",
-    "proof_c": "087108feb37ddca4ada780fe65557bb8",
-    "proof_s": "77c2a1fd244d56fa09e416e9a7cea7c31e797d511df3bb7f2377787f3e3efd07"
+    "h": "cd2988ed28d9873b80e90ccae0f5767af0ff8cb3b8d22f257f217e3736165ac2",
+    "gamma": "bab0f43ccd9503b707691bfed54f78516325cc33be20b00c180f7ffa703ca97d",
+    "beta": "87794cd42da4b419827e124d19ddb77ec81226b2d3e52ccb9e0a1a9a9b777ec5",
+    "proof_c": "2cda22130174dd308eb90a8360008e1d",
+    "proof_s": "b2ce30ee27e8378d2c6026426299408553f8a82613ab06b2bc36a5185d212e0b"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-2",
@@ -19,11 +19,11 @@
     "alpha": "0a",
     "salt": "",
     "ad": "",
-    "h": "2b01bbd40d5f2e3267a1d8f892ee7114717c4534f2c13df6072610b4fd0cf730",
-    "gamma": "e40b143dff8feb71749ca69bfd0735abd6b15d54be40683e20211d7ceba032a4",
-    "beta": "7afed16e7c8eabd8f6956e6fce20ef2e0bf352e01bbd480dbec2828c1a46abf6",
-    "proof_c": "d7db5b7ab12596c0b42ba33907f8cf36",
-    "proof_s": "8862b8843dc012362a14e9c53c89f523f0607d781fc697eff3f7c156a168410e"
+    "h": "97c2415dc230172a09e08966971dde6dfe4a5a5f43a1384bdafaadae3ab867cb",
+    "gamma": "84525509975484ce2400419bc05df2f56f9acc92874a9a88942ecbf6aa59e203",
+    "beta": "df7229c5dc084d9ad11156eb2997bca62845f8ae81470815ef3225d1e969912a",
+    "proof_c": "3b63bff6bd4ed6c0fd5b2209000231d9",
+    "proof_s": "3b012ff4b61da9dbd5ad8543c6ffb11a8e4a8f6a35c37e485a8141aa4900480f"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-3",
@@ -32,11 +32,11 @@
     "alpha": "",
     "salt": "",
     "ad": "0b8c",
-    "h": "e43fca3dd67d515855367f51e01b063d07ba94f9229e7cec3b02f4dfb4227cd8",
-    "gamma": "a9e2933bebbbf1c01271d6a04a7d6e5066e16f4c21189ff68ff9b2c921fec07d",
-    "beta": "e4857431817679fa557c9be839a38c271818a109e5049452e7572e0d32bb41d7",
-    "proof_c": "61bdaf2f89cdb04f06a031ed36f92143",
-    "proof_s": "3f0fc8945a7207265381e3811b3ee8a0f17d564a80bea206e4a5c4e97e476609"
+    "h": "cd2988ed28d9873b80e90ccae0f5767af0ff8cb3b8d22f257f217e3736165ac2",
+    "gamma": "2d33ac1d3c0e97c10513ae3c9bba2ca22ae5679ddcfe502bfdb823eb2238d3a5",
+    "beta": "120947a40a0e6db614dab4a1a24d5a7135dbc8266a981b50383ca223b66d26f0",
+    "proof_c": "c13d49c60cf9c50a30d1151b2793b757",
+    "proof_s": "dba2082f6cf41c21d112b3823a5fc95255271344e3bc599bc6bcb52b2f14030b"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-4",
@@ -45,11 +45,11 @@
     "alpha": "73616d706c65",
     "salt": "",
     "ad": "",
-    "h": "5041b02a9271915ac116d70a48bb11c288e5ca152fca9a0234e00d114902360c",
-    "gamma": "d2aea987888653022c6bb58e668571a6bc4f4672388b4d29f5a3276ccbab01d3",
-    "beta": "e882c82e862bf7f62772f72f0d9f57823ce36a4c8f5ca923e7f8bd1e3d5eba22",
-    "proof_c": "fe4f70da42f648ccbf94a14a2ea7ec47",
-    "proof_s": "61a121322e77c0eb25ea0a0403cf4e75cf0898c27135cc12d3810ce89c3d5b09"
+    "h": "12e502cc03e6f887e4ea8eb284bed41d8d5a2e9460db785a92e06431d6e1b533",
+    "gamma": "5c72aaa9353c6f02067ca8f10106a3f925b562520338594b79006d4fbee2d3ff",
+    "beta": "1d56e6426d441e949f518e09417cc85a42c4a8a08213c28386fed4437169e17d",
+    "proof_c": "cb21191e86facca2c2fb9facd0c9e8ae",
+    "proof_s": "60cf825b8e6bf3248560647e68f25775705401623bb6499bccecffb474198807"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-5",
@@ -58,11 +58,11 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "",
-    "h": "e57eeec2c05ed5c1dab0f2509a032c93b805f02cab96dd053b1c52d07a524692",
-    "gamma": "192738505b3aebc50e4f1ab7ca4024b91d9cd1d9a2bd7f00e8658d96d48f606b",
-    "beta": "9ef2cd90e53904d49bb3dac9bffc97b5cd9491e3b631a1580501a454160104b5",
-    "proof_c": "5986a313337137624cf4aef26da2f947",
-    "proof_s": "c64dcb9aad3cc77b1e7f25604b644f925f19bed5a167913b4574e493449f9e02"
+    "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
+    "gamma": "b3eb7664ece9d58f764e72adf89d4abba770dbaaaa936d0f284d8a1f3d5c1500",
+    "beta": "9715c4492ec4cb9061feb43f307252cf66fb5bfd39de6cd46f3590362d30e9c7",
+    "proof_c": "bd7f4e3c4087f9c605accd39cb48aaa3",
+    "proof_s": "0c4598939983b977b96465fadda1e44527e630ccbafee431760cbe24fb3e7900"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-6",
@@ -71,11 +71,11 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "1f42",
-    "h": "e57eeec2c05ed5c1dab0f2509a032c93b805f02cab96dd053b1c52d07a524692",
-    "gamma": "192738505b3aebc50e4f1ab7ca4024b91d9cd1d9a2bd7f00e8658d96d48f606b",
-    "beta": "9ef2cd90e53904d49bb3dac9bffc97b5cd9491e3b631a1580501a454160104b5",
-    "proof_c": "9088b9b9643300f24a55f616a55ad537",
-    "proof_s": "2f4019d00d65f5f86997cd9238bc5ef8080af458e5123b9e002d36678ecc5708"
+    "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
+    "gamma": "b3eb7664ece9d58f764e72adf89d4abba770dbaaaa936d0f284d8a1f3d5c1500",
+    "beta": "9715c4492ec4cb9061feb43f307252cf66fb5bfd39de6cd46f3590362d30e9c7",
+    "proof_c": "6b8928a80c5550b628062ba49036bf8c",
+    "proof_s": "364f328f2d6feec4d3188758c780df8380783c3920ed90836d3ee33863369809"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-7",
@@ -84,10 +84,10 @@
     "alpha": "42616e646572736e6174636820766563746f72",
     "salt": "",
     "ad": "1f42",
-    "h": "e57eeec2c05ed5c1dab0f2509a032c93b805f02cab96dd053b1c52d07a524692",
-    "gamma": "5686649d0c40113d40e48842826b70e8ec187fcc792b813d3c0b1163e1d3395a",
-    "beta": "a7c72e37673a1744eb23556f2fb9957ded7cb359e0b9dccafb687aac1530b3aa",
-    "proof_c": "3949e7fa932c5014fe7d21d5aa77798f",
-    "proof_s": "ea6eb95b193eaee47547a4667a7885f996cbdf79ec0c4f174f8a8e3adb17ad05"
+    "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
+    "gamma": "858f9c3c1c3c777ec7941843c305f7d62c6e2c21a203acdc9913e42bb8347619",
+    "beta": "c292ac91893f0349ec58513f6d569cfe499ffc58312b53bb1066bd33ddd802f1",
+    "proof_c": "0571ef298edc8a848f95f77c0ca01416",
+    "proof_s": "cb08087e6904300d13dab4d48f9a07cdde2b89aec9ca4e3fac0408c670097907"
   }
 ]
