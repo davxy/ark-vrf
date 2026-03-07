@@ -70,9 +70,7 @@ fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| {
-                            BatchVerifier::<S>::prepare(&public, *io, ad, proof)
-                        })
+                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(&public, *io, ad, proof))
                         .collect();
                 });
             });

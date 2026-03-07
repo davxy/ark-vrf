@@ -4,9 +4,9 @@ use crate::codec::Codec;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io;
 use digest::Digest;
-use sha2::Sha512;
 use generic_array::{ArrayLength, GenericArray};
 use rand_chacha::ChaCha20Rng;
+use sha2::Sha512;
 
 /// Fiat-Shamir transcript with absorb/squeeze interface.
 ///

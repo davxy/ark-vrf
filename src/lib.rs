@@ -462,7 +462,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{random_val, TEST_SEED};
+    use testing::{TEST_SEED, random_val};
 
     #[test]
     fn vrf_output_check() {

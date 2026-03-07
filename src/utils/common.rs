@@ -7,8 +7,8 @@
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     AffineRepr,
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
@@ -159,10 +159,7 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
 /// * `None` - If the hash-to-curve operation fails
 #[allow(unused)]
-pub fn hash_to_curve_ell2<S: Suite, H>(
-    data: &[u8],
-    h2c_suite_id: &[u8],
-) -> Option<AffinePoint<S>>
+pub fn hash_to_curve_ell2<S: Suite, H>(data: &[u8], h2c_suite_id: &[u8]) -> Option<AffinePoint<S>>
 where
     H: Digest + Default + Clone + FixedOutputReset + 'static,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -170,7 +167,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string

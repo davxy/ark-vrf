@@ -65,9 +65,8 @@ impl Suite for ThisSuite {
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "8170247200255741810297410022472365370979789984587637609570347196251706043122"
-        );
+        const X: BaseField =
+            MontFp!("8170247200255741810297410022472365370979789984587637609570347196251706043122");
         const Y: BaseField = MontFp!(
             "16313972569917201570489077828713531620741538540099917729994937953803219324220"
         );
@@ -80,9 +79,8 @@ impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bn254::Bn254;
 
     const ACCUMULATOR_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "8334029725957642160470284944665621666856984888124906457551833753516275522323"
-        );
+        const X: BaseField =
+            MontFp!("8334029725957642160470284944665621666856984888124906457551833753516275522323");
         const Y: BaseField = MontFp!(
             "10237605137497358696282308894975345705288586061295962071480054416003035883897"
         );
@@ -93,9 +91,8 @@ impl crate::ring::RingSuite for ThisSuite {
         const X: BaseField = MontFp!(
             "10484439290244840696730961435280619956348075205101200681758384175205680775242"
         );
-        const Y: BaseField = MontFp!(
-            "5384531613284628456735220777464884060069689105521477227482728298235083800530"
-        );
+        const Y: BaseField =
+            MontFp!("5384531613284628456735220777464884060069689105521477227482728298235083800530");
         AffinePoint::new_unchecked(X, Y)
     };
 }
