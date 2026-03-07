@@ -7,15 +7,50 @@
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
+use ark_ff::PrimeField;
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
 use generic_array::typenum::Unsigned;
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
+
+const SECURITY_BITS: usize = 128;
+
+/// This function computes the length in bytes that a hash function should output
+/// for hashing an element of type `Field`.
+/// See section 5.1 and 5.3 of the
+/// [IETF hash-to-curve standardization draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/)
+const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
+    // ceil(log(p))
+    let base_field_size_in_bits = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
+    // ceil(log(p)) + security_parameter
+    let base_field_size_with_security_padding_in_bits = base_field_size_in_bits + sec_bits;
+    // ceil( (ceil(log(p)) + security_parameter) / 8)
+    let bytes_per_base_field_elem =
+        ((base_field_size_with_security_padding_in_bits + 7) / 8) as u64;
+    bytes_per_base_field_elem as usize
+}
+
+pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    let len_per_base_elem = get_len_per_elem::<S>(SECURITY_BITS);
+    if len_per_base_elem > 2 * SECURITY_BITS / 8 {
+        panic!("PrimeField larger than 1913 bits!");
+    }
+    let mut max_buf = [0u8; 2 * SECURITY_BITS / 8];
+    let buf = &mut max_buf[0..len_per_base_elem];
+    t.squeeze_raw(buf);
+    ScalarField::<S>::from_le_bytes_mod_order(&buf)
+}
+
+pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    let mut buf = [0u8; SECURITY_BITS / 8];
+    t.squeeze_raw(&mut buf);
+    ScalarField::<S>::from_le_bytes_mod_order(&buf)
+}
 
 /// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
 ///
@@ -167,7 +202,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -202,10 +237,7 @@ pub fn challenge<S: Suite>(
         t.absorb_serialize(*p);
     }
     t.absorb_raw(&[DomSep::End as u8]);
-    // TODO: sample using security level bits
-    let mut hash = ark_std::vec![0u8; S::CHALLENGE_LEN];
-    t.squeeze_raw(&mut hash);
-    S::Codec::scalar_decode(&hash)
+    challenge_scalar::<S>(&mut t)
 }
 
 /// Point-to-hash inspired by RFC-9381 section 5.2.
@@ -250,21 +282,17 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -
     // Second hash: H(sk_hash[32..])
     let mut t2 = transcript.unwrap_or_else(|| S::Transcript::new(b""));
     t2.absorb_raw(&sk_hash[32..]);
-    let mut h = [0u8; 64];
-    t2.squeeze_raw(&mut h);
-    S::Codec::scalar_decode(&h)
+    nonce_scalar::<S>(&mut t2)
 }
 
 /// Stateful stream of 128-bit delinearization scalars backed by a transcript's
 /// squeeze stream. Created by [`delinearize_scalars`].
-pub(crate) struct DelinearizeScalars<S: Suite> {
-    transcript: S::Transcript,
-}
+pub(crate) struct DelinearizeScalars<S: Suite>(S::Transcript);
 
 impl<S: Suite> DelinearizeScalars<S> {
     /// Draw the next 128-bit scalar.
     pub fn next(&mut self) -> ScalarField<S> {
-        super::transcript::squeeze_scalar::<S>(&mut self.transcript)
+        challenge_scalar::<S>(&mut self.0)
     }
 
     /// Collect `n` scalars into a `Vec`.
@@ -289,7 +317,7 @@ pub(crate) fn delinearize_scalars<S: Suite>(
         t.absorb_serialize(&io);
     }
     t.absorb_raw(&[DomSep::End as u8]);
-    DelinearizeScalars { transcript: t }
+    DelinearizeScalars(t)
 }
 
 /// Delinearize multiple input-output pairs into a single pair.
