@@ -37,10 +37,14 @@ const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
 
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     let len_per_base_elem = get_len_per_elem::<S>(SECURITY_BITS);
-    if len_per_base_elem > 2 * SECURITY_BITS / 8 {
-        panic!("PrimeField larger than 1913 bits!");
+    if len_per_base_elem > 256 {
+        panic!(
+            "PrimeField larger than {} bits (got {})!",
+            256 * 8,
+            len_per_base_elem * 8
+        );
     }
-    let mut max_buf = [0u8; 2 * SECURITY_BITS / 8];
+    let mut max_buf = [0u8; 256];
     let buf = &mut max_buf[0..len_per_base_elem];
     t.squeeze_raw(buf);
     ScalarField::<S>::from_le_bytes_mod_order(&buf)

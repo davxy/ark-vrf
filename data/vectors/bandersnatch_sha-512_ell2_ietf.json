@@ -9,8 +9,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "3e501860b0230b64662fb18bab99972c982e8e5b9e4c95edf75b55ac73fbde4d",
     "beta": "1bcd3122eef9aa3ef5a68e373f73dc0ff98e21142ca01c29df5814603869c1e0",
-    "proof_c": "cea9f6a51290222fb44b5532275c517d",
-    "proof_s": "6527c005dfd4049606b642f1908fdf95439181f6b8eb519ec5bd7697f896d20a"
+    "proof_c": "fcceb5bb7cec5dd401dc263b11e1bbc6",
+    "proof_s": "03956fda409b9f56c128734944de2c05a93cda06473cc27ebc9525f39ec28809"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "8c1d1425374f01d86b23bfeab770c60b58d2eeb9afc5900c8b8a918d09a6086b",
     "gamma": "f9f263e4507809fdd16ee78a6403dce5ac1dc074fad9339361a258b951b5e66e",
     "beta": "69c478e940b722175953b353fd3305bf10fa9a62474905df32967104bb011462",
-    "proof_c": "b6879479ca8a2301939f75a07744c330",
-    "proof_s": "5aa5ab84fb2c9dad024c20e5d26ab785291acb6cec9d9165ed0dbbeb8cbf6d14"
+    "proof_c": "8edf9871e9d0664a5908f72ac71ab14d",
+    "proof_s": "0025da02c7b8cf1c4fcfffa8d47174c14ab8e185e1650851c615a211ab6be003"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "543725d1432790dd7e6bb9e01455e4b13559541cd96d40140cbd7f7a27fc24b0",
     "beta": "0c9cb2ba2a082823157fdfb1de89925e31a164d0273dff1dc65def94b04d913b",
-    "proof_c": "0959ce93440009ce07f7624125156023",
-    "proof_s": "4c1398ae0f59e105149becef11c761b90b18487350eac7b149d0cd779731f301"
+    "proof_c": "85fdf27c38342478ad8caf526a3109bb",
+    "proof_s": "b549ad85ece538ac7addff0a31c761ff0160a661282106472612eb6c26fcd10d"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "672e8c7a8e6d3eca67df38f11d50f3d7dbb26fa8e27565a5424e6f8ac4555dcc",
     "gamma": "453375ce59d3267348656435900f2d80cec64f89a0358b8164cbca1e5b28bdf1",
     "beta": "f300ea1c34119e17608c335c683f1ecb9b36ed2b830aa17c3afa833ff400dc2b",
-    "proof_c": "bdfdc9c93468e6ceb22402398b23bdae",
-    "proof_s": "ce2cdaded00b7e06bfa105fe00a94b1203692989af54974af80c0f94ed08750e"
+    "proof_c": "099660a0b7b98454138eadd1600d4e6d",
+    "proof_s": "2e2551bcf29bbc749598dbf79d5b4bf1d2f51aa0f85f3ae726bc59f32783920c"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "3443584a8390bf19a6d4372d18d19e9650e7bd8989685ec481b228cbcd669f5e",
     "beta": "f618a3039335847e21e822a62ac0577f7baecdd0693e8cebc2aa8567e4d7d5f1",
-    "proof_c": "e79bb0f39e2c853b35ab89982430d7a0",
-    "proof_s": "ab22308080ee3d2fcc652965f7b0fd5068e60b677bb1b36abf26a91c3dca951c"
+    "proof_c": "9b0d0100e87c35e1b5a1f373038fd7b7",
+    "proof_s": "2276417d5b43e6417a35914ce87ebdf0fc62a04c30e80882d3abfdd501801513"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "3443584a8390bf19a6d4372d18d19e9650e7bd8989685ec481b228cbcd669f5e",
     "beta": "f618a3039335847e21e822a62ac0577f7baecdd0693e8cebc2aa8567e4d7d5f1",
-    "proof_c": "ec942254701fd5257cf1ee24b0b146f6",
-    "proof_s": "cf3868aaaccd231eb5cdd658d4762e36a3e3f758e31bd7ac5b7ffc7e2c7d1210"
+    "proof_c": "3a67bcd2e333d3488170f4dfc0ec7f21",
+    "proof_s": "b6e556b009746c8c74a60c8b077ae1f410799f3760ea35a490f1ae81662e6c08"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "e3297b59041bc9300590a5b260ccd5224f38db53ed40d753302ef26b5b160c4d",
     "beta": "1fb02f4a8918e5cf646bdee5d32bc6dfcc68748eb6c41363fb48a3a081015e2e",
-    "proof_c": "bb1717bad722b3a5982c6302be4eb298",
-    "proof_s": "5c1609edc71335b2ba49a3158ba2756127c3933e8636125a9e04c1ef5d149812"
+    "proof_c": "80c1575b94db750d88104333f7ec9b0d",
+    "proof_s": "881c45873f28302efbdfba957756d9dce505375ccfcc8283fd5c127c69000718"
   }
 ]

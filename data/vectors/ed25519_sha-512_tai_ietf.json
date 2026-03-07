@@ -9,8 +9,8 @@
     "h": "cd2988ed28d9873b80e90ccae0f5767af0ff8cb3b8d22f257f217e3736165ac2",
     "gamma": "bab0f43ccd9503b707691bfed54f78516325cc33be20b00c180f7ffa703ca97d",
     "beta": "87794cd42da4b419827e124d19ddb77ec81226b2d3e52ccb9e0a1a9a9b777ec5",
-    "proof_c": "2cda22130174dd308eb90a8360008e1d",
-    "proof_s": "b2ce30ee27e8378d2c6026426299408553f8a82613ab06b2bc36a5185d212e0b"
+    "proof_c": "129662eda80a08a55b17ec6b8454f1bd",
+    "proof_s": "12b9b7f941d9c8b084aa08b256203dcac1148a3eb92ccdfd9f2f643df2842e0a"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "97c2415dc230172a09e08966971dde6dfe4a5a5f43a1384bdafaadae3ab867cb",
     "gamma": "84525509975484ce2400419bc05df2f56f9acc92874a9a88942ecbf6aa59e203",
     "beta": "df7229c5dc084d9ad11156eb2997bca62845f8ae81470815ef3225d1e969912a",
-    "proof_c": "3b63bff6bd4ed6c0fd5b2209000231d9",
-    "proof_s": "3b012ff4b61da9dbd5ad8543c6ffb11a8e4a8f6a35c37e485a8141aa4900480f"
+    "proof_c": "a7bfee24a599badd2070ae6b20195ca2",
+    "proof_s": "612394e3c686079ddc4c6b75e8ea6ab8626f90a1111232c9f44d3d700b1e7d0e"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "cd2988ed28d9873b80e90ccae0f5767af0ff8cb3b8d22f257f217e3736165ac2",
     "gamma": "2d33ac1d3c0e97c10513ae3c9bba2ca22ae5679ddcfe502bfdb823eb2238d3a5",
     "beta": "120947a40a0e6db614dab4a1a24d5a7135dbc8266a981b50383ca223b66d26f0",
-    "proof_c": "c13d49c60cf9c50a30d1151b2793b757",
-    "proof_s": "dba2082f6cf41c21d112b3823a5fc95255271344e3bc599bc6bcb52b2f14030b"
+    "proof_c": "c0bb1d7c516a696a9f9c983e176dffc3",
+    "proof_s": "b46c34d8121528d6bcbf005616854f379e44752699e6b7000e62d345e3d66108"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "12e502cc03e6f887e4ea8eb284bed41d8d5a2e9460db785a92e06431d6e1b533",
     "gamma": "5c72aaa9353c6f02067ca8f10106a3f925b562520338594b79006d4fbee2d3ff",
     "beta": "1d56e6426d441e949f518e09417cc85a42c4a8a08213c28386fed4437169e17d",
-    "proof_c": "cb21191e86facca2c2fb9facd0c9e8ae",
-    "proof_s": "60cf825b8e6bf3248560647e68f25775705401623bb6499bccecffb474198807"
+    "proof_c": "1f6ea74dcb448e165c33ee8b60a34c08",
+    "proof_s": "5d5eef03a9c6c1eb710324905d79a41ed8aefffb1c787ddcd0f7ee5f8df77a09"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
     "gamma": "b3eb7664ece9d58f764e72adf89d4abba770dbaaaa936d0f284d8a1f3d5c1500",
     "beta": "9715c4492ec4cb9061feb43f307252cf66fb5bfd39de6cd46f3590362d30e9c7",
-    "proof_c": "bd7f4e3c4087f9c605accd39cb48aaa3",
-    "proof_s": "0c4598939983b977b96465fadda1e44527e630ccbafee431760cbe24fb3e7900"
+    "proof_c": "23270df078dbeeddbee88e52dcca31f0",
+    "proof_s": "48ee2b420abffdfb6934dca2e19ab7e3a844eff4377fbcfc9bfcdbdf8f725f02"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
     "gamma": "b3eb7664ece9d58f764e72adf89d4abba770dbaaaa936d0f284d8a1f3d5c1500",
     "beta": "9715c4492ec4cb9061feb43f307252cf66fb5bfd39de6cd46f3590362d30e9c7",
-    "proof_c": "6b8928a80c5550b628062ba49036bf8c",
-    "proof_s": "364f328f2d6feec4d3188758c780df8380783c3920ed90836d3ee33863369809"
+    "proof_c": "dad38f2c28955f7cabfcc0b800a04333",
+    "proof_s": "972277f1bfc019ac2cb0c68837bc541eb595da493e8474b2830befd5af7eb600"
   },
   {
     "comment": "ed25519_sha-512_tai_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "865bf48f6abf5b36c287f4d1ea6f9f13019892e6f1ea13e4ea85af4c850dc628",
     "gamma": "858f9c3c1c3c777ec7941843c305f7d62c6e2c21a203acdc9913e42bb8347619",
     "beta": "c292ac91893f0349ec58513f6d569cfe499ffc58312b53bb1066bd33ddd802f1",
-    "proof_c": "0571ef298edc8a848f95f77c0ca01416",
-    "proof_s": "cb08087e6904300d13dab4d48f9a07cdde2b89aec9ca4e3fac0408c670097907"
+    "proof_c": "cf40a8eb7438e11fc865e5ef4473cd8f",
+    "proof_s": "9563f1199f191654731d9e481e9ca23bbc2831cb9c843ee4d10d250d9da0b806"
   }
 ]
