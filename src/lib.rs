@@ -559,5 +559,4 @@ mod tests {
             hex::encode(malicious_output.hash::<32>())
         );
     }
-
 }

@@ -444,7 +444,7 @@ pub fn delinearize<S: Suite>(
     }
 
     if n == 1 {
-        let io = iter.clone().next().unwrap();
+        let io = iter.clone().next().expect("len is 1 but iterator is empty");
         return io;
     }
 
