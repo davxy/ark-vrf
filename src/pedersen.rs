@@ -139,12 +139,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        let ad = ad.as_ref();
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (t, io) = utils::vrf_transcript::<S>(ios.as_ref(), ad.as_ref());
         let input = io.input;
-
-        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
 
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, t.clone());
@@ -214,12 +210,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
-        let ad = ad.as_ref();
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
-        let (input, output) = (io.input, io.output);
-
-        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
+        let (t, io) = utils::vrf_transcript::<S>(ios.as_ref(), ad.as_ref());
 
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[pk_com, r, ok], &[], Some(t));
@@ -228,7 +219,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         // Verifies that the VRF output O is correctly derived from the input I
         // using the same secret scalar x committed in the proof. Expanding the
         // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
-        if output.0 * c + ok != input.0 * s {
+        if io.output.0 * c + ok != io.input.0 * s {
             return Err(Error::VerificationFailure);
         }
 
@@ -289,10 +280,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let ad = ad.as_ref();
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
-        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
+        let (t, io) = utils::vrf_transcript::<S>(ios.as_ref(), ad.as_ref());
         let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], &[], Some(t));
         BatchItem {
             c,

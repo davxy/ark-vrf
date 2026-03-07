@@ -96,23 +96,23 @@ pub(crate) enum DomSep {
     End = 0x00,
 }
 
-/// Absorb VRF input, output and additional data into a transcript.
+/// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Used to enrich a shared transcript before forking it for nonce and
-/// challenge derivation, so that these values are bound via the transcript
-/// state rather than passed as explicit parameters.
-///
-/// The additional data length is absorbed as a 4-byte little-endian prefix
-/// to prevent ambiguity when `ad` has variable length.
-pub(crate) fn absorb_vrf_io<S: Suite>(
-    t: &mut S::Transcript,
-    io: &VrfIo<S>,
+/// Creates a transcript from `SUITE_ID`, delinearizes the I/O pairs,
+/// then absorbs the merged pair and length-prefixed additional data so
+/// that all subsequent forks (nonce, blinding, challenge) inherit the
+/// same state.
+pub fn vrf_transcript<S: Suite>(
+    ios: &[VrfIo<S>],
     ad: &[u8],
-) {
-    t.absorb_serialize(io);
+) -> (S::Transcript, VrfIo<S>) {
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    let io = delinearize(ios.iter().copied(), ad, Some(t.clone()));
+    t.absorb_serialize(&io);
     let ad_len = u32::try_from(ad.len()).expect("ad too long");
     t.absorb_raw(&ad_len.to_le_bytes());
     t.absorb_raw(ad);
+    (t, io)
 }
 
 /// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
