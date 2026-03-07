@@ -55,7 +55,7 @@ pub trait PedersenSuite: IetfSuite {
     fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
         use crate::utils::common::DomSep;
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
-        Self::nonce(secret, &[], &[], Some(transcript))
+        Self::nonce(secret, Some(transcript))
     }
 }
 
@@ -150,7 +150,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         // x = (s1 - s2) / (c1 - c2).
         let mut t_k = t.clone();
         t_k.absorb_serialize(&blinding);
-        let k = S::nonce(&self.scalar, &[], &[], Some(t_k));
+        let k = S::nonce(&self.scalar, Some(t_k));
 
         // kb nonce: bind secret key so that two proofs with the
         // same (blinding, input, ad) but different secret keys produce
@@ -158,7 +158,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         // b = (sb1 - sb2) / (c1 - c2).
         let mut t_kb = t.clone();
         t_kb.absorb_serialize(&self.scalar);
-        let kb = S::nonce(&blinding, &[], &[], Some(t_kb));
+        let kb = S::nonce(&blinding, Some(t_kb));
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -177,7 +177,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &r, &ok], &[], Some(t));
+        let c = S::challenge(&[&pk_com, &r, &ok], Some(t));
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -212,7 +212,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         let (t, io) = utils::vrf_transcript::<S>(ios, ad);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[pk_com, r, ok], &[], Some(t));
+        let c = S::challenge(&[pk_com, r, ok], Some(t));
 
         // Eq1: Ok + c*O = s*I
         // Verifies that the VRF output O is correctly derived from the input I
@@ -280,7 +280,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         proof: &Proof<S>,
     ) -> BatchItem<S> {
         let (t, io) = utils::vrf_transcript::<S>(ios, ad);
-        let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], &[], Some(t));
+        let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], Some(t));
         BatchItem {
             c,
             input: io.input.0,

@@ -243,7 +243,6 @@ where
 /// Returns a scalar field element derived from the hash of the inputs
 pub fn challenge_rfc_9381<S: Suite>(
     pts: &[&AffinePoint<S>],
-    ad: &[u8],
     transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
     let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
@@ -251,7 +250,6 @@ pub fn challenge_rfc_9381<S: Suite>(
     for p in pts {
         t.absorb_serialize(*p);
     }
-    t.absorb_raw(ad);
     t.absorb_raw(&[DomSep::End as u8]);
     // TODO: sample using security level bits
     let mut hash = ark_std::vec![0u8; S::CHALLENGE_LEN];
@@ -329,8 +327,6 @@ pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
 /// This function panics if the transcript output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
-    pts: &[&AffinePoint<S>],
-    ad: &[u8],
     transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
     // First hash: H(sk)
@@ -339,13 +335,9 @@ pub fn nonce_rfc_8032<S: Suite>(
     let mut sk_hash = [0u8; 64];
     t1.squeeze_raw(&mut sk_hash);
 
-    // Second hash: H(sk_hash[32..] || pts || ad)
+    // Second hash: H(sk_hash[32..])
     let mut t2 = transcript.unwrap_or_else(|| S::Transcript::new(b""));
     t2.absorb_raw(&sk_hash[32..]);
-    for pt in pts {
-        t2.absorb_serialize(*pt);
-    }
-    t2.absorb_raw(ad);
     let mut h = [0u8; 64];
     t2.squeeze_raw(&mut h);
     S::Codec::scalar_decode(&h)
@@ -367,17 +359,11 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// A scalar field element to be used as a nonce
 pub fn nonce_transcript<S: Suite>(
     sk: &ScalarField<S>,
-    pts: &[&AffinePoint<S>],
-    ad: &[u8],
     transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
     let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
     t.absorb_raw(b"nonce");
     t.absorb_serialize(sk);
-    for pt in pts {
-        t.absorb_serialize(*pt);
-    }
-    t.absorb_raw(ad);
 
     let scalar_len = S::Codec::SCALAR_ENCODED_LEN;
     let mut buf = ark_std::vec![0u8; scalar_len];

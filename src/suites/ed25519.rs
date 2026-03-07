@@ -69,19 +69,16 @@ impl Suite for ThisSuite {
 
     fn nonce(
         sk: &crate::ScalarField<Self>,
-        pts: &[&crate::AffinePoint<Self>],
-        ad: &[u8],
         transcript: Option<Self::Transcript>,
     ) -> crate::ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad, transcript)
+        utils::nonce_rfc_8032::<Self>(sk, transcript)
     }
 
     fn challenge(
         pts: &[&crate::AffinePoint<Self>],
-        ad: &[u8],
         transcript: Option<Self::Transcript>,
     ) -> crate::ScalarField<Self> {
-        utils::challenge_rfc_9381::<Self>(pts, ad, transcript)
+        utils::challenge_rfc_9381::<Self>(pts, transcript)
     }
 
     fn point_to_hash<const N: usize>(pt: &crate::AffinePoint<Self>) -> [u8; N] {

@@ -194,14 +194,12 @@ pub trait Suite: Copy {
     /// - [`utils::nonce_transcript`] — Transcript-based deterministic nonce
     fn nonce(
         sk: &ScalarField<Self>,
-        pts: &[&AffinePoint<Self>],
-        ad: &[u8],
         transcript: Option<Self::Transcript>,
     ) -> ScalarField<Self>;
 
     /// Challenge generation.
     ///
-    /// Hashes curve points and optional additional data to produce a scalar.
+    /// Hashes curve points to produce a scalar.
     ///
     /// When `transcript` is `Some`, uses the pre-built transcript (which may
     /// already carry shared state from earlier protocol steps). When `None`,
@@ -211,7 +209,6 @@ pub trait Suite: Copy {
     /// - [`utils::challenge_rfc_9381`] — RFC-9381 section 5.4.3
     fn challenge(
         pts: &[&AffinePoint<Self>],
-        ad: &[u8],
         transcript: Option<Self::Transcript>,
     ) -> ScalarField<Self>;
 
@@ -533,7 +530,7 @@ mod tests {
             let k_b = (S::generator() * k).into_affine();
             let k_h = (input.0 * k).into_affine();
 
-            let c = S::challenge(&[&public.0, &k_b, &k_h], &[], Some(t.clone()));
+            let c = S::challenge(&[&public.0, &k_b, &k_h], Some(t.clone()));
 
             // We need c to be even so that c * L = identity (since L has order 2)
             if c.into_bigint().is_even() {

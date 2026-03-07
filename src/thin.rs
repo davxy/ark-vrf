@@ -100,13 +100,13 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
         let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, &[], &[], Some(t.clone()));
+        let k = S::nonce(&self.scalar, Some(t.clone()));
 
         // R = k * I_m (secret nonce)
         let r = smul!(io.input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&r], &[], Some(t));
+        let c = S::challenge(&[&r], Some(t));
 
         // Response
         let s = k + c * self.scalar;
@@ -126,7 +126,7 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         let (t, io) = vrf_transcript::<S>(self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[r], &[], Some(t));
+        let c = S::challenge(&[r], Some(t));
 
         // Verify: R + c*O_m == s*I_m
         if *r + io.output.0 * c != io.input.0 * s {
@@ -181,7 +181,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         proof: &Proof<S>,
     ) -> BatchItem<S> {
         let (t, io) = vrf_transcript::<S>(public.0, ios, ad);
-        let c = S::challenge(&[&proof.r], &[], Some(t));
+        let c = S::challenge(&[&proof.r], Some(t));
         BatchItem {
             c,
             i_m: io.input.0,
@@ -582,7 +582,7 @@ pub(crate) mod testing {
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (io.input.0 * k).into_affine();
-        let c = S::challenge(&[&r], &[], Some(transcript));
+        let c = S::challenge(&[&r], Some(transcript));
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };
