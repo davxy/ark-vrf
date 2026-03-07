@@ -64,8 +64,6 @@ impl Suite for ThisSuite {
 
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
-    type Codec = codec::ArkworksCodec;
-
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
         // "XMD" for expand_message_xmd (Section 5.3.1).

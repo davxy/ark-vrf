@@ -474,7 +474,7 @@ pub(crate) mod testing {
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
             let proof_r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let proof_s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
+            let proof_s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self {
                 base,
                 proof_r,

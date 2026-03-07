@@ -60,7 +60,6 @@ impl Suite for ThisSuite {
 
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
     type Transcript = utils::HashTranscript;
-    type Codec = codec::ArkworksCodec;
 }
 
 impl PedersenSuite for ThisSuite {

@@ -61,7 +61,6 @@ impl Suite for ThisSuite {
 
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
-    type Codec = codec::ArkworksCodec;
 }
 
 impl PedersenSuite for ThisSuite {

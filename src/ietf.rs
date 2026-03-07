@@ -57,12 +57,7 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
             // Encoded scalar length must be at least S::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let (c, zero) = if S::Codec::ENDIANNESS.is_little() {
-            c_buf.split_at(S::CHALLENGE_LEN)
-        } else {
-            let (high, low) = c_buf.split_at(c_buf.len() - S::CHALLENGE_LEN);
-            (low, high)
-        };
+        let (c, zero) = c_buf.split_at(S::CHALLENGE_LEN);
         if zero.iter().any(|&b| b != 0) {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
@@ -86,7 +81,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let c = S::Codec::scalar_decode(&c_buf);
+        let c = codec::scalar_decode::<S>(&c_buf);
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,
@@ -374,19 +369,14 @@ pub mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let c = S::Codec::scalar_decode(&map.get_bytes("proof_c"));
-            let s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
+            let c = codec::scalar_decode::<S>(&map.get_bytes("proof_c"));
+            let s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self { base, c, s }
         }
 
         fn to_map(&self) -> common::TestVectorMap {
             let buf = codec::scalar_encode::<S>(&self.c);
-            let proof_c = if S::Codec::ENDIANNESS.is_big() {
-                let len = buf.len();
-                &buf[len - S::CHALLENGE_LEN..]
-            } else {
-                &buf[..S::CHALLENGE_LEN]
-            };
+            let proof_c = &buf[..S::CHALLENGE_LEN];
             let items = [
                 ("proof_c", hex::encode(proof_c)),
                 ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),

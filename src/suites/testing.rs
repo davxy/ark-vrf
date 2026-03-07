@@ -12,7 +12,6 @@ impl Suite for TestSuite {
 
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
-    type Codec = codec::ArkworksCodec;
 }
 
 impl PedersenSuite for TestSuite {

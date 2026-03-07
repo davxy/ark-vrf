@@ -61,7 +61,6 @@ impl Suite for ThisSuite {
 
     type Affine = ark_secp256r1::Affine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
-    type Codec = codec::ArkworksCodec;
 }
 
 impl PedersenSuite for ThisSuite {

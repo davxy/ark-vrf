@@ -108,8 +108,6 @@ pub mod reexports {
     pub use ark_std;
 }
 
-use codec::Codec;
-
 /// Suite's affine curve point type.
 pub type AffinePoint<S> = <S as Suite>::Affine;
 /// Suite's base field type.
@@ -166,11 +164,6 @@ pub trait Suite: Copy {
     /// unlimited output. Used for challenge generation, nonce derivation,
     /// delinearization, and other hash-based operations.
     type Transcript: Transcript;
-
-    /// Overarching codec.
-    ///
-    /// Used wherever we need to encode/decode points and scalars.
-    type Codec: codec::Codec<Self>;
 
     /// Generator used through all the suite.
     ///
