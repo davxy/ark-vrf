@@ -9,8 +9,8 @@
     "h": "f40d579ac39346991c5d05dcfa53709ca0a65f283d984e8a7b6adc07a42b17af",
     "gamma": "01d60d63320ace8f772653dd0f3b2e2bc5a4cbdbb7f3bdd31b4b7caaec467b18",
     "beta": "728325ea3c378f453e3c5709790e27773ef970fa91b4a24206bfd256770f28a2",
-    "proof_r": "e24cdcd41aacdb86579d6bd84467889769a82b44d753536e12b5639df02cea1e",
-    "proof_s": "63687430c38f0c05f5c875c02eac38c8209d1349cb70bcb4f09cd3bfe7c76604"
+    "proof_r": "87da37ea3f5bb9b6310e71fa56c95debb962d285bf404061d4bf8e5ba65c7822",
+    "proof_s": "e90f620a99348d5a82a8c94910d3526bd0b8dd258e58f1267a72a2356d66bf00"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-2",
@@ -22,8 +22,8 @@
     "h": "3aacb9f66d3cac593c48c3e4c687f7e7da0822af55bf2eb1b528cf00c03b298a",
     "gamma": "aa5fc375e84ad6cb897a92cf8a57988ed9031caae6d8b5fee4532c008d3ba38b",
     "beta": "7ab00fc54511650ec26f0de2b6b4e0dd78245e630e22cbac174861ac6bf7cded",
-    "proof_r": "3fa6be4bd632509b9dc22abc041a5f9cb9052a30272b2e7b81b04333fce9c112",
-    "proof_s": "7193beeef071490e7e83bf99d0e645fdd6d7494ecad87b84b0474d35a2656e04"
+    "proof_r": "055b2fae12680fb61b4dff60897ecc002c1b772caf19e25bae4341417cb7a525",
+    "proof_s": "21934d9d271c52074e772b0c0eb06aae6069920aabd3a1ee9f0346caad2e8604"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-3",
@@ -35,8 +35,8 @@
     "h": "f40d579ac39346991c5d05dcfa53709ca0a65f283d984e8a7b6adc07a42b17af",
     "gamma": "974829349e8f5009e18dfb86969853f7789b86a1e7cfe00690a0cbd8721fb68f",
     "beta": "82bfc392cd72888e78cef991b7a7761786c1930a8aabb6273b0dd426541e3528",
-    "proof_r": "67f9b28a771ef80a5025dde7b7ab028a443964db4485d1d80839e408c3887eaf",
-    "proof_s": "b088c02e833966fd209687e6d6450bea9e5f5b9e545608f177bca7cadc1fd203"
+    "proof_r": "fc478bbc301d551e31bcab57f1b8e45d79de772efd489d2460fa133c0b422f98",
+    "proof_s": "886003bd52e2a314f572ef5f744d5a397d216efac6a452c4fe5def660ba60501"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-4",
@@ -48,8 +48,8 @@
     "h": "96435e230483cfef19c3fa2240788bf14a2c8fb67b2e7bc0e260b9d49d7aae80",
     "gamma": "c326df377986ecf38c525366ae0d808abacdcf8cad10b8bf4ded950cfdcb7089",
     "beta": "063d9c16da6555d19b7e4559a567c2677029b418a6520a7bb59650cafe7f107c",
-    "proof_r": "6980d62c978b5a7d04e85171961dcdd2d61c5bb9ffee94de4dd5d0c1a9c59326",
-    "proof_s": "fbe4661b7ca14ffdff895e495565f06b50bad7b75bfb964eb2d755c898e65d05"
+    "proof_r": "52c56b8d7763490f59f3f1c87ed525f7846d0852df30d6f4482775acf8616fac",
+    "proof_s": "1a126c16176c2270094573dbbbae9dea21d551760d4865d4ee682cfbaa063001"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-5",
@@ -61,8 +61,8 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "167a9b4eff0d9ca557ca650dc8091761fa25fe7179afa302afbee0ad92f6851d",
     "beta": "928da3197c78a066e346890a433314da684a97a6df7583d761396d1982cf9888",
-    "proof_r": "d8afb39d76a3eb76005260c6f22d6518342bc3380b4b29861adae04968f06d2b",
-    "proof_s": "3769bff750d3d05d1dc84f9b036bfc3ebf39875ad21816c79757ce03b1bbda00"
+    "proof_r": "a3566872d9c1af5777e943c8adc5f7a1e1518748bd33fa4b6c2e7ce441f69c26",
+    "proof_s": "604cdeeee67e87ddac4bb204eb645452ece659e4addeb5b29fbc4947a53a7703"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-6",
@@ -74,8 +74,8 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "167a9b4eff0d9ca557ca650dc8091761fa25fe7179afa302afbee0ad92f6851d",
     "beta": "928da3197c78a066e346890a433314da684a97a6df7583d761396d1982cf9888",
-    "proof_r": "a2721f806b64832236da234acea1d3e371720bc93f1747c7bbcd7959150de216",
-    "proof_s": "65ea83f11901716c9bac600ab23b7d3c16a69caac01c6494d2930d8a46005502"
+    "proof_r": "867b50db06d84597d92129f619e2969684271a26997350c97ef8751365b6e29f",
+    "proof_s": "a902ab87572cadb6da5b1ff48c3dd7893b4bf6bc931ab8a6bfc1d1760c88dc03"
   },
   {
     "comment": "baby-jubjub_sha-512_tai_thin - vector-7",
@@ -87,7 +87,7 @@
     "h": "e4a80aad38c61ecc013909e8b1745290a5894159600900f3f4f92d6d7c146593",
     "gamma": "0a00c8f14371add04f19138308c05244a3b721d487cdf5bdffb713360afe542d",
     "beta": "581f082f87af430acaf74e991eeb1620073e6d79c54d93a1260ae52b956b59cc",
-    "proof_r": "af8c0edca93e2e6cd4f3090cfd2dcf6ec958d5b77b4f8e05b3bc5a02a2a22410",
-    "proof_s": "1981255c3352d81989633797dd709382c88338858e58dc9553c572af95d69604"
+    "proof_r": "fd389c93bab35fb8d8ca3109b5655067579a374a0c4f63bd6af1a0acf7528206",
+    "proof_s": "0f3dbab6193db39da35265bf57d6aebe3e5c9be2ead718726ac4315dd3c4d802"
   }
 ]

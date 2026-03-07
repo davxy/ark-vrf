@@ -279,7 +279,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let (t, io) = utils::vrf_transcript::<S>(ios.as_ref(), ad.as_ref());
+        let (t, io) = utils::vrf_transcript::<S>(ios, ad);
         let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], &[], Some(t));
         BatchItem {
             c,

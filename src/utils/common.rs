@@ -103,17 +103,24 @@ pub(crate) enum DomSep {
 /// independent of `ad`), absorbs the merged pair, then absorbs the
 /// length-prefixed additional data so that all subsequent forks (nonce,
 /// blinding, challenge) inherit the same state.
-pub fn vrf_transcript<S: Suite>(
-    ios: impl AsRef<[VrfIo<S>]>,
+pub fn vrf_transcript_from_iter<S: Suite>(
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     let mut t = S::Transcript::new(S::SUITE_ID);
-    let io = delinearize(ios.as_ref().iter().copied(), Some(t.clone()));
+    let io = delinearize(ios, Some(t.clone()));
     t.absorb_serialize(&io);
     let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
     t.absorb_raw(&ad_len.to_le_bytes());
     t.absorb_raw(ad.as_ref());
     (t, io)
+}
+
+pub fn vrf_transcript<S: Suite>(
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    vrf_transcript_from_iter(ios.as_ref().iter().copied(), ad)
 }
 
 /// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
@@ -530,7 +537,7 @@ mod tests {
         let (mut t1, io1) = vrf_transcript::<TestSuite>(merged, ad);
 
         // Path 2: vrf_transcript directly with all 3 ios
-        let (mut t2, io2) = vrf_transcript::<TestSuite>(&ios, ad);
+        let (mut t2, io2) = vrf_transcript::<TestSuite>(ios, ad);
 
         assert_eq!(io1, io2, "merged I/O pair mismatch");
 
