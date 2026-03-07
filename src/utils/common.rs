@@ -8,8 +8,6 @@ use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
-    short_weierstrass::{Affine as SWAffine, SWCurveConfig},
-    twisted_edwards::{Affine as TEAffine, TECurveConfig},
     AffineRepr,
 };
 use core::iter::Chain;
@@ -18,27 +16,6 @@ use generic_array::typenum::Unsigned;
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
-
-/// Construct an affine point from a single base field coordinate.
-///
-/// For SW curves the coordinate is x; for TE curves it is y.
-/// Returns the point with the "positive" (smaller) second coordinate,
-/// or `None` if no point exists for the given input.
-pub trait PointFromCoord: AffineRepr {
-    fn from_coord(coord: Self::BaseField) -> Option<Self>;
-}
-
-impl<P: SWCurveConfig> PointFromCoord for SWAffine<P> {
-    fn from_coord(x: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_x_unchecked(x, false)
-    }
-}
-
-impl<P: TECurveConfig> PointFromCoord for TEAffine<P> {
-    fn from_coord(y: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_y_unchecked(y, false)
-    }
-}
 
 /// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
 ///
@@ -125,34 +102,18 @@ pub fn vrf_transcript<S: Suite>(
 
 /// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
 ///
-/// This implementation deviates from the RFC in how the hash output is
-/// interpreted as a field element. The RFC defines a suite-specific
-/// `interpret_hash_value_as_a_point` function (e.g. `string_to_point(0x02 || s)`
-/// for P-256) that treats the hash as a serialized compressed point, coupling
-/// the procedure to the curve type and serialization format.
-///
-/// Instead, this implementation:
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using `Suite::Hasher`.
-/// 2. Reduces the hash output modulo the base field prime (little-endian) to
-///    obtain a field element. This uses all hash bytes and always produces a
-///    valid field element, introducing a negligible bias of ~`p / 2^hash_bits`
-///    when the hash is larger than the field (e.g. SHA-512 on a 255-bit field).
-/// 3. Interprets the field element as a curve coordinate via [`PointFromCoord`]:
-///    x-coordinate for short Weierstrass, y-coordinate for twisted Edwards.
-///    The "positive" (smaller) second coordinate is always selected.
-/// 4. Clears the cofactor and checks the point is not the identity.
-/// 5. Repeats with an incremented counter (up to 256 attempts) if no valid
+/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using the suite transcript.
+/// 2. Attempts to interpret the hash output as a curve point via
+///    [`AffineRepr::from_random_bytes`].
+/// 3. Clears the cofactor and checks the point is not the identity.
+/// 4. Repeats with an incremented counter (up to 256 attempts) if no valid
 ///    point is found.
 ///
 /// # Returns
 ///
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
 /// * `None` - If no valid point could be found after 256 attempts.
-pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
-where
-    AffinePoint<S>: PointFromCoord,
-    BaseField<S>: ark_ff::PrimeField,
-{
+pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     let mut prefix = S::Transcript::new(S::SUITE_ID);
     prefix.absorb_raw(&[DomSep::HashToCurveTai as u8]);
     prefix.absorb_raw(data);
@@ -161,11 +122,9 @@ where
     for ctr in 0..=255u8 {
         let mut t = prefix.clone();
         t.absorb_raw(&[ctr, DomSep::End as u8]);
-        // TODO: remove this hash_len and use the sample technique with security level bits
         let mut hash = ark_std::vec![0u8; hash_len];
         t.squeeze_raw(&mut hash);
-        let coord = BaseField::<S>::from_le_bytes_mod_order(&hash);
-        let Some(pt) = AffinePoint::<S>::from_coord(coord) else {
+        let Some(pt) = AffinePoint::<S>::from_random_bytes(&hash) else {
             continue;
         };
         let pt = pt.clear_cofactor();

@@ -158,7 +158,7 @@ pub trait Suite: Copy {
     ///
     /// The point is guaranteed to be in the correct prime order subgroup
     /// by the `AffineRepr` bound.
-    type Affine: AffineRepr; // + utils::PointFromCoord;
+    type Affine: AffineRepr;
 
     /// Fiat-Shamir transcript.
     ///
@@ -206,16 +206,20 @@ pub trait Suite: Copy {
     /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
     /// In other words, salt is not applied by this function.
     ///
-    /// Utility functions available:
-    /// - [`utils::hash_to_curve_tai`] — try-and-increment
-    /// - [`utils::hash_to_curve_ell2`] — Elligator2
-    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>>;
+    /// Defaults to [`utils::hash_to_curve_tai`] (try-and-increment).
+    /// Override for alternative methods like [`utils::hash_to_curve_ell2`] (Elligator2).
+    #[inline(always)]
+    fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
+        utils::hash_to_curve_tai::<Self>(data)
+    }
 
     /// Map a curve point to a hash value.
     ///
-    /// Utility functions available:
-    /// - [`utils::point_to_hash`]
-    fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N];
+    /// Defaults to [`utils::point_to_hash`].
+    #[inline(always)]
+    fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N] {
+        utils::point_to_hash::<Self, N>(pt, false)
+    }
 
     // TODO: add `sample()` to pick scalar with the given security bits .
 }

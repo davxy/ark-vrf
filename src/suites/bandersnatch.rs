@@ -73,10 +73,6 @@ impl Suite for ThisSuite {
         let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
         utils::hash_to_curve_ell2::<Self, sha2::Sha512>(data, h2c_suite_id)
     }
-
-    fn point_to_hash<const N: usize>(pt: &AffinePoint) -> [u8; N] {
-        utils::point_to_hash::<Self, N>(pt, false)
-    }
 }
 
 impl PedersenSuite for ThisSuite {

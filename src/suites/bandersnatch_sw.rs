@@ -62,14 +62,6 @@ impl Suite for ThisSuite {
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     type Codec = codec::ArkworksCodec;
-
-    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai::<Self>(data)
-    }
-
-    fn point_to_hash<const N: usize>(pt: &AffinePoint) -> [u8; N] {
-        utils::point_to_hash::<Self, N>(pt, false)
-    }
 }
 
 impl PedersenSuite for ThisSuite {
