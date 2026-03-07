@@ -16,6 +16,9 @@ use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
 use generic_array::typenum::Unsigned;
 
+#[cfg(not(feature = "std"))]
+use ark_std::vec::Vec;
+
 /// Construct an affine point from a single base field coordinate.
 ///
 /// For SW curves the coordinate is x; for TE curves it is y.
@@ -92,9 +95,6 @@ pub(crate) enum DomSep {
     PedersenBlinding = 0xCC,
     End = 0x00,
 }
-
-#[cfg(not(feature = "std"))]
-use ark_std::vec::Vec;
 
 /// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
 ///
@@ -302,7 +302,7 @@ pub fn point_to_hash_rfc_9381<S: Suite, const N: usize>(
 /// This function panics if the transcript output is less than 64 bytes.
 pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
-    ios: &[VrfIo<S>],
+    pts: &[&AffinePoint<S>],
     ad: &[u8],
 ) -> ScalarField<S> {
     // First hash: H(sk)
@@ -314,8 +314,8 @@ pub fn nonce_rfc_8032<S: Suite>(
     // Second hash: H(sk_hash[32..] || pts || ad)
     let mut t2 = S::Transcript::new(b"");
     t2.absorb_raw(&sk_hash[32..]);
-    for io in ios {
-        t2.absorb_serialize(io);
+    for pt in pts {
+        t2.absorb_serialize(*pt);
     }
     t2.absorb_raw(ad);
     let mut h = [0u8; 64];
