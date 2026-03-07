@@ -171,7 +171,7 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
         let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
         let (input, output) = (io.input, io.output);
 
-        let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad);
+        let k = S::nonce(&self.scalar, &[&input.0, &output.0], ad, Some(t.clone()));
 
         let k_b = smul!(S::generator(), k);
         let k_h = smul!(input.0, k);

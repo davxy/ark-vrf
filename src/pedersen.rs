@@ -52,24 +52,10 @@ pub trait PedersenSuite: IetfSuite {
     ///
     /// Default implementation is deterministic and loosely inspired by the RFC-9381
     /// challenge procedure. All parameters but `secret` are public.
-    fn blinding(
-        secret: &ScalarField<Self>,
-        input: &AffinePoint<Self>,
-        aux: &[u8],
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField<Self> {
+    fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
         use crate::utils::common::DomSep;
-        let mut t = transcript.unwrap_or_else(|| Self::Transcript::new(Self::SUITE_ID));
-        t.absorb_raw(&[DomSep::PedersenBlinding as u8]);
-        t.absorb_serialize(secret);
-        t.absorb_serialize(input);
-        t.absorb_raw(aux);
-        t.absorb_raw(&[DomSep::End as u8]);
-        let scalar_len = Self::Codec::SCALAR_ENCODED_LEN;
-        // TODO: use squeeze scalar
-        let mut hash = ark_std::vec![0u8; scalar_len];
-        t.squeeze_raw(&mut hash);
-        codec::scalar_decode::<Self>(&hash)
+        transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
+        Self::nonce(secret, &[], &[], Some(transcript))
     }
 }
 
@@ -154,30 +140,30 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
         let ad = ad.as_ref();
-        let t = S::Transcript::new(S::SUITE_ID);
+        let mut t = S::Transcript::new(S::SUITE_ID);
         let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
-        let (input, output) = (io.input, io.output);
+        let input = io.input;
+
+        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
 
         // Build blinding factor
-        let blinding = S::blinding(&self.scalar, &input.0, ad, Some(t.clone()));
+        let blinding = S::blinding(&self.scalar, t.clone());
 
-        // k nonce: bind input, output, and blinding.
-        // The blinding factor is mixed into `ad` so that two proofs with the
-        // same (secret, input, ad) but different blinding factors produce
+        // k nonce: bind blinding factor so that two proofs with the
+        // same (secret, io, ad) but different blinding factors produce
         // distinct nonces, preventing secret key recovery via
         // x = (s1 - s2) / (c1 - c2).
-        let blinding_buf = codec::scalar_encode::<S>(&blinding);
-        let buf = [blinding_buf.as_slice(), ad].concat();
-        let k = S::nonce(&self.scalar, &[&input.0, &output.0], &buf);
+        let mut t_k = t.clone();
+        t_k.absorb_serialize(&blinding);
+        let k = S::nonce(&self.scalar, &[], &[], Some(t_k));
 
-        // kb nonce: bind input, output, and secret key.
-        // The secret key is mixed into `ad` so that two proofs with the
+        // kb nonce: bind secret key so that two proofs with the
         // same (blinding, input, ad) but different secret keys produce
         // distinct nonces, preventing blinding factor recovery via
         // b = (sb1 - sb2) / (c1 - c2).
-        let secret_buf = codec::scalar_encode::<S>(&self.scalar);
-        let buf = [secret_buf.as_slice(), ad].concat();
-        let kb = S::nonce(&blinding, &[&input.0, &output.0], &buf);
+        let mut t_kb = t.clone();
+        t_kb.absorb_serialize(&self.scalar);
+        let kb = S::nonce(&blinding, &[], &[], Some(t_kb));
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -196,7 +182,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad, Some(t));
+        let c = S::challenge(&[&pk_com, &r, &ok], &[], Some(t));
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -220,11 +206,6 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let ad = ad.as_ref();
-        let t = S::Transcript::new(S::SUITE_ID);
-        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
-        let (input, output) = (io.input, io.output);
-
         let Proof {
             pk_com,
             r,
@@ -233,8 +214,15 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
+        let ad = ad.as_ref();
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
+        let (input, output) = (io.input, io.output);
+
+        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
+
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad, Some(t));
+        let c = S::challenge(&[pk_com, r, ok], &[], Some(t));
 
         // Eq1: Ok + c*O = s*I
         // Verifies that the VRF output O is correctly derived from the input I
@@ -302,19 +290,10 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         proof: &Proof<S>,
     ) -> BatchItem<S> {
         let ad = ad.as_ref();
-        let t = S::Transcript::new(S::SUITE_ID);
+        let mut t = S::Transcript::new(S::SUITE_ID);
         let io = utils::delinearize(ios.as_ref().iter().copied(), ad, Some(t.clone()));
-        let c = S::challenge(
-            &[
-                &proof.pk_com,
-                &io.input.0,
-                &io.output.0,
-                &proof.r,
-                &proof.ok,
-            ],
-            ad,
-            Some(t),
-        );
+        utils::absorb_vrf_io::<S>(&mut t, &io, ad);
+        let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], &[], Some(t));
         BatchItem {
             c,
             input: io.input.0,

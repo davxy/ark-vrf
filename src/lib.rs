@@ -185,12 +185,19 @@ pub trait Suite: Copy {
     /// Generates a deterministic pseudorandom nonce from the secret key,
     /// curve points, and additional data.
     ///
+    /// When `transcript` is `Some`, uses the pre-built transcript (which may
+    /// already carry shared state from earlier protocol steps). When `None`,
+    /// constructs a fresh transcript.
+    ///
     /// Utility functions available:
     /// - [`utils::nonce_rfc_8032`] — RFC-8032 section 5.1.6 (requires >= 64-byte hash output)
-    /// TODO: remove this?
     /// - [`utils::nonce_transcript`] — Transcript-based deterministic nonce
-    /// TODO: add transcript param
-    fn nonce(sk: &ScalarField<Self>, pts: &[&AffinePoint<Self>], ad: &[u8]) -> ScalarField<Self>;
+    fn nonce(
+        sk: &ScalarField<Self>,
+        pts: &[&AffinePoint<Self>],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField<Self>;
 
     /// Challenge generation.
     ///

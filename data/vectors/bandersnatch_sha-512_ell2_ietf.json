@@ -9,8 +9,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "3e501860b0230b64662fb18bab99972c982e8e5b9e4c95edf75b55ac73fbde4d",
     "beta": "1bcd3122eef9aa3ef5a68e373f73dc0ff98e21142ca01c29df5814603869c1e0",
-    "proof_c": "fd7a41ecd2103d11938a51cfbf870d09",
-    "proof_s": "85b8fdcc5d943a25742faf6d5cf363c35f985d43300278cfbb32a0e97de5271a"
+    "proof_c": "2d087d5152817f6aff23b5628bd3c503",
+    "proof_s": "566d0612fc96902877924f2db3e0b5e64fa797f404ed43b3b1ffb5451f12021a"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "8c1d1425374f01d86b23bfeab770c60b58d2eeb9afc5900c8b8a918d09a6086b",
     "gamma": "f9f263e4507809fdd16ee78a6403dce5ac1dc074fad9339361a258b951b5e66e",
     "beta": "69c478e940b722175953b353fd3305bf10fa9a62474905df32967104bb011462",
-    "proof_c": "9d38937d7321c4b9b58dc1aeafb991f2",
-    "proof_s": "24628394f317c297a35e97ad33273714120d5ae2df3c887f8f04e73550ca4d0b"
+    "proof_c": "10163e8b02fbed8d53fa0c4ba920a758",
+    "proof_s": "98a7f436a0a49962970b3a6830be12e514f91374edbc890c9765674aef1e4411"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "c5eaf38334836d4b10e05d2c1021959a917e08eaf4eb46a8c4c8d1bec04e2c00",
     "gamma": "543725d1432790dd7e6bb9e01455e4b13559541cd96d40140cbd7f7a27fc24b0",
     "beta": "0c9cb2ba2a082823157fdfb1de89925e31a164d0273dff1dc65def94b04d913b",
-    "proof_c": "d0d95fb137aa2ae09d00e342ea916f7a",
-    "proof_s": "cb4fdb28fb59a64661caf24a167762da9ff9047925de7561be293b8aeb5cda0b"
+    "proof_c": "78d4dfc6edf56d51da895971ed1f63e3",
+    "proof_s": "82710c6ca36130f09646f0a49c47ff44868b55974a17f76f4cc7575887d4e70c"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "672e8c7a8e6d3eca67df38f11d50f3d7dbb26fa8e27565a5424e6f8ac4555dcc",
     "gamma": "453375ce59d3267348656435900f2d80cec64f89a0358b8164cbca1e5b28bdf1",
     "beta": "f300ea1c34119e17608c335c683f1ecb9b36ed2b830aa17c3afa833ff400dc2b",
-    "proof_c": "06318c70b8d173d5c36c0c23a9f59c27",
-    "proof_s": "8652b0e79057ca67a91da028fee7a1e143c0679128b3ed8323b6ef51f84d1b1b"
+    "proof_c": "b24adb5f3ee81c8743a253bacd6c311d",
+    "proof_s": "c62559c8c54ec489dccdf18f1f4c1de14dee19cbc62e8e2a398574fc96f4ce0c"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "3443584a8390bf19a6d4372d18d19e9650e7bd8989685ec481b228cbcd669f5e",
     "beta": "f618a3039335847e21e822a62ac0577f7baecdd0693e8cebc2aa8567e4d7d5f1",
-    "proof_c": "cb5d89b6a74be5ba7f244904d745776b",
-    "proof_s": "64a4239d2bde93c75a58b503cbc65605628c91e948dd7bc819779960e9dd0a14"
+    "proof_c": "c196ce2a7ae4412cc6875d268612d265",
+    "proof_s": "13137f1b47e7ecf33d38f3b37efdb1bc2a6f66b604608e07f83d45be31bfb40e"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "3443584a8390bf19a6d4372d18d19e9650e7bd8989685ec481b228cbcd669f5e",
     "beta": "f618a3039335847e21e822a62ac0577f7baecdd0693e8cebc2aa8567e4d7d5f1",
-    "proof_c": "91b35dd13ba5df27ee8ae343aa1f5224",
-    "proof_s": "76e7a036b67d228f4833c639a65cccd4107ac9ef4f17241794d515dab971650e"
+    "proof_c": "1775788e1c950f3e1066349b48531133",
+    "proof_s": "9a5f668081acfa5074dc3326c374297a958ce35e734f886366eb2e539f7b0d0c"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "4315192d2ce9e52ceb449a6b4da7f7e6636e53592c7f5e236763e21e9bac24c7",
     "gamma": "e3297b59041bc9300590a5b260ccd5224f38db53ed40d753302ef26b5b160c4d",
     "beta": "1fb02f4a8918e5cf646bdee5d32bc6dfcc68748eb6c41363fb48a3a081015e2e",
-    "proof_c": "557a36f892502cf40d4ad3bb5f430e3e",
-    "proof_s": "e294b304fc216d9a9d88db6e8e3ab1fc3885b62c7b135b5442806a185d79af09"
+    "proof_c": "fe29b1f7edf44bda0b6adcf33e782338",
+    "proof_s": "e0d423d6ef828da5beed59fc1b224b4850a9a396e16612c63d27e151f6158712"
   }
 ]

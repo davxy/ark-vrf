@@ -18,8 +18,13 @@ impl Suite for TestSuite {
         utils::hash_to_curve_tai_rfc_9381::<Self>(data)
     }
 
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_transcript::<Self>(sk, pts, ad)
+    fn nonce(
+        sk: &ScalarField,
+        pts: &[&AffinePoint],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField {
+        utils::nonce_transcript::<Self>(sk, pts, ad, transcript)
     }
 
     fn challenge(

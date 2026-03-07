@@ -96,6 +96,25 @@ pub(crate) enum DomSep {
     End = 0x00,
 }
 
+/// Absorb VRF input, output and additional data into a transcript.
+///
+/// Used to enrich a shared transcript before forking it for nonce and
+/// challenge derivation, so that these values are bound via the transcript
+/// state rather than passed as explicit parameters.
+///
+/// The additional data length is absorbed as a 4-byte little-endian prefix
+/// to prevent ambiguity when `ad` has variable length.
+pub(crate) fn absorb_vrf_io<S: Suite>(
+    t: &mut S::Transcript,
+    io: &VrfIo<S>,
+    ad: &[u8],
+) {
+    t.absorb_serialize(io);
+    let ad_len = u32::try_from(ad.len()).expect("ad too long");
+    t.absorb_raw(&ad_len.to_le_bytes());
+    t.absorb_raw(ad);
+}
+
 /// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
 ///
 /// This implementation deviates from RFC-9381 in how the hash output is
@@ -304,6 +323,7 @@ pub fn nonce_rfc_8032<S: Suite>(
     sk: &ScalarField<S>,
     pts: &[&AffinePoint<S>],
     ad: &[u8],
+    transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
     // First hash: H(sk)
     let mut t1 = S::Transcript::new(b"");
@@ -312,7 +332,7 @@ pub fn nonce_rfc_8032<S: Suite>(
     t1.squeeze_raw(&mut sk_hash);
 
     // Second hash: H(sk_hash[32..] || pts || ad)
-    let mut t2 = S::Transcript::new(b"");
+    let mut t2 = transcript.unwrap_or_else(|| S::Transcript::new(b""));
     t2.absorb_raw(&sk_hash[32..]);
     for pt in pts {
         t2.absorb_serialize(*pt);
@@ -337,13 +357,13 @@ pub fn nonce_rfc_8032<S: Suite>(
 /// # Returns
 ///
 /// A scalar field element to be used as a nonce
-/// TODO: makes sense to keep?
 pub fn nonce_transcript<S: Suite>(
     sk: &ScalarField<S>,
     pts: &[&AffinePoint<S>],
     ad: &[u8],
+    transcript: Option<S::Transcript>,
 ) -> ScalarField<S> {
-    let mut t = S::Transcript::new(S::SUITE_ID);
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
     t.absorb_raw(b"nonce");
     t.absorb_serialize(sk);
     for pt in pts {

@@ -71,8 +71,9 @@ impl Suite for ThisSuite {
         sk: &crate::ScalarField<Self>,
         pts: &[&crate::AffinePoint<Self>],
         ad: &[u8],
+        transcript: Option<Self::Transcript>,
     ) -> crate::ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
+        utils::nonce_rfc_8032::<Self>(sk, pts, ad, transcript)
     }
 
     fn challenge(

@@ -100,7 +100,7 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
         let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad, Some(t.clone()));
 
         // Nonce
-        let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad);
+        let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad, Some(t.clone()));
 
         // R = k * I_m (secret nonce)
         let r = smul!(merged_input.0, k).into_affine();

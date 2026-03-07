@@ -74,8 +74,13 @@ impl Suite for ThisSuite {
         utils::hash_to_curve_ell2_rfc_9380::<Self, sha2::Sha512>(data, h2c_suite_id)
     }
 
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
+    fn nonce(
+        sk: &ScalarField,
+        pts: &[&AffinePoint],
+        ad: &[u8],
+        transcript: Option<Self::Transcript>,
+    ) -> ScalarField {
+        utils::nonce_rfc_8032::<Self>(sk, pts, ad, transcript)
     }
 
     fn challenge(
