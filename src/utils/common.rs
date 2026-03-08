@@ -112,24 +112,64 @@ pub(crate) enum DomSep {
     End = 0x00,
 }
 
+/// Common VRF transcript construction: absorb I/O pairs, fork for
+/// delinearization scalars, absorb additional data.
+///
+/// Returns the transcript (with ad absorbed), the delinearization scalar
+/// stream, and the number of I/O pairs.
+fn vrf_transcript_base<S: Suite>(
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, DelinearizeScalars<S>, usize) {
+    let n = ios.len();
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    absorb_ios::<S>(&mut t, ios);
+    let scalars = delinearize_scalars::<S>(n, t.clone());
+    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
+    t.absorb_raw(&ad_len.to_le_bytes());
+    t.absorb_raw(ad.as_ref());
+    (t, scalars, n)
+}
+
 /// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Creates a transcript from `SUITE_ID`, delinearizes the I/O pairs into a
-/// single merged pair (so that delinearization is stable for a given I/O set,
-/// independent of `ad`), absorbs the merged pair, then absorbs the
-/// length-prefixed additional data so that all subsequent forks (nonce,
-/// blinding, challenge) inherit the same state.
+/// Absorbs the raw I/O pairs into the transcript, derives delinearization
+/// scalars from a fork (so pairs are absorbed only once), merges the pairs
+/// into a single I/O, then absorbs the length-prefixed additional data.
 pub fn vrf_transcript_from_iter<S: Suite>(
     ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    let mut t = S::Transcript::new(S::SUITE_ID);
-    let io = delinearize(ios, Some(t.clone()));
-    t.absorb_serialize(&io);
-    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
-    t.absorb_raw(&ad_len.to_le_bytes());
-    t.absorb_raw(ad.as_ref());
+    let n = ios.len();
+    let (t, scalars, _) = vrf_transcript_base(ios.clone(), ad);
+
+    let zero = AffinePoint::<S>::zero();
+    let io = if n == 0 {
+        VrfIo {
+            input: Input(zero),
+            output: Output(zero),
+        }
+    } else if n == 1 {
+        ios.clone().next().expect("len is 1 but iterator is empty")
+    } else {
+        merge_ios(ios, scalars)
+    };
+
     (t, io)
+}
+
+/// Build a VRF transcript returning raw delinearization scalars.
+///
+/// Same transcript construction as [`vrf_transcript_from_iter`] but returns
+/// the z scalars instead of the merged I/O pair. Used by batch verification
+/// which needs the individual points and z scalars to build an expanded MSM
+/// without computing the merged pair.
+pub fn vrf_transcript_scalars_from_iter<S: Suite>(
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    let (t, mut scalars, n) = vrf_transcript_base(ios, ad);
+    (t, scalars.take_vec(n))
 }
 
 pub fn vrf_transcript<S: Suite>(
@@ -137,6 +177,13 @@ pub fn vrf_transcript<S: Suite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     vrf_transcript_from_iter(ios.as_ref().iter().copied(), ad)
+}
+
+pub fn vrf_transcript_scalars<S: Suite>(
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    vrf_transcript_scalars_from_iter(ios.as_ref().iter().copied(), ad)
 }
 
 /// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
@@ -291,12 +338,14 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -
 
 /// Stateful stream of 128-bit delinearization scalars backed by a transcript's
 /// squeeze stream. Created by [`delinearize_scalars`].
-pub(crate) struct DelinearizeScalars<S: Suite>(S::Transcript);
+pub(crate) struct DelinearizeScalars<S: Suite> {
+    transcript: S::Transcript,
+}
 
 impl<S: Suite> DelinearizeScalars<S> {
     /// Draw the next 128-bit scalar.
     pub fn next(&mut self) -> ScalarField<S> {
-        challenge_scalar::<S>(&mut self.0)
+        challenge_scalar::<S>(&mut self.transcript)
     }
 
     /// Collect `n` scalars into a `Vec`.
@@ -305,23 +354,63 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 }
 
-/// Create a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs.
-/// The scalars are derived deterministically by hashing all encoded points
-/// and squeezing from the transcript.
+/// Create a [`DelinearizeScalars`] stream from a transcript that has already
+/// absorbed the I/O pairs. Adds domain separation and starts the squeeze.
+///
+/// The caller must have absorbed the I/O pairs into `transcript` before
+/// calling this function (e.g. via [`absorb_ios`]).
 pub(crate) fn delinearize_scalars<S: Suite>(
-    iter: impl ExactSizeIterator<Item = VrfIo<S>>,
-    transcript: Option<S::Transcript>,
+    n: usize,
+    mut transcript: S::Transcript,
 ) -> DelinearizeScalars<S> {
-    let n = u32::try_from(iter.len()).expect("too many input-output pairs");
+    let n = u32::try_from(n).expect("too many input-output pairs");
+    transcript.absorb_raw(&[DomSep::Delinearize as u8]);
+    transcript.absorb_raw(&n.to_le_bytes());
+    transcript.absorb_raw(&[DomSep::End as u8]);
+    DelinearizeScalars { transcript }
+}
 
-    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
-    t.absorb_raw(&[DomSep::Delinearize as u8]);
-    t.absorb_raw(&n.to_le_bytes());
-    for io in iter {
+/// Absorb I/O pairs into a transcript.
+pub(crate) fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl Iterator<Item = VrfIo<S>>) {
+    for io in ios {
         t.absorb_serialize(&io);
     }
-    t.absorb_raw(&[DomSep::End as u8]);
-    DelinearizeScalars(t)
+}
+
+/// Fold/MSM I/O pairs using pre-computed delinearization scalars.
+///
+/// Caller must ensure `iter.len() >= 2` and that `scalars` yields at least
+/// that many values.
+fn merge_ios<S: Suite>(
+    iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    mut scalars: DelinearizeScalars<S>,
+) -> VrfIo<S> {
+    let n = iter.len();
+
+    // MSM has bucket-setup overhead that dominates for small N.
+    // Fold is faster below this threshold; MSM wins above it.
+    const MSM_THRESHOLD: usize = 16;
+
+    let zero = AffinePoint::<S>::zero().into_group();
+    let (input, output) = if n < MSM_THRESHOLD {
+        iter.fold((zero, zero), |(h_acc, g_acc), io| {
+            let z = scalars.next();
+            (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
+        })
+    } else {
+        let scalars = scalars.take_vec(n);
+        let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
+        use ark_ec::VariableBaseMSM;
+        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
+        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
+        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
+        (input, output)
+    };
+    let norms = CurveGroup::normalize_batch(&[input, output]);
+    VrfIo {
+        input: Input(norms[0]),
+        output: Output(norms[1]),
+    }
 }
 
 /// Delinearize multiple input-output pairs into a single pair.
@@ -366,36 +455,12 @@ pub fn delinearize<S: Suite>(
     }
 
     if n == 1 {
-        let io = iter.clone().next().expect("len is 1 but iterator is empty");
-        return io;
+        return iter.clone().next().expect("len is 1 but iterator is empty");
     }
 
-    // MSM has bucket-setup overhead that dominates for small N.
-    // Fold is faster below this threshold; MSM wins above it.
-    const MSM_THRESHOLD: usize = 16;
-
-    let mut scalars = delinearize_scalars(iter.clone(), transcript);
-
-    let zero = zero.into_group();
-    let (input, output) = if n < MSM_THRESHOLD {
-        iter.fold((zero, zero), |(h_acc, g_acc), io| {
-            let z = scalars.next();
-            (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
-        })
-    } else {
-        let scalars = scalars.take_vec(n);
-        let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
-        use ark_ec::VariableBaseMSM;
-        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
-        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
-        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
-        (input, output)
-    };
-    let norms = CurveGroup::normalize_batch(&[input, output]);
-    VrfIo {
-        input: Input(norms[0]),
-        output: Output(norms[1]),
-    }
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
+    absorb_ios(&mut t, iter.clone());
+    merge_ios(iter, delinearize_scalars::<S>(n, t))
 }
 
 #[cfg(test)]
@@ -412,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn vrf_transcript_delinearize_equivalence() {
+    fn vrf_transcript_merged_pair_matches_delinearize() {
         use crate::{Input, Output, VrfIo};
 
         let sk = ScalarField::<TestSuite>::from(42u64);
@@ -427,22 +492,12 @@ mod tests {
             })
             .collect();
 
-        let ad = b"foo";
-
-        // Path 1: delinearize first, then vrf_transcript with the single merged io
-        let merged = delinearize::<TestSuite>(ios.iter().copied(), None);
-        let (mut t1, io1) = vrf_transcript::<TestSuite>(merged, ad);
-
-        // Path 2: vrf_transcript directly with all 3 ios
-        let (mut t2, io2) = vrf_transcript::<TestSuite>(ios, ad);
-
-        assert_eq!(io1, io2, "merged I/O pair mismatch");
-
-        // Verify transcript states match by squeezing the same amount
-        let mut out1 = [0u8; 32];
-        let mut out2 = [0u8; 32];
-        t1.squeeze_raw(&mut out1);
-        t2.squeeze_raw(&mut out2);
-        assert_eq!(out1, out2, "transcript state mismatch");
+        // vrf_transcript_from_iter's merged pair must match standalone delinearize.
+        let (_, io_from_transcript) = vrf_transcript::<TestSuite>(&ios, b"foo");
+        let io_standalone = delinearize::<TestSuite>(ios.iter().copied(), None);
+        assert_eq!(
+            io_from_transcript, io_standalone,
+            "merged I/O pair mismatch"
+        );
     }
 }
