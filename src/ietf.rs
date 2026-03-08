@@ -53,11 +53,11 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
         let c_buf = codec::scalar_encode::<S>(&self.c);
-        if c_buf.len() < S::CHALLENGE_LEN {
-            // Encoded scalar length must be at least S::CHALLENGE_LEN
+        if c_buf.len() < utils::common::CHALLENGE_LEN {
+            // Encoded scalar length must be at least utils::common::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let (c, zero) = c_buf.split_at(S::CHALLENGE_LEN);
+        let (c, zero) = c_buf.split_at(utils::common::CHALLENGE_LEN);
         if zero.iter().any(|&b| b != 0) {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
@@ -67,7 +67,7 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
     }
 
     fn serialized_size(&self, _compress_always: ark_serialize::Compress) -> usize {
-        S::CHALLENGE_LEN + self.s.compressed_size()
+        utils::common::CHALLENGE_LEN + self.s.compressed_size()
     }
 }
 
@@ -77,7 +77,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let mut c_buf = ark_std::vec![0; S::CHALLENGE_LEN];
+        let mut c_buf = [0u8; utils::common::CHALLENGE_LEN];
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
@@ -376,7 +376,7 @@ pub mod testing {
 
         fn to_map(&self) -> common::TestVectorMap {
             let buf = codec::scalar_encode::<S>(&self.c);
-            let proof_c = &buf[..S::CHALLENGE_LEN];
+            let proof_c = &buf[..utils::common::CHALLENGE_LEN];
             let items = [
                 ("proof_c", hex::encode(proof_c)),
                 ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),

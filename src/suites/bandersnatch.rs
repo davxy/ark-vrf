@@ -60,8 +60,6 @@ suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512_ELL2";
-    const CHALLENGE_LEN: usize = 16;
-
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.

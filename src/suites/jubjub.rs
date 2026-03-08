@@ -56,8 +56,6 @@ suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"JubJub_SHA-512_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }

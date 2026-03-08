@@ -7,8 +7,8 @@
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::PrimeField;
 use core::iter::Chain;
@@ -20,6 +20,9 @@ use ark_std::vec::Vec;
 
 const SECURITY_BITS: usize = 128;
 
+/// Challenge encoding length in bytes (128-bit security).
+pub const CHALLENGE_LEN: usize = SECURITY_BITS / 8;
+
 /// This function computes the length in bytes that a hash function should output
 /// for hashing an element of type `Field`.
 /// See section 5.1 and 5.3 of the
@@ -30,9 +33,7 @@ const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
     // ceil(log(p)) + security_parameter
     let base_field_size_with_security_padding_in_bits = base_field_size_in_bits + sec_bits;
     // ceil( (ceil(log(p)) + security_parameter) / 8)
-    let bytes_per_base_field_elem =
-        ((base_field_size_with_security_padding_in_bits + 7) / 8) as u64;
-    bytes_per_base_field_elem as usize
+    base_field_size_with_security_padding_in_bits.div_ceil(8)
 }
 
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
@@ -47,7 +48,7 @@ pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     let mut max_buf = [0u8; 256];
     let buf = &mut max_buf[0..len_per_base_elem];
     t.squeeze_raw(buf);
-    ScalarField::<S>::from_le_bytes_mod_order(&buf)
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
 
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
@@ -253,7 +254,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string

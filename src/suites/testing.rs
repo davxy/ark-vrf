@@ -8,8 +8,6 @@ pub struct TestSuite;
 
 impl Suite for TestSuite {
     const SUITE_ID: &'static [u8] = b"Testing_SHA-256_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }

@@ -57,8 +57,6 @@ type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Secp256r1_SHA-256_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
     type Affine = ark_secp256r1::Affine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }

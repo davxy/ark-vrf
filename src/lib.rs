@@ -83,7 +83,6 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 
-use generic_array::typenum::Unsigned;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
@@ -146,11 +145,6 @@ impl From<ark_serialize::SerializationError> for Error {
 pub trait Suite: Copy {
     /// Suite identifier (aka `suite_string` in RFC-9381)
     const SUITE_ID: &'static [u8];
-
-    /// Challenge encoded length.
-    ///
-    /// Must be at least equal to the Hash length.
-    const CHALLENGE_LEN: usize;
 
     /// Curve point in affine representation.
     ///
@@ -287,16 +281,14 @@ impl<S: Suite> Secret<S> {
     /// properties.
     pub fn from_seed(seed: &[u8]) -> Self {
         let mut cnt = 0_u8;
+        let zero = ScalarField::<S>::zero();
         let scalar = loop {
             let mut transcript = S::Transcript::new(b"ark-vrf-keygen");
             transcript.absorb_raw(seed);
             if cnt > 0 {
                 transcript.absorb_raw(&[cnt]);
             }
-            let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
-            let mut bytes = ark_std::vec![0u8; hash_len];
-            transcript.squeeze_raw(&mut bytes);
-            let scalar = ScalarField::<S>::from_le_bytes_mod_order(&bytes[..]);
+            let scalar = utils::nonce::<S>(&zero, Some(transcript.clone()));
             if !scalar.is_zero() {
                 break scalar;
             }
@@ -455,7 +447,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {

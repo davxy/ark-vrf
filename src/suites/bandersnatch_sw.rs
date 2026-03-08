@@ -57,8 +57,6 @@ type ThisSuite = BandersnatchSha512Tai;
 
 impl Suite for ThisSuite {
     const SUITE_ID: &'static [u8] = b"Bandersnatch_SW_SHA-512_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
