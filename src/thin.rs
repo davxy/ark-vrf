@@ -66,7 +66,7 @@ fn chain_ios<'a, S: ThinVrfSuite>(
         input: Input(S::generator()),
         output: Output(public),
     });
-    utils::common::ExactChain::new(ios.iter().copied(), schnorr)
+    utils::common::ExactChain::new(schnorr, ios.iter().copied())
 }
 
 /// Build a Thin-VRF transcript from public key, VRF I/O pairs, and additional data.
@@ -309,7 +309,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
+    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};

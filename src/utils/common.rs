@@ -7,8 +7,8 @@
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     AffineRepr,
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use ark_ff::PrimeField;
 use core::iter::Chain;
@@ -169,7 +169,7 @@ pub fn vrf_transcript_scalars_from_iter<S: Suite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
     let (t, mut scalars, n) = vrf_transcript_base(ios, ad);
-    (t, scalars.take_vec(n))
+    (t, scalars.take(n))
 }
 
 pub fn vrf_transcript<S: Suite>(
@@ -253,7 +253,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -349,7 +349,7 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 
     /// Collect `n` scalars into a `Vec`.
-    pub fn take_vec(&mut self, n: usize) -> Vec<ScalarField<S>> {
+    pub fn take(&mut self, n: usize) -> Vec<ScalarField<S>> {
         (0..n).map(|_| self.next()).collect()
     }
 }
@@ -398,7 +398,7 @@ fn merge_ios<S: Suite>(
             (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
         })
     } else {
-        let scalars = scalars.take_vec(n);
+        let scalars = scalars.take(n);
         let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
