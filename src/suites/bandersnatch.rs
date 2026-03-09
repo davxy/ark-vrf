@@ -13,15 +13,14 @@
 //!   - G.x = 18886178867200960497001835917649091219057080094937609519140440539760939937304
 //!   - G.y = 19188667384257783945677642223292697773471335439753913231509108946878080696678
 //!
-//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
-//!   approximately 128-bit security level.
+//! * `cLen` = 16 (128-bit security level).
 //!
 //! * The key pair generation primitive is _PK = sk * G_, with x the secret
 //!   key scalar and G the group generator. In this ciphersuite, the secret
 //!   scalar x is equal to the secret key scalar sk.
 //!
-//! * The ECVRF_nonce_generation function is as specified in Section 5.4.2.2
-//!   of RFC-9381.
+//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
+//!   adapted to use the suite's pluggable transcript.
 //!
 //! * The int_to_string function encodes into the 32 bytes little endian
 //!   representation.

@@ -50,8 +50,7 @@ pub trait PedersenSuite: IetfSuite {
 
     /// Pedersen blinding factor.
     ///
-    /// Default implementation is deterministic and loosely inspired by the RFC-9381
-    /// challenge procedure. All parameters but `secret` are public.
+    /// Default implementation is deterministic. All parameters but `secret` are public.
     fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
         use crate::utils::common::DomSep;
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);

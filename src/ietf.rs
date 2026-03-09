@@ -1,9 +1,10 @@
 //! # IETF-VRF
 //!
-//! Implementation of the ECVRF scheme defined in [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//! extended to support binding additional data to the proof.
+//! ECVRF implementation based on [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
+//! with a pluggable transcript-based Fiat-Shamir transform and support for
+//! binding additional data to the proof.
 //!
-//! The extension specification is available at:
+//! The specification is available at:
 //! <https://github.com/davxy/bandersnatch-vrf-spec>
 //!
 //! ## Usage Example
@@ -145,8 +146,8 @@ pub trait Verifier<S: IetfSuite> {
 impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// Implements the IETF VRF proving algorithm.
     ///
-    /// This follows the procedure specified in RFC-9381 section 5.1, with extensions
-    /// to support binding additional data to the proof:
+    /// Based on the procedure in RFC-9381 section 5.1, adapted to use a
+    /// transcript-based Fiat-Shamir transform and support for additional data:
     ///
     /// 1. Generate a deterministic nonce `k` based on the secret key and input
     /// 2. Compute nonce commitments `k_b` and `k_h`
@@ -154,13 +155,11 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     ///    additional data
     /// 4. Compute the response `s = k + c * secret`
     ///
-    /// **Deviation from RFC 9381:** The nonce derivation includes the output point
-    /// alongside the input, whereas the RFC only uses the input. Since `prove`
-    /// receives pre-computed outputs rather than recomputing them internally, this
-    /// binds the nonce to the specific output, preventing nonce reuse if different
-    /// outputs are ever provided for the same `(secret, input, ad)` tuple — which
-    /// would otherwise enable secret key recovery. The resulting proof remains
-    /// compatible with RFC 9381 verification.
+    /// The nonce derivation includes the output point alongside the input. Since
+    /// `prove` receives pre-computed outputs rather than recomputing them internally,
+    /// this binds the nonce to the specific output, preventing nonce reuse if
+    /// different outputs are ever provided for the same `(secret, input, ad)` tuple
+    /// — which would otherwise enable secret key recovery.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, io) = utils::vrf_transcript(ios, ad);
 
@@ -180,8 +179,8 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
 impl<S: IetfSuite> Verifier<S> for Public<S> {
     /// Implements the IETF VRF verification algorithm.
     ///
-    /// This follows the procedure specified in RFC-9381 section 5.3, with extensions
-    /// to support verifying additional data bound to the proof:
+    /// Based on the procedure in RFC-9381 section 5.3, adapted to use a
+    /// transcript-based Fiat-Shamir transform and support for additional data:
     ///
     /// 1. Compute `u = s*G - c*Y` where G is the generator and Y is the public key
     /// 2. Compute `v = s*H - c*O` where H is the input point and O is the output point

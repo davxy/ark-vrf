@@ -20,7 +20,7 @@ use ark_std::vec::Vec;
 /// value. Also determines the challenge encoding length ([`CHALLENGE_LEN`]).
 ///
 /// Set to 128, matching the security level of the curves we target (Bandersnatch,
-/// Ed25519, JubJub) and the requirement in RFC 9381 section 5.5.
+/// Ed25519, JubJub).
 pub(crate) const SECURITY_PARAMETER: usize = 128;
 
 /// Stack buffer size for small serialized objects (compressed points, scalars).

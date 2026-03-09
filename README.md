@@ -20,9 +20,9 @@ supports customization of scheme parameters.
 
 ## Supported Schemes
 
-- **IETF VRF**: Complies with ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381).
-  This is a standardized VRF implementation suitable for most applications requiring
-  verifiable randomness.
+- **IETF VRF**: Based on ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381),
+  adapted to use a pluggable transcript-based Fiat-Shamir transform and support for
+  binding additional data to the proof.
 
 - **Thin VRF**: Merges the Schnorr public-key and VRF I/O DLEQ relations into a single
   delinearized proof. Produces compact proofs (R, s) that support batch verification.
@@ -72,15 +72,17 @@ let hash_bytes = output.hash();
 
 ### IETF-VRF
 
-The IETF VRF scheme follows [RFC-9381](https://datatracker.ietf.org/doc/rfc9381)
-and provides a standardized approach to verifiable random functions.
+The IETF VRF scheme is based on [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
+adapted to use a pluggable transcript-based Fiat-Shamir transform.
 
 _Prove_
 ```rust,ignore
 use ark_vrf::ietf::Prover;
 
-// Generate a proof that binds the input, output, and auxiliary data
-let proof = secret.prove(input, output, b"aux data");
+let io = secret.vrf_io(input);
+
+// Generate a proof that binds the input-output pair and auxiliary data
+let proof = secret.prove(io, b"aux data");
 ```
 
 _Verify_
@@ -88,12 +90,8 @@ _Verify_
 use ark_vrf::ietf::Verifier;
 
 // Verify the proof against the public key
-let result = public.verify(input, output, b"aux data", &proof);
+let result = public.verify(io, b"aux data", &proof);
 assert!(result.is_ok());
-
-// Verification will fail if any parameter is modified
-let tampered_output = secret.output(Input::new(b"different input").unwrap());
-assert!(public.verify(input, tampered_output, b"aux data", &proof).is_err());
 ```
 
 ### Thin-VRF
@@ -106,14 +104,15 @@ _Prove_
 ```rust,ignore
 use ark_vrf::thin::Prover;
 
-let proof = secret.prove(input, output, b"aux data");
+let io = secret.vrf_io(input);
+let proof = secret.prove(io, b"aux data");
 ```
 
 _Verify_
 ```rust,ignore
 use ark_vrf::thin::Verifier;
 
-let result = public.verify(input, output, b"aux data", &proof);
+let result = public.verify(io, b"aux data", &proof);
 assert!(result.is_ok());
 ```
 
@@ -121,12 +120,12 @@ _Batch verify_
 ```rust,ignore
 use ark_vrf::thin::{Prover, BatchVerifier};
 
-let proof1 = secret.prove(input, output, b"data1");
-let proof2 = secret.prove(input, output, b"data2");
+let proof1 = secret.prove(io, b"data1");
+let proof2 = secret.prove(io, b"data2");
 
 let mut batch = BatchVerifier::new();
-batch.push(&public, input, output, b"data1", &proof1);
-batch.push(&public, input, output, b"data2", &proof2);
+batch.push(&public, io, b"data1", &proof1);
+batch.push(&public, io, b"data2", &proof2);
 assert!(batch.verify().is_ok());
 ```
 
@@ -138,8 +137,10 @@ _Prove_
 ```rust,ignore
 use ark_vrf::pedersen::Prover;
 
+let io = secret.vrf_io(input);
+
 // Generate a proof with a blinding factor
-let (proof, blinding) = secret.prove(input, output, b"aux data");
+let (proof, blinding) = secret.prove(io, b"aux data");
 
 // The proof includes a commitment to the public key
 let key_commitment = proof.key_commitment();
@@ -152,7 +153,7 @@ use ark_vrf::pedersen::Verifier;
 // Verify without knowing which specific public key was used.
 // Verifies that the secret key used to generate `output` is the same as
 // the secret key used to generate `proof.key_commitment()`.
-let result = Public::verify(input, output, b"aux data", &proof);
+let result = Public::verify(io, b"aux data", &proof);
 assert!(result.is_ok());
 
 // Verify the proof was created using a specific public key.
@@ -196,10 +197,12 @@ let prover_key = params.prover_key(&ring);
 // Create a prover instance for the specific position in the ring
 let prover = params.prover(prover_key, prover_key_index);
 
+let io = secret.vrf_io(input);
+
 // Generate a zero-knowledge proof that:
 // 1. The prover knows a secret key for one of the public keys in the ring
 // 2. That secret key was used to generate the VRF output
-let proof = secret.prove(input, output, b"aux data", &prover);
+let proof = secret.prove(io, b"aux data", &prover);
 ```
 
 _Verify_
@@ -216,7 +219,7 @@ let verifier = params.verifier(verifier_key);
 // 1. The proof was created by someone who knows a secret key in the ring
 // 2. The VRF output is correct for the given input
 // But it does NOT reveal which ring member created the proof
-let result = Public::verify(input, output, b"aux data", &proof, &verifier);
+let result = Public::verify(io, b"aux data", &proof, &verifier);
 ```
 
 _Verifier key from commitment_
@@ -237,7 +240,6 @@ let verifier_key = params.verifier_key_from_commitment(ring_commitment);
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
    sensible scalar multiplications, but provides side channel defenses.
 - `ring`: Ring-VRF for the curves supporting it.
-- `rfc-6979`: Support for nonce generation according to RFC-9381 section 5.4.2.1.
 - `test-vectors`: Deterministic ring-vrf proof. Useful for reproducible test vectors generation.
 
 ### Curves

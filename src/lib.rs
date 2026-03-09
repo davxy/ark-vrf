@@ -9,7 +9,7 @@
 //!
 //! ## Schemes
 //!
-//! - **IETF VRF**: ECVRF implementation compliant with [RFC9381](https://datatracker.ietf.org/doc/rfc9381)
+//! - **IETF VRF**: ECVRF implementation based on [RFC9381](https://datatracker.ietf.org/doc/rfc9381)
 //!
 //! - **Thin VRF**: Compact VRF using a delinearized DLEQ proof, derived from the PedVRF
 //!   construction in Section 4 of [BCHSV23](https://eprint.iacr.org/2023/002) with
@@ -30,11 +30,11 @@
 //!
 //! The library conditionally includes the following pre-configured suites (see features section):
 //!
-//! - **Ed25519-SHA-512-TAI**: Supports IETF and Pedersen VRF.
-//! - **Secp256r1-SHA-256-TAI**: Supports IETF and Pedersen VRF.
-//! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
-//! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Pedersen, and Ring VRF.
-//! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Pedersen, and Ring VRF.
+//! - **Ed25519-SHA-512-TAI**: Supports IETF, Thin, and Pedersen VRF.
+//! - **Secp256r1-SHA-256-TAI**: Supports IETF, Thin, and Pedersen VRF.
+//! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
+//! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
+//! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.
 //!
 //! ## Usage
 //!
@@ -132,13 +132,16 @@ impl From<ark_serialize::SerializationError> for Error {
 
 /// Defines a cipher suite.
 ///
-/// This trait can be used to easily implement a VRF which follows the guidelines
-/// given by RFC-9381 section 5.5.
+/// Configures the elliptic curve, transcript, and core operations (nonce
+/// generation, challenge derivation, hash-to-curve) for a VRF-AD scheme.
+/// The default implementations are inspired by RFC-9381 and RFC-8032 but
+/// use a pluggable [`Transcript`]-based Fiat-Shamir transform rather than
+/// the specific hash constructions prescribed by the RFC.
 ///
 /// Can be easily customized to implement more exotic VRF types by overwriting
 /// the default methods implementations.
 pub trait Suite: Copy {
-    /// Suite identifier (aka `suite_string` in RFC-9381)
+    /// Suite identifier (analogous to `suite_string` in RFC-9381).
     const SUITE_ID: &'static [u8];
 
     /// Curve point in affine representation.
@@ -184,8 +187,8 @@ pub trait Suite: Copy {
 
     /// Hash data to a curve point.
     ///
-    /// The input `data` is assumed to be `[salt||]alpha` according to the RFC-9381.
-    /// In other words, salt is not applied by this function.
+    /// The input `data` is the raw pre-image; any salting must be applied
+    /// by the caller before invoking this method.
     ///
     /// Defaults to [`utils::hash_to_curve_tai`] (try-and-increment).
     /// Override for alternative methods like [`utils::hash_to_curve_ell2_xmd`] (Elligator2).

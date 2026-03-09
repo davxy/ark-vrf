@@ -87,8 +87,8 @@ where
 ///
 /// # Parameters
 ///
-/// * `data` - The input data to hash to a curve point
-///   (defined to be `salt || alpha` according to RFC 9381)
+/// * `data` - The input data to hash to a curve point (any salting must be
+///   applied by the caller)
 /// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC 9380
 pub fn hash_to_curve_ell2_xmd<S: Suite, H>(
     data: &[u8],
@@ -164,8 +164,8 @@ impl<F: ark_ff::Field, H: digest::ExtendableOutput + Default + Clone, const SEC_
 ///
 /// # Parameters
 ///
-/// * `data` - The input data to hash to a curve point
-///   (defined to be `salt || alpha` according to RFC 9381)
+/// * `data` - The input data to hash to a curve point (any salting must be
+///   applied by the caller)
 /// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC 9380
 pub fn hash_to_curve_ell2_xof<S: Suite, H>(
     data: &[u8],

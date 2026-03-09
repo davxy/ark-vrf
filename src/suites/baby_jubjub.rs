@@ -12,15 +12,14 @@
 //!   - G.x = 19698561148652590122159747500897617769866003486955115824547446575314762165298
 //!   - G.y = 19298250018296453272277890825869354524455968081175474282777126169995084727839
 //!
-//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
-//!   approximately 128-bit security level.
+//! * `cLen` = 16 (128-bit security level).
 //!
 //! * The key pair generation primitive is `PK = sk * G`, with x the secret
 //!   key scalar and `G` the group generator. In this ciphersuite, the secret
 //!   scalar x is equal to the secret key scalar sk.
 //!
-//! * The ECVRF_nonce_generation function is as specified in Section 5.4.2.2
-//!   of RFC-9381.
+//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
+//!   adapted to use the suite's pluggable transcript.
 //!
 //! * The int_to_string function encodes into the 32 bytes little endian
 //!   representation.
@@ -41,8 +40,8 @@
 //! * The hash function Hash is SHA-512 as specified in
 //!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
 //!
-//! * The `ECVRF_encode_to_curve` function uses try and increment.
-//!   as defined by RFC 9381 section 5.4.1.1.
+//! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
+//!   by Section 5.4.1.1 of RFC-9381.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
