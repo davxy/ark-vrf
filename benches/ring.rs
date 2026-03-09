@@ -1,7 +1,7 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::UniformRand;
 use ark_vrf::{
     AffinePoint, Input, Secret, VrfIo,
     ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
@@ -21,7 +21,7 @@ struct RingSetup<S: RingSuite> {
 }
 
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> RingSetup<S> {
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let mut rng = ark_std::test_rng();
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
@@ -167,7 +167,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let batch_items: Vec<BatchItem<S>> = (0..max_batch_size)
         .into_par_iter()
         .map_init(
-            || rand_chacha::ChaCha20Rng::from_seed([0; 32]),
+            ark_std::test_rng,
             |rng, i| {
                 let input = Input::<S>::from_affine(AffinePoint::<S>::rand(rng));
                 let io = setup.secret.vrf_io(input);

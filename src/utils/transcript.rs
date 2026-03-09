@@ -50,7 +50,40 @@ pub trait Transcript: Clone + io::Read + io::Write {
     fn squeeze_deserialize<T: CanonicalDeserialize>(&mut self) -> T {
         T::deserialize_compressed(self).unwrap()
     }
+
+    /// Consume the transcript and return an RNG that draws from the squeeze stream.
+    fn to_rng(self) -> TranscriptRng<Self>
+    where
+        Self: Sized,
+    {
+        TranscriptRng(self)
+    }
 }
+
+/// RNG wrapper over a [`Transcript`] squeeze stream.
+pub struct TranscriptRng<T>(T);
+
+impl<T: Transcript> ark_std::rand::RngCore for TranscriptRng<T> {
+    fn next_u32(&mut self) -> u32 {
+        let mut b = [0u8; 4];
+        self.0.squeeze_raw(&mut b);
+        u32::from_le_bytes(b)
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut b = [0u8; 8];
+        self.0.squeeze_raw(&mut b);
+        u64::from_le_bytes(b)
+    }
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.0.squeeze_raw(dest);
+    }
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), ark_std::rand::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl<T: Transcript> ark_std::rand::CryptoRng for TranscriptRng<T> {}
 
 // ---------------------------------------------------------------------------
 // XofTranscript: single transcript implementation for all XOF-like hashers

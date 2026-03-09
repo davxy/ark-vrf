@@ -446,12 +446,12 @@ mod tests {
     #[test]
     fn vrf_output_check() {
         use ark_std::rand::SeedableRng;
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+        let mut rng = ark_std::rand::rngs::StdRng::from_seed([42; 32]);
         let secret = Secret::from_seed(TEST_SEED);
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "f5ba9c5f0d8ed2b3de008c8a00d7ccc230c86bb5daa29f266abaa0d624cf21ab";
+        let expected = "fbca07e9d34c72da587a9cf1880e71e3110378359c2c2735ae7549cc222f3ac1";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

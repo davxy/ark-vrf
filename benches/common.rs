@@ -3,7 +3,7 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{rand::SeedableRng, UniformRand};
+use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -70,7 +70,7 @@ fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
 }
 
 fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let mut rng = ark_std::test_rng();
     let point = AffinePoint::<S>::rand(&mut rng);
 
     let name = format!("{}/point_to_hash", S::SUITE_NAME);
@@ -94,7 +94,7 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed(b"bench secret seed");
     let max_size = DELINEARIZE_SIZES[DELINEARIZE_SIZES.len() - 1];
 
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let mut rng = ark_std::test_rng();
     let ios: Vec<_> = (0..max_size)
         .map(|_| {
             let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));

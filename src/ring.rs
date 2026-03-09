@@ -253,10 +253,9 @@ pub(crate) fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S> {
 impl<S: RingSuite> RingProofParams<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
-    /// Creates parameters using a deterministic `ChaCha20Rng` seeded with `seed`.
+    /// Creates parameters using a transcript-based RNG seeded with `seed`.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
-        use ark_std::rand::SeedableRng;
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        let mut rng = S::Transcript::new(&seed).to_rng();
         Self::from_rand(ring_size, &mut rng)
     }
 
@@ -1222,8 +1221,7 @@ pub(crate) mod testing {
 
             let params = <S as RingSuiteExt>::params();
 
-            use ark_std::rand::SeedableRng;
-            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
+            let rng = &mut ark_std::test_rng();
             let prover_idx = 3;
             let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
             ring_pks[prover_idx] = public.0;

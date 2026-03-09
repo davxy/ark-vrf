@@ -1,7 +1,7 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Secret};
 use bench_utils::BenchInfo;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
@@ -47,7 +47,7 @@ fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
     let public = secret.public();
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
+    let mut rng = ark_std::test_rng();
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
             let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
