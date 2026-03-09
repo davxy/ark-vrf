@@ -6,11 +6,11 @@
     "alpha": "",
     "salt": "",
     "ad": "",
-    "h": "2cbfee99880feed76ac1b8cf05cceccfa92bd24d7a1a087ea8b1ca11f200335480",
-    "gamma": "f6582f950866a3d240e08cecfb7a5e57aa4bd320021e37bceb6b3a8cc17c6a5e80",
-    "beta": "8205862eff303a6dd34051fa4b2169fffa94d1565b44d1e6282327c915467e64",
-    "proof_c": "ee36a8bd5b796032d7c89ec302f73d5c",
-    "proof_s": "39530808d91be87f76d0e03e7f207744462d22f6a4c5383d0fa7d392e40b3115"
+    "h": "d6f37fdcfba334d5854f3f80e187c3fad6375cf6fbe42b125d035d994824df3b00",
+    "gamma": "f8a88765da61a7394b9342eb7f1b3600269aea02e7df490b7dd514d458c7b43200",
+    "beta": "60b355d4b7e08c00f889640cf71e3a722eb5de8440619c6a3617e5f36ddd7e69",
+    "proof_c": "12349bf02f7bb502dd4c4fa906599fba",
+    "proof_s": "2620cb0d0c6b36c9b51b92601ced0fb8dd6817da86eaf9642a3591f8df9e6200"
   },
   {
     "comment": "bandersnatch_sw_sha-512_tai_ietf - vector-2",
@@ -32,11 +32,11 @@
     "alpha": "",
     "salt": "",
     "ad": "0b8c",
-    "h": "2cbfee99880feed76ac1b8cf05cceccfa92bd24d7a1a087ea8b1ca11f200335480",
-    "gamma": "d0a668fc3d115f1032fc88d42d08134409dc5498d946556af836823a75c40f5b80",
-    "beta": "2ce9ed51c3d89021a13512ce896b1405bd667f2d6769e37e214c71f6718e7c45",
-    "proof_c": "59324ec3b3c39587f5f0d8d4a40be0dc",
-    "proof_s": "30a081e1daba3901aa3cebbab45adca6a46d36e20f217ea7a3f2c21f5549b906"
+    "h": "d6f37fdcfba334d5854f3f80e187c3fad6375cf6fbe42b125d035d994824df3b00",
+    "gamma": "4b8a76997ec6b06665ddc15d39f71237d081df66d833177c64f37e2cae5c032480",
+    "beta": "1d0ba957407ebb0a70a63ef3ef74e355b7e29daf435ab10d02de98c01609ed44",
+    "proof_c": "2abd54cf9e05704d62205d9050e16f14",
+    "proof_s": "93aa2a4f27ebe1d16478c345560b299fb81d225cc42196fd622a9f751b9a0f10"
   },
   {
     "comment": "bandersnatch_sw_sha-512_tai_ietf - vector-4",
@@ -45,11 +45,11 @@
     "alpha": "73616d706c65",
     "salt": "",
     "ad": "",
-    "h": "8591e83e3ed65d6f830998b7cfc9a177abc5238e80c51bd3b367676b89a7c55f80",
-    "gamma": "9806b69a13adf284faed0b91bb40c882a02df4b748b22632ca6c6f1c4da6781980",
-    "beta": "81aef8e0bc0861d5279b7d553e45657dfc1728d446e8f64cf20eb339d16fe794",
-    "proof_c": "42fe815d3e32caa70cc187dec22dc8cd",
-    "proof_s": "a0e858c24dbaa1b4331597dc80823ec746d50f3059ec194eeea045f41aebf010"
+    "h": "405679299c017d267e2a64b22ce7cd3ed6992232e20173bdf67c96784b72db4d00",
+    "gamma": "e11689c1101890e6e24cbde6e9536134204301b76eb143dddd707d0cf53c5f7300",
+    "beta": "c8ecae85732aec38ce8f87563429f439ec71a66b4ac1e9f7dfd24e7e72c76430",
+    "proof_c": "6ca364ee74f7c3650fafcde46301770e",
+    "proof_s": "e42a277e2e0aea80d7d538448d524793ae9610e058d0d28be91aa46a32adea09"
   },
   {
     "comment": "bandersnatch_sw_sha-512_tai_ietf - vector-5",
