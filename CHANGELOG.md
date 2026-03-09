@@ -9,12 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pluggable `Transcript` trait for Fiat-Shamir transform, replacing the previous
+  hard-coded hash constructions. Provided implementations: `HashTranscript` (SHA-512,
+  SHA-256 via counter-mode XOF), `Blake3Transcript`, `Shake128Transcript`.
+- `Suite::Transcript` associated type. Nonce generation, challenge derivation,
+  and other hash-based operations now go through the transcript abstraction.
 - Thin VRF scheme. Merges the Schnorr public-key and VRF I/O DLEQ into a
   single delinearized relation with a Schnorr-like proof (R, s). Supports batch
   verification via randomized multi-scalar multiplication.
 - Multi-input IETF VRF using delinearized DLEQ. Proves multiple input-output
   pairs with a single proof via `delinearize` folding. N=1 is byte-identical
-  to standard RFC-9381. N=0 reduces to a Schnorr signature over additional data.
+  to single-pair proving. N=0 reduces to a Schnorr signature over additional data.
 
 ### Fixed
 
@@ -29,11 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `Suite::nonce` signature now takes an additional `ad: &[u8]` parameter.
-  This is a breaking change for custom `Suite` implementations that override `nonce`.
-- Reduce `CHALLENGE_LEN` from 32 to 16 for all built-in suites.
-  This matches the value prescribed by RFC-9381 for curves with comparable security
-  level (128 bits), and reduces proof size without affecting security.
+- `Suite` trait now requires a `Transcript` associated type and `nonce`/`challenge`
+  methods use the transcript rather than raw hash functions. This is a breaking change
+  for custom `Suite` implementations.
+- Removed `CHALLENGE_LEN` from the `Suite` trait; it is now a module-level constant
+  (`utils::common::CHALLENGE_LEN`) fixed at 16 bytes (128-bit security).
 - Challenge and blinding factor decoding now use suite codec (`scalar_decode`)
   instead of `from_be_bytes_mod_order`, so endianness follows the suite configuration.
 

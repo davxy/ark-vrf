@@ -11,7 +11,7 @@ pub mod transcript;
 /// Standard cryptographic procedures.
 ///
 /// Includes challenge generation, nonce derivation, and point-to-hash conversions
-/// following RFC-9381 and other standards.
+/// inspired by RFC-9381 and RFC-8032.
 pub use common::*;
 
 /// Hash-to-curve implementations (TAI, Elligator2 with XMD/XOF).
