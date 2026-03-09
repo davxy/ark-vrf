@@ -3,7 +3,7 @@
 use ark_std::{vec, vec::Vec};
 
 use crate::*;
-use ark_std::{UniformRand, rand::RngCore};
+use ark_std::{rand::RngCore, UniformRand};
 
 pub const TEST_SEED: &[u8] = b"seed";
 
@@ -18,7 +18,7 @@ pub fn point_encode<S: Suite>(pt: &AffinePoint<S>) -> Vec<u8> {
 
 /// Point decode.
 pub fn point_decode<S: Suite>(buf: &[u8]) -> Result<AffinePoint<S>, Error> {
-    AffinePoint::<S>::deserialize_compressed_unchecked(buf).map_err(Into::into)
+    AffinePoint::<S>::deserialize_compressed(buf).map_err(Into::into)
 }
 
 /// Scalar encode.

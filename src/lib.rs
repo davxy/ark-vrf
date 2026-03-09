@@ -115,10 +115,6 @@ pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 /// Suite's curve configuration type.
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
-/// Suite's hash output type.
-pub type HashOutput<S> =
-    generic_array::GenericArray<u8, <<S as Suite>::Transcript as Transcript>::OutputSize>;
-
 /// Overarching errors.
 #[derive(Debug)]
 pub enum Error {
@@ -456,7 +452,7 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "8e3c404047f75f83f2517f67112f513219a8d57555d8cdee1971016c715e181d";
+        let expected = "56cdbd774cc0faabe19140541b95febb73fb6ab3548140e38842117ef865f38c";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

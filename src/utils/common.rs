@@ -7,18 +7,37 @@
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::PrimeField;
 use core::iter::Chain;
 use digest::{Digest, FixedOutputReset};
-use generic_array::typenum::Unsigned;
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
 const SECURITY_BITS: usize = 128;
+
+/// Stack buffer size for small serialized objects (compressed points, scalars).
+const STACK_BUF_SIZE: usize = 128;
+
+/// Declare a zeroed `[u8; STACK_BUF_SIZE]` array and bind `$name` to a
+/// `&mut [u8]` slice of the first `$len` bytes.
+///
+/// Intended for small serialized objects such as single compressed points
+/// or scalar field elements. Panics if `$len > STACK_BUF_SIZE`.
+macro_rules! stack_buf {
+    ($name:ident, $len:expr) => {
+        let _sb_len: usize = $len;
+        assert!(
+            _sb_len <= STACK_BUF_SIZE,
+            "requested {_sb_len} bytes exceeds STACK_BUF_SIZE ({STACK_BUF_SIZE})"
+        );
+        let mut _sb_backing = [0u8; STACK_BUF_SIZE];
+        let $name = &mut _sb_backing[.._sb_len];
+    };
+}
 
 /// Challenge encoding length in bytes (128-bit security).
 pub const CHALLENGE_LEN: usize = SECURITY_BITS / 8;
@@ -37,16 +56,7 @@ const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
 }
 
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
-    let len_per_base_elem = get_len_per_elem::<S>(SECURITY_BITS);
-    if len_per_base_elem > 256 {
-        panic!(
-            "PrimeField larger than {} bits (got {})!",
-            256 * 8,
-            len_per_base_elem * 8
-        );
-    }
-    let mut max_buf = [0u8; 256];
-    let buf = &mut max_buf[0..len_per_base_elem];
+    stack_buf!(buf, get_len_per_elem::<S>(SECURITY_BITS));
     t.squeeze_raw(buf);
     ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
@@ -109,8 +119,9 @@ pub(crate) enum DomSep {
     Challenge = 0x02,
     PointToHash = 0x03,
     Delinearize = 0x04,
+    NonceExpand = 0x05,
+    Nonce = 0x06,
     PedersenBlinding = 0xCC,
-    End = 0x00,
 }
 
 /// Common VRF transcript construction: absorb I/O pairs, fork for
@@ -201,17 +212,18 @@ pub fn vrf_transcript_scalars<S: Suite>(
 /// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
 /// * `None` - If no valid point could be found after 256 attempts.
 pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
+    let base_len = BaseField::<S>::default().serialized_size(ark_serialize::Compress::Yes);
+    stack_buf!(hash, base_len);
+
     let mut prefix = S::Transcript::new(S::SUITE_ID);
     prefix.absorb_raw(&[DomSep::HashToCurveTai as u8]);
     prefix.absorb_raw(data);
 
-    let hash_len = <S::Transcript as Transcript>::OutputSize::to_usize();
-    for ctr in 0..=255u8 {
+    for ctr in 0..=255_u8 {
         let mut t = prefix.clone();
-        t.absorb_raw(&[ctr, DomSep::End as u8]);
-        let mut hash = ark_std::vec![0u8; hash_len];
-        t.squeeze_raw(&mut hash);
-        let Some(pt) = AffinePoint::<S>::from_random_bytes(&hash) else {
+        t.absorb_raw(&[ctr]);
+        t.squeeze_raw(hash);
+        let Some(pt) = AffinePoint::<S>::from_random_bytes(hash) else {
             continue;
         };
         let pt = pt.clear_cofactor();
@@ -254,7 +266,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
     use ark_ff::field_hashers::DefaultFieldHasher;
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
@@ -288,7 +300,6 @@ pub fn challenge<S: Suite>(
     for p in pts {
         t.absorb_serialize(*p);
     }
-    t.absorb_raw(&[DomSep::End as u8]);
     challenge_scalar::<S>(&mut t)
 }
 
@@ -312,7 +323,6 @@ pub fn point_to_hash<S: Suite, const N: usize>(
     let mut t = S::Transcript::new(S::SUITE_ID);
     t.absorb_raw(&[DomSep::PointToHash as u8]);
     t.absorb_serialize(&*pt);
-    t.absorb_raw(&[DomSep::End as u8]);
     let mut out = [0; N];
     t.squeeze_raw(&mut out);
     out
@@ -325,16 +335,19 @@ pub fn point_to_hash<S: Suite, const N: usize>(
 /// carries shared state from `vrf_transcript`, binding the nonce to the I/O
 /// pairs and additional data.
 pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -> ScalarField<S> {
-    // First hash: H(sk)
-    let mut t1 = S::Transcript::new(b"");
-    t1.absorb_serialize(sk);
-    let mut sk_hash = [0u8; 64];
-    t1.squeeze_raw(&mut sk_hash);
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
 
-    // Second hash: H(sk_hash[32..])
-    let mut t2 = transcript.unwrap_or_else(|| S::Transcript::new(b""));
-    t2.absorb_raw(&sk_hash[32..]);
-    nonce_scalar::<S>(&mut t2)
+    // Expand sk: H(transcript_state || NonceExpand || sk)
+    let mut t_exp = t.clone();
+    t_exp.absorb_raw(&[DomSep::NonceExpand as u8]);
+    t_exp.absorb_serialize(sk);
+    let mut sk_hash = [0u8; 64];
+    t_exp.squeeze_raw(&mut sk_hash);
+
+    // Derive nonce: H(transcript_state || Nonce || sk_hash[32..])
+    t.absorb_raw(&[DomSep::Nonce as u8]);
+    t.absorb_raw(&sk_hash[32..]);
+    nonce_scalar::<S>(&mut t)
 }
 
 /// Stateful stream of 128-bit delinearization scalars backed by a transcript's
@@ -367,7 +380,6 @@ pub(crate) fn delinearize_scalars<S: Suite>(
     let n = u32::try_from(n).expect("too many input-output pairs");
     transcript.absorb_raw(&[DomSep::Delinearize as u8]);
     transcript.absorb_raw(&n.to_le_bytes());
-    transcript.absorb_raw(&[DomSep::End as u8]);
     DelinearizeScalars { transcript }
 }
 

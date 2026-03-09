@@ -3,7 +3,7 @@ use ark_std::rand::{RngCore, SeedableRng};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io;
 use digest::Digest;
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::GenericArray;
 use rand_chacha::ChaCha20Rng;
 use sha2::Sha512;
 
@@ -16,9 +16,6 @@ use sha2::Sha512;
 /// Implements [`io::Write`] so that serializable types (points, scalars)
 /// can be written directly into the transcript without intermediate buffers.
 pub trait Transcript: Clone + io::Read + io::Write {
-    /// Hash output size (before RNG extension).
-    type OutputSize: ArrayLength<u8>;
-
     /// Create a new transcript with the given domain label.
     fn new(label: &[u8]) -> Self;
 
@@ -113,11 +110,14 @@ impl<H: Digest + Clone, R: SeedableRng + RngCore + Clone> io::Write for HashTran
 }
 
 impl<H: Digest + Clone, R: SeedableRng + RngCore + Clone> Transcript for HashTranscript<H, R> {
-    type OutputSize = H::OutputSize;
-
     fn new(label: &[u8]) -> Self {
+        let len = label.len() as u32;
         Self {
-            state: State::Absorbing(H::new().chain_update(label)),
+            state: State::Absorbing(
+                H::new()
+                    .chain_update(len.to_le_bytes())
+                    .chain_update(label),
+            ),
         }
     }
 
