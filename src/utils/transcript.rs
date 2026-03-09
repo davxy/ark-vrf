@@ -52,503 +52,298 @@ pub trait Transcript: Clone + io::Read + io::Write {
     }
 }
 
-/// Hash-based transcript using any `Digest` hasher with counter-mode expansion.
+// ---------------------------------------------------------------------------
+// XofTranscript: single transcript implementation for all XOF-like hashers
+// ---------------------------------------------------------------------------
+
+/// Transcript backed by any [`ExtendableOutput`](digest::ExtendableOutput) hasher.
 ///
-/// The squeeze output is produced by hashing the seed with an incrementing
+/// All provided transcript variants are built on this type:
+/// - [`HashTranscript`]: fixed-output hashes (SHA-512, SHA-256) via [`DigestXof`]
+/// - [`Blake3Transcript`]: BLAKE3 native XOF
+/// - [`Shake128Transcript`]: SHAKE128 native XOF
+pub struct XofTranscript<H: digest::ExtendableOutput + Clone> {
+    state: XofState<H>,
+}
+
+enum XofState<H: digest::ExtendableOutput + Clone> {
+    Absorbing(H),
+    Squeezing(H::Reader),
+}
+
+impl<H: digest::ExtendableOutput + Default + Clone> Default for XofState<H> {
+    fn default() -> Self {
+        Self::Absorbing(H::default())
+    }
+}
+
+impl<H: digest::ExtendableOutput + Clone> Clone for XofTranscript<H>
+where
+    H::Reader: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            state: match &self.state {
+                XofState::Absorbing(h) => XofState::Absorbing(h.clone()),
+                XofState::Squeezing(r) => XofState::Squeezing(r.clone()),
+            },
+        }
+    }
+}
+
+impl<H: digest::ExtendableOutput + Default + Clone> XofTranscript<H> {
+    /// Transition to squeezing (if needed) and return the XOF reader.
+    fn reader(&mut self) -> &mut H::Reader {
+        if let XofState::Absorbing(_) = &self.state {
+            let XofState::Absorbing(h) = core::mem::take(&mut self.state) else {
+                unreachable!()
+            };
+            self.state = XofState::Squeezing(h.finalize_xof());
+        }
+        let XofState::Squeezing(reader) = &mut self.state else {
+            unreachable!()
+        };
+        reader
+    }
+}
+
+impl<H: digest::ExtendableOutput + Default + Clone> io::Read for XofTranscript<H>
+where
+    H::Reader: Clone,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.squeeze_raw(buf);
+        Ok(buf.len())
+    }
+}
+
+impl<H: digest::ExtendableOutput + Default + Clone> io::Write for XofTranscript<H>
+where
+    H::Reader: Clone,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.absorb_raw(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<H: digest::ExtendableOutput + Default + Clone> Transcript for XofTranscript<H>
+where
+    H::Reader: Clone,
+{
+    fn new(label: &[u8]) -> Self {
+        let mut h = H::default();
+        h.update(&(label.len() as u32).to_le_bytes());
+        h.update(label);
+        Self {
+            state: XofState::Absorbing(h),
+        }
+    }
+
+    fn absorb_raw(&mut self, data: &[u8]) {
+        match &mut self.state {
+            XofState::Absorbing(h) => h.update(data),
+            XofState::Squeezing { .. } => panic!("cannot absorb after squeeze"),
+        }
+    }
+
+    fn squeeze_raw(&mut self, buf: &mut [u8]) {
+        use digest::XofReader;
+        self.reader().read(buf);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DigestXof: counter-mode XOF adapter for fixed-output hashes
+// ---------------------------------------------------------------------------
+
+/// Wraps any [`Digest`] hash into an [`ExtendableOutput`](digest::ExtendableOutput)
+/// function using counter-mode expansion.
+///
+/// ```text
+/// seed = H(absorbed_data)
+/// block_i = H(seed || i.to_le_bytes())    for i = 0, 1, 2, ...
+/// ```
+#[derive(Clone)]
+pub struct DigestXof<H: Digest + Clone>(H);
+
+impl<H: Digest + Clone> Default for DigestXof<H> {
+    fn default() -> Self {
+        Self(H::new())
+    }
+}
+
+impl<H: Digest + Clone> digest::Update for DigestXof<H> {
+    fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+}
+
+impl<H: Digest + Clone> digest::OutputSizeUser for DigestXof<H> {
+    type OutputSize = H::OutputSize;
+}
+
+impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
+    type Reader = DigestXofReader<H>;
+
+    fn finalize_xof(self) -> Self::Reader {
+        let seed = self.0.finalize();
+        let buffer = H::new()
+            .chain_update(&seed)
+            .chain_update(0u32.to_le_bytes())
+            .finalize();
+        DigestXofReader {
+            seed,
+            counter: 1,
+            buffer,
+            buf_offset: 0,
+        }
+    }
+}
+
+/// Counter-mode XOF reader for [`DigestXof`].
+#[derive(Clone)]
+pub struct DigestXofReader<H: Digest> {
+    seed: GenericArray<u8, H::OutputSize>,
+    counter: u32,
+    buffer: GenericArray<u8, H::OutputSize>,
+    buf_offset: usize,
+}
+
+impl<H: Digest> digest::XofReader for DigestXofReader<H> {
+    fn read(&mut self, buf: &mut [u8]) {
+        let mut remaining = buf;
+        while !remaining.is_empty() {
+            if self.buf_offset >= self.buffer.len() {
+                self.buffer = H::new()
+                    .chain_update(&self.seed)
+                    .chain_update(self.counter.to_le_bytes())
+                    .finalize();
+                self.counter += 1;
+                self.buf_offset = 0;
+            }
+            let avail = self.buffer.len() - self.buf_offset;
+            let take = avail.min(remaining.len());
+            remaining[..take]
+                .copy_from_slice(&self.buffer[self.buf_offset..self.buf_offset + take]);
+            self.buf_offset += take;
+            remaining = &mut remaining[take..];
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Type aliases
+// ---------------------------------------------------------------------------
+
+/// Hash-based transcript using counter-mode expansion for fixed-output hashes.
+///
+/// The squeeze output is produced by hashing a seed with an incrementing
 /// counter, generating `H::OutputSize` bytes per block:
 ///
 /// ```text
 /// seed = H(label || absorbed_data)
 /// block_i = H(seed || i.to_le_bytes())    for i = 0, 1, 2, ...
 /// ```
-///
-/// Blocks are served sequentially, providing an unlimited output stream.
-#[derive(Clone)]
-pub struct HashTranscript<H: Digest + Clone = Sha512> {
-    state: State<H>,
-}
+pub type HashTranscript<H = Sha512> = XofTranscript<DigestXof<H>>;
 
-#[derive(Clone)]
-enum State<H: Digest + Clone> {
-    Absorbing(H),
-    Squeezing {
-        seed: GenericArray<u8, H::OutputSize>,
-        counter: u32,
-        buffer: GenericArray<u8, H::OutputSize>,
-        buf_offset: usize,
-    },
-}
-
-impl<H: Digest + Clone> io::Read for HashTranscript<H> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.squeeze_raw(buf);
-        Ok(buf.len())
-    }
-}
-
-impl<H: Digest + Clone> io::Write for HashTranscript<H> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.absorb_raw(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<H: Digest + Clone> Transcript for HashTranscript<H> {
-    fn new(label: &[u8]) -> Self {
-        let len = label.len() as u32;
-        Self {
-            state: State::Absorbing(H::new().chain_update(len.to_le_bytes()).chain_update(label)),
-        }
-    }
-
-    fn absorb_raw(&mut self, data: &[u8]) {
-        match &mut self.state {
-            State::Absorbing(hasher) => hasher.update(data),
-            State::Squeezing { .. } => panic!("cannot absorb after squeeze"),
-        }
-    }
-
-    fn squeeze_raw(&mut self, buf: &mut [u8]) {
-        // Transition from absorbing to squeezing on first call.
-        if let State::Absorbing(_) = &self.state {
-            let old = core::mem::replace(&mut self.state, State::Absorbing(H::new()));
-            let hasher = match old {
-                State::Absorbing(h) => h,
-                _ => unreachable!(),
-            };
-            let seed = hasher.finalize();
-            let buffer = H::new()
-                .chain_update(&seed)
-                .chain_update(0u32.to_le_bytes())
-                .finalize();
-            self.state = State::Squeezing {
-                seed,
-                counter: 1,
-                buffer,
-                buf_offset: 0,
-            };
-        }
-
-        let State::Squeezing {
-            seed,
-            counter,
-            buffer,
-            buf_offset,
-        } = &mut self.state
-        else {
-            unreachable!()
-        };
-
-        let mut remaining = buf;
-        while !remaining.is_empty() {
-            if *buf_offset >= buffer.len() {
-                *buffer = H::new()
-                    .chain_update(&*seed)
-                    .chain_update(counter.to_le_bytes())
-                    .finalize();
-                *counter += 1;
-                *buf_offset = 0;
-            }
-            let avail = buffer.len() - *buf_offset;
-            let take = avail.min(remaining.len());
-            remaining[..take].copy_from_slice(&buffer[*buf_offset..*buf_offset + take]);
-            *buf_offset += take;
-            remaining = &mut remaining[take..];
-        }
-    }
-}
-
-/// BLAKE3-based transcript using the native XOF (extendable output) mode.
-///
-/// BLAKE3's `finalize_xof()` produces an arbitrary-length output stream
-/// directly, so no counter-mode expansion is needed.
+/// BLAKE3 native XOF transcript.
 #[cfg(feature = "blake3")]
-#[derive(Clone)]
-pub struct Blake3Transcript {
-    state: Blake3State,
-}
+pub type Blake3Transcript = XofTranscript<blake3::Hasher>;
 
-#[cfg(feature = "blake3")]
-#[derive(Clone)]
-enum Blake3State {
-    Absorbing(blake3::Hasher),
-    Squeezing(blake3::OutputReader),
-}
-
-#[cfg(feature = "blake3")]
-impl io::Read for Blake3Transcript {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.squeeze_raw(buf);
-        Ok(buf.len())
-    }
-}
-
-#[cfg(feature = "blake3")]
-impl io::Write for Blake3Transcript {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.absorb_raw(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-#[cfg(feature = "blake3")]
-impl Transcript for Blake3Transcript {
-    fn new(label: &[u8]) -> Self {
-        let mut h = blake3::Hasher::new();
-        h.update(&(label.len() as u32).to_le_bytes());
-        h.update(label);
-        Self {
-            state: Blake3State::Absorbing(h),
-        }
-    }
-
-    fn absorb_raw(&mut self, data: &[u8]) {
-        match &mut self.state {
-            Blake3State::Absorbing(h) => h.update(data),
-            Blake3State::Squeezing { .. } => panic!("cannot absorb after squeeze"),
-        };
-    }
-
-    fn squeeze_raw(&mut self, buf: &mut [u8]) {
-        if let Blake3State::Absorbing(_) = &self.state {
-            let old = core::mem::replace(
-                &mut self.state,
-                Blake3State::Absorbing(blake3::Hasher::new()),
-            );
-            let h = match old {
-                Blake3State::Absorbing(h) => h,
-                _ => unreachable!(),
-            };
-            self.state = Blake3State::Squeezing(h.finalize_xof());
-        }
-        match &mut self.state {
-            Blake3State::Squeezing(reader) => reader.fill(buf),
-            _ => unreachable!(),
-        }
-    }
-}
-
-/// SHAKE128-based transcript using the native XOF (extendable output) mode.
-///
-/// SHAKE128's XOF mode produces an arbitrary-length output stream
-/// directly, so no counter-mode expansion is needed.
+/// SHAKE128 native XOF transcript.
 #[cfg(feature = "shake128")]
-#[derive(Clone)]
-pub struct Shake128Transcript {
-    state: Shake128State,
-}
-
-#[cfg(feature = "shake128")]
-#[derive(Clone)]
-enum Shake128State {
-    Absorbing(sha3::Shake128),
-    Squeezing(sha3::Shake128Reader),
-}
-
-#[cfg(feature = "shake128")]
-impl io::Read for Shake128Transcript {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.squeeze_raw(buf);
-        Ok(buf.len())
-    }
-}
-
-#[cfg(feature = "shake128")]
-impl io::Write for Shake128Transcript {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.absorb_raw(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-#[cfg(feature = "shake128")]
-impl Transcript for Shake128Transcript {
-    fn new(label: &[u8]) -> Self {
-        use sha3::digest::Update;
-        let h = sha3::Shake128::default()
-            .chain(&(label.len() as u32).to_le_bytes())
-            .chain(label);
-        Self {
-            state: Shake128State::Absorbing(h),
-        }
-    }
-
-    fn absorb_raw(&mut self, data: &[u8]) {
-        use sha3::digest::Update;
-        match &mut self.state {
-            Shake128State::Absorbing(h) => h.update(data),
-            Shake128State::Squeezing { .. } => panic!("cannot absorb after squeeze"),
-        };
-    }
-
-    fn squeeze_raw(&mut self, buf: &mut [u8]) {
-        use sha3::digest::{ExtendableOutput, XofReader};
-        if let Shake128State::Absorbing(_) = &self.state {
-            let old = core::mem::replace(
-                &mut self.state,
-                Shake128State::Absorbing(sha3::Shake128::default()),
-            );
-            let h = match old {
-                Shake128State::Absorbing(h) => h,
-                _ => unreachable!(),
-            };
-            self.state = Shake128State::Squeezing(h.finalize_xof());
-        }
-        match &mut self.state {
-            Shake128State::Squeezing(reader) => reader.read(buf),
-            _ => unreachable!(),
-        }
-    }
-}
+pub type Shake128Transcript = XofTranscript<sha3::Shake128>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    macro_rules! transcript_tests {
+        ($T:ty, $mod:ident) => {
+            mod $mod {
+                use super::super::*;
 
-    #[test]
-    fn deterministic_squeeze() {
-        let mut t1 = HashTranscript::<sha2::Sha512>::new(b"test");
-        t1.absorb_raw(b"hello");
-        let mut out1 = [0u8; 128];
-        t1.squeeze_raw(&mut out1);
+                #[test]
+                fn deterministic_squeeze() {
+                    let mut t1 = <$T>::new(b"test");
+                    t1.absorb_raw(b"hello");
+                    let mut out1 = [0u8; 64];
+                    t1.squeeze_raw(&mut out1);
 
-        let mut t2 = HashTranscript::<sha2::Sha512>::new(b"test");
-        t2.absorb_raw(b"hello");
-        let mut out2 = [0u8; 128];
-        t2.squeeze_raw(&mut out2);
-        assert_eq!(out1, out2);
+                    let mut t2 = <$T>::new(b"test");
+                    t2.absorb_raw(b"hello");
+                    let mut out2 = [0u8; 64];
+                    t2.squeeze_raw(&mut out2);
+                    assert_eq!(out1, out2);
+                }
+
+                #[test]
+                fn incremental_matches_bulk() {
+                    let mut t1 = <$T>::new(b"inc");
+                    t1.absorb_raw(b"data");
+                    let mut t2 = t1.clone();
+
+                    let mut bulk = [0u8; 100];
+                    t1.squeeze_raw(&mut bulk);
+
+                    let mut inc = [0u8; 100];
+                    t2.squeeze_raw(&mut inc[..10]);
+                    t2.squeeze_raw(&mut inc[10..64]);
+                    t2.squeeze_raw(&mut inc[64..]);
+                    assert_eq!(bulk, inc);
+                }
+
+                #[test]
+                fn clone_produces_independent_streams() {
+                    let mut t = <$T>::new(b"clone");
+                    t.absorb_raw(b"shared");
+
+                    let mut fork = t.clone();
+                    t.absorb_raw(b"branch_a");
+                    fork.absorb_raw(b"branch_b");
+
+                    let mut a = [0u8; 32];
+                    let mut b = [0u8; 32];
+                    t.squeeze_raw(&mut a);
+                    fork.squeeze_raw(&mut b);
+                    assert_ne!(a, b);
+                }
+
+                #[test]
+                #[should_panic(expected = "cannot absorb after squeeze")]
+                fn absorb_after_squeeze_panics() {
+                    let mut t = <$T>::new(b"panic");
+                    t.absorb_raw(b"x");
+                    let mut out = [0u8; 1];
+                    t.squeeze_raw(&mut out);
+                    t.absorb_raw(b"y");
+                }
+
+                #[test]
+                fn different_labels_produce_different_output() {
+                    let mut t1 = <$T>::new(b"label_a");
+                    let mut t2 = <$T>::new(b"label_b");
+                    t1.absorb_raw(b"same");
+                    t2.absorb_raw(b"same");
+                    let mut o1 = [0u8; 32];
+                    let mut o2 = [0u8; 32];
+                    t1.squeeze_raw(&mut o1);
+                    t2.squeeze_raw(&mut o2);
+                    assert_ne!(o1, o2);
+                }
+            }
+        };
     }
 
-    #[test]
-    fn squeeze_incremental_matches_bulk() {
-        let mut t1 = HashTranscript::<sha2::Sha512>::new(b"inc");
-        t1.absorb_raw(b"data");
-
-        let mut t2 = t1.clone();
-
-        // Squeeze 100 bytes in one go (spans multiple 64-byte blocks).
-        let mut bulk = [0u8; 100];
-        t1.squeeze_raw(&mut bulk);
-
-        // Squeeze 100 bytes in chunks.
-        let mut inc = [0u8; 100];
-        t2.squeeze_raw(&mut inc[..10]);
-        t2.squeeze_raw(&mut inc[10..64]);
-        t2.squeeze_raw(&mut inc[64..]);
-        assert_eq!(bulk, inc);
-    }
-
-    #[test]
-    fn clone_produces_independent_streams() {
-        let mut t = HashTranscript::<sha2::Sha512>::new(b"clone");
-        t.absorb_raw(b"shared");
-
-        let mut fork = t.clone();
-        t.absorb_raw(b"branch_a");
-        fork.absorb_raw(b"branch_b");
-
-        let mut a = [0u8; 32];
-        let mut b = [0u8; 32];
-        t.squeeze_raw(&mut a);
-        fork.squeeze_raw(&mut b);
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot absorb after squeeze")]
-    fn absorb_after_squeeze_panics() {
-        let mut t = HashTranscript::<sha2::Sha256>::new(b"panic");
-        t.absorb_raw(b"x");
-        let mut out = [0u8; 1];
-        t.squeeze_raw(&mut out);
-        t.absorb_raw(b"y");
-    }
-
-    #[test]
-    fn different_labels_produce_different_output() {
-        let mut t1 = HashTranscript::<sha2::Sha256>::new(b"label_a");
-        let mut t2 = HashTranscript::<sha2::Sha256>::new(b"label_b");
-        t1.absorb_raw(b"same");
-        t2.absorb_raw(b"same");
-        let mut o1 = [0u8; 32];
-        let mut o2 = [0u8; 32];
-        t1.squeeze_raw(&mut o1);
-        t2.squeeze_raw(&mut o2);
-        assert_ne!(o1, o2);
-    }
-
-    #[test]
-    fn sha256_works() {
-        // SHA-256 produces 32-byte blocks in counter mode.
-        let mut t = HashTranscript::<sha2::Sha256>::new(b"test");
-        t.absorb_raw(b"hello");
-        let mut out = [0u8; 64];
-        t.squeeze_raw(&mut out);
-
-        let mut t2 = HashTranscript::<sha2::Sha256>::new(b"test");
-        t2.absorb_raw(b"hello");
-        let mut out2 = [0u8; 64];
-        t2.squeeze_raw(&mut out2);
-        assert_eq!(out, out2);
-    }
-
-    #[cfg(feature = "shake128")]
-    mod shake128_tests {
-        use super::super::*;
-
-        #[test]
-        fn deterministic_squeeze() {
-            let mut t1 = Shake128Transcript::new(b"test");
-            t1.absorb_raw(b"hello");
-            let mut out1 = [0u8; 64];
-            t1.squeeze_raw(&mut out1);
-
-            let mut t2 = Shake128Transcript::new(b"test");
-            t2.absorb_raw(b"hello");
-            let mut out2 = [0u8; 64];
-            t2.squeeze_raw(&mut out2);
-            assert_eq!(out1, out2);
-        }
-
-        #[test]
-        fn incremental_matches_bulk() {
-            let mut t1 = Shake128Transcript::new(b"inc");
-            t1.absorb_raw(b"data");
-            let mut t2 = t1.clone();
-
-            let mut bulk = [0u8; 48];
-            t1.squeeze_raw(&mut bulk);
-
-            let mut inc = [0u8; 48];
-            t2.squeeze_raw(&mut inc[..10]);
-            t2.squeeze_raw(&mut inc[10..32]);
-            t2.squeeze_raw(&mut inc[32..]);
-            assert_eq!(bulk, inc);
-        }
-
-        #[test]
-        fn clone_produces_independent_streams() {
-            let mut t = Shake128Transcript::new(b"clone");
-            t.absorb_raw(b"shared");
-
-            let mut fork = t.clone();
-            t.absorb_raw(b"branch_a");
-            fork.absorb_raw(b"branch_b");
-
-            let mut a = [0u8; 32];
-            let mut b = [0u8; 32];
-            t.squeeze_raw(&mut a);
-            fork.squeeze_raw(&mut b);
-            assert_ne!(a, b);
-        }
-
-        #[test]
-        #[should_panic(expected = "cannot absorb after squeeze")]
-        fn absorb_after_squeeze_panics() {
-            let mut t = Shake128Transcript::new(b"panic");
-            t.absorb_raw(b"x");
-            let mut out = [0u8; 1];
-            t.squeeze_raw(&mut out);
-            t.absorb_raw(b"y");
-        }
-
-        #[test]
-        fn different_labels_produce_different_output() {
-            let mut t1 = Shake128Transcript::new(b"label_a");
-            let mut t2 = Shake128Transcript::new(b"label_b");
-            t1.absorb_raw(b"same");
-            t2.absorb_raw(b"same");
-            let mut o1 = [0u8; 32];
-            let mut o2 = [0u8; 32];
-            t1.squeeze_raw(&mut o1);
-            t2.squeeze_raw(&mut o2);
-            assert_ne!(o1, o2);
-        }
-    }
+    transcript_tests!(HashTranscript<sha2::Sha512>, hash_sha512);
+    transcript_tests!(HashTranscript<sha2::Sha256>, hash_sha256);
 
     #[cfg(feature = "blake3")]
-    mod blake3_tests {
-        use super::super::*;
+    transcript_tests!(Blake3Transcript, blake3_xof);
 
-        #[test]
-        fn deterministic_squeeze() {
-            let mut t1 = Blake3Transcript::new(b"test");
-            t1.absorb_raw(b"hello");
-            let mut out1 = [0u8; 64];
-            t1.squeeze_raw(&mut out1);
-
-            let mut t2 = Blake3Transcript::new(b"test");
-            t2.absorb_raw(b"hello");
-            let mut out2 = [0u8; 64];
-            t2.squeeze_raw(&mut out2);
-            assert_eq!(out1, out2);
-        }
-
-        #[test]
-        fn incremental_matches_bulk() {
-            let mut t1 = Blake3Transcript::new(b"inc");
-            t1.absorb_raw(b"data");
-            let mut t2 = t1.clone();
-
-            let mut bulk = [0u8; 48];
-            t1.squeeze_raw(&mut bulk);
-
-            let mut inc = [0u8; 48];
-            t2.squeeze_raw(&mut inc[..10]);
-            t2.squeeze_raw(&mut inc[10..32]);
-            t2.squeeze_raw(&mut inc[32..]);
-            assert_eq!(bulk, inc);
-        }
-
-        #[test]
-        fn clone_produces_independent_streams() {
-            let mut t = Blake3Transcript::new(b"clone");
-            t.absorb_raw(b"shared");
-
-            let mut fork = t.clone();
-            t.absorb_raw(b"branch_a");
-            fork.absorb_raw(b"branch_b");
-
-            let mut a = [0u8; 32];
-            let mut b = [0u8; 32];
-            t.squeeze_raw(&mut a);
-            fork.squeeze_raw(&mut b);
-            assert_ne!(a, b);
-        }
-
-        #[test]
-        #[should_panic(expected = "cannot absorb after squeeze")]
-        fn absorb_after_squeeze_panics() {
-            let mut t = Blake3Transcript::new(b"panic");
-            t.absorb_raw(b"x");
-            let mut out = [0u8; 1];
-            t.squeeze_raw(&mut out);
-            t.absorb_raw(b"y");
-        }
-
-        #[test]
-        fn different_labels_produce_different_output() {
-            let mut t1 = Blake3Transcript::new(b"label_a");
-            let mut t2 = Blake3Transcript::new(b"label_b");
-            t1.absorb_raw(b"same");
-            t2.absorb_raw(b"same");
-            let mut o1 = [0u8; 32];
-            let mut o2 = [0u8; 32];
-            t1.squeeze_raw(&mut o1);
-            t2.squeeze_raw(&mut o2);
-            assert_ne!(o1, o2);
-        }
-    }
+    #[cfg(feature = "shake128")]
+    transcript_tests!(Shake128Transcript, shake128_xof);
 }
