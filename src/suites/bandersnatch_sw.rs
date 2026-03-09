@@ -88,12 +88,10 @@ impl crate::ring::RingSuite for ThisSuite {
     };
 
     const PADDING: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "1367719337332655367193475775043467205002762327769312386653619372379936863336"
-        );
-        const Y: BaseField = MontFp!(
-            "4621036458700603848544645692949366454919324002011261784197649061986895304486"
-        );
+        const X: BaseField =
+            MontFp!("1367719337332655367193475775043467205002762327769312386653619372379936863336");
+        const Y: BaseField =
+            MontFp!("4621036458700603848544645692949366454919324002011261784197649061986895304486");
         AffinePoint::new_unchecked(X, Y)
     };
 }

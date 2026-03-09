@@ -6,12 +6,12 @@
 use crate::utils::SECURITY_PARAMETER;
 use crate::utils::transcript::Transcript;
 use crate::*;
-use ark_std::vec;
 use ark_ec::{
     AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use ark_ff::field_hashers::HashToField;
+use ark_std::vec;
 
 use super::common::DomSep;
 

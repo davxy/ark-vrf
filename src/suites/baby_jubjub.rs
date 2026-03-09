@@ -77,9 +77,8 @@ impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bn254::Bn254;
 
     const ACCUMULATOR_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "6669129932458691357860586198657391736107143432519076875941748712405384597221"
-        );
+        const X: BaseField =
+            MontFp!("6669129932458691357860586198657391736107143432519076875941748712405384597221");
         const Y: BaseField = MontFp!(
             "11625809356392444644011004728173448224514727028286344150545854045883675647386"
         );
@@ -87,9 +86,8 @@ impl crate::ring::RingSuite for ThisSuite {
     };
 
     const PADDING: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "5381465584630161533989109355952725225176638961799123229460586334743704133512"
-        );
+        const X: BaseField =
+            MontFp!("5381465584630161533989109355952725225176638961799123229460586334743704133512");
         const Y: BaseField = MontFp!(
             "12563032814830002444748890561365875345984120149205930638720462573037215362837"
         );
