@@ -3,12 +3,12 @@
 //! Provides Try-And-Increment (TAI) and Elligator2 hash-to-curve methods
 //! following RFC 9380 and RFC 9381.
 
-use crate::utils::transcript::Transcript;
 use crate::utils::SECURITY_PARAMETER;
+use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     AffineRepr,
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use ark_ff::field_hashers::HashToField;
 
@@ -66,7 +66,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
     let dst: Vec<_> = [b"ECVRF_", h2c_suite_id, S::SUITE_ID].concat();
@@ -123,7 +123,7 @@ impl<F: ark_ff::Field, H: digest::ExtendableOutput + Default + Clone, const SEC_
     fn new(dst: &[u8]) -> Self {
         assert!(dst.len() <= 255, "DST longer than 255 bytes");
         let base_field_size_in_bits = F::BasePrimeField::MODULUS_BIT_SIZE as usize;
-        let len_per_base_elem = (base_field_size_in_bits + SEC_PARAM + 7) / 8;
+        let len_per_base_elem = (base_field_size_in_bits + SEC_PARAM).div_ceil(8);
         Self {
             dst: dst.to_vec(),
             len_per_base_elem,
