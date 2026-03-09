@@ -52,22 +52,23 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        let c_buf = codec::scalar_encode::<S>(&self.c);
-        if c_buf.len() < utils::common::CHALLENGE_LEN {
+        let scalar_len = ScalarField::<S>::MODULUS_BIT_SIZE.div_ceil(8) as usize;
+        if scalar_len < utils::common::CHALLENGE_LEN {
             // Encoded scalar length must be at least utils::common::CHALLENGE_LEN
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let (c, zero) = c_buf.split_at(utils::common::CHALLENGE_LEN);
-        if zero.iter().any(|&b| b != 0) {
-            return Err(ark_serialize::SerializationError::InvalidData);
-        }
-        writer.write_all(c)?;
+        let mut c_buf = [0; 128];
+        self.c
+            .serialize_compressed(&mut c_buf[..])
+            .expect("c_buf is big enough");
+        let c_buf = &c_buf[..utils::common::CHALLENGE_LEN];
+        writer.write_all(c_buf)?;
         self.s.serialize_with_mode(&mut writer, compress)?;
         Ok(())
     }
 
-    fn serialized_size(&self, _compress_always: ark_serialize::Compress) -> usize {
-        utils::common::CHALLENGE_LEN + self.s.compressed_size()
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        utils::common::CHALLENGE_LEN + self.s.serialized_size(compress)
     }
 }
 
