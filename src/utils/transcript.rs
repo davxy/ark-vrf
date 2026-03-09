@@ -113,11 +113,7 @@ impl<H: Digest + Clone, R: SeedableRng + RngCore + Clone> Transcript for HashTra
     fn new(label: &[u8]) -> Self {
         let len = label.len() as u32;
         Self {
-            state: State::Absorbing(
-                H::new()
-                    .chain_update(len.to_le_bytes())
-                    .chain_update(label),
-            ),
+            state: State::Absorbing(H::new().chain_update(len.to_le_bytes()).chain_update(label)),
         }
     }
 
