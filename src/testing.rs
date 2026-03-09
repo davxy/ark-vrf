@@ -7,6 +7,32 @@ use ark_std::{UniformRand, rand::RngCore};
 
 pub const TEST_SEED: &[u8] = b"seed";
 
+// Points and scalars encoding utilities (little-endian, compressed).
+
+/// Point encode.
+pub fn point_encode<S: Suite>(pt: &AffinePoint<S>) -> Vec<u8> {
+    let mut buf = Vec::new();
+    pt.serialize_compressed(&mut buf).unwrap();
+    buf
+}
+
+/// Point decode.
+pub fn point_decode<S: Suite>(buf: &[u8]) -> Result<AffinePoint<S>, Error> {
+    AffinePoint::<S>::deserialize_compressed_unchecked(buf).map_err(Into::into)
+}
+
+/// Scalar encode.
+pub fn scalar_encode<S: Suite>(sc: &ScalarField<S>) -> Vec<u8> {
+    let mut buf = Vec::new();
+    sc.serialize_compressed(&mut buf).unwrap();
+    buf
+}
+
+/// Scalar decode.
+pub fn scalar_decode<S: Suite>(buf: &[u8]) -> ScalarField<S> {
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
+}
+
 /// Zcash SRS file.
 ///
 /// Derived from <https://zfnd.org/conclusion-of-the-powers-of-tau-ceremony>.
@@ -145,13 +171,13 @@ pub struct TestVector<S: Suite> {
 
 impl<S: Suite> core::fmt::Debug for TestVector<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let sk = hex::encode(codec::scalar_encode::<S>(&self.sk));
-        let pk = hex::encode(codec::point_encode::<S>(&self.pk));
+        let sk = hex::encode(scalar_encode::<S>(&self.sk));
+        let pk = hex::encode(point_encode::<S>(&self.pk));
         let alpha = hex::encode(&self.alpha);
         let salt = hex::encode(&self.salt);
         let ad = hex::encode(&self.ad);
-        let h = hex::encode(codec::point_encode::<S>(&self.h));
-        let gamma = hex::encode(codec::point_encode::<S>(&self.gamma));
+        let h = hex::encode(point_encode::<S>(&self.h));
+        let gamma = hex::encode(point_encode::<S>(&self.gamma));
         let beta = hex::encode(&self.beta);
         f.debug_struct("TestVector")
             .field("comment", &self.comment)
@@ -212,13 +238,13 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     fn from_map(map: &TestVectorMap) -> Self {
         let item_bytes = |field| hex::decode(map.0.get(field).unwrap()).unwrap();
         let comment = map.0.get("comment").unwrap().to_string();
-        let sk = codec::scalar_decode::<S>(&item_bytes("sk"));
-        let pk = codec::point_decode::<S>(&item_bytes("pk")).unwrap();
+        let sk = scalar_decode::<S>(&item_bytes("sk"));
+        let pk = point_decode::<S>(&item_bytes("pk")).unwrap();
         let alpha = item_bytes("alpha");
         let salt = item_bytes("salt");
         let ad = item_bytes("ad");
-        let h = codec::point_decode::<S>(&item_bytes("h")).unwrap();
-        let gamma = codec::point_decode::<S>(&item_bytes("gamma")).unwrap();
+        let h = point_decode::<S>(&item_bytes("h")).unwrap();
+        let gamma = point_decode::<S>(&item_bytes("gamma")).unwrap();
         let beta = item_bytes("beta");
         Self {
             comment,
@@ -236,13 +262,13 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     fn to_map(&self) -> TestVectorMap {
         let items = [
             ("comment", self.comment.clone()),
-            ("sk", hex::encode(codec::scalar_encode::<S>(&self.sk))),
-            ("pk", hex::encode(codec::point_encode::<S>(&self.pk))),
+            ("sk", hex::encode(scalar_encode::<S>(&self.sk))),
+            ("pk", hex::encode(point_encode::<S>(&self.pk))),
             ("alpha", hex::encode(&self.alpha)),
             ("salt", hex::encode(&self.salt)),
             ("ad", hex::encode(&self.ad)),
-            ("h", hex::encode(codec::point_encode::<S>(&self.h))),
-            ("gamma", hex::encode(codec::point_encode::<S>(&self.gamma))),
+            ("h", hex::encode(point_encode::<S>(&self.h))),
+            ("gamma", hex::encode(point_encode::<S>(&self.gamma))),
             ("beta", hex::encode(&self.beta)),
         ];
         let map: indexmap::IndexMap<String, String> =

@@ -625,12 +625,12 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let blind = codec::scalar_decode::<S>(&map.get_bytes("blinding"));
-            let pk_com = codec::point_decode::<S>(&map.get_bytes("proof_pk_com")).unwrap();
-            let r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let ok = codec::point_decode::<S>(&map.get_bytes("proof_ok")).unwrap();
-            let s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
-            let sb = codec::scalar_decode::<S>(&map.get_bytes("proof_sb"));
+            let blind = common::scalar_decode::<S>(&map.get_bytes("blinding"));
+            let pk_com = common::point_decode::<S>(&map.get_bytes("proof_pk_com")).unwrap();
+            let r = common::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
+            let ok = common::point_decode::<S>(&map.get_bytes("proof_ok")).unwrap();
+            let s = common::scalar_decode::<S>(&map.get_bytes("proof_s"));
+            let sb = common::scalar_decode::<S>(&map.get_bytes("proof_sb"));
             let proof = Proof {
                 pk_com,
                 r,
@@ -645,27 +645,27 @@ pub(crate) mod testing {
             let items = [
                 (
                     "blinding",
-                    hex::encode(codec::scalar_encode::<S>(&self.blind)),
+                    hex::encode(common::scalar_encode::<S>(&self.blind)),
                 ),
                 (
                     "proof_pk_com",
-                    hex::encode(codec::point_encode::<S>(&self.proof.pk_com)),
+                    hex::encode(common::point_encode::<S>(&self.proof.pk_com)),
                 ),
                 (
                     "proof_r",
-                    hex::encode(codec::point_encode::<S>(&self.proof.r)),
+                    hex::encode(common::point_encode::<S>(&self.proof.r)),
                 ),
                 (
                     "proof_ok",
-                    hex::encode(codec::point_encode::<S>(&self.proof.ok)),
+                    hex::encode(common::point_encode::<S>(&self.proof.ok)),
                 ),
                 (
                     "proof_s",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof.s)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof.s)),
                 ),
                 (
                     "proof_sb",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof.sb)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof.sb)),
                 ),
             ];
             let mut map = self.base.to_map();

@@ -86,7 +86,6 @@ use ark_std::vec::Vec;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
-pub mod codec;
 pub mod ietf;
 pub mod pedersen;
 pub mod suites;

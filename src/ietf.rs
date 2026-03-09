@@ -81,7 +81,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let c = codec::scalar_decode::<S>(&c_buf);
+        let c = ScalarField::<S>::from_le_bytes_mod_order(&c_buf);
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,
@@ -333,8 +333,8 @@ pub mod testing {
 
     impl<S: IetfSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let c = hex::encode(codec::scalar_encode::<S>(&self.c));
-            let s = hex::encode(codec::scalar_encode::<S>(&self.s));
+            let c = hex::encode(common::scalar_encode::<S>(&self.c));
+            let s = hex::encode(common::scalar_encode::<S>(&self.s));
             f.debug_struct("TestVector")
                 .field("base", &self.base)
                 .field("proof_c", &c)
@@ -369,17 +369,17 @@ pub mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let c = codec::scalar_decode::<S>(&map.get_bytes("proof_c"));
-            let s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
+            let c = common::scalar_decode::<S>(&map.get_bytes("proof_c"));
+            let s = common::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self { base, c, s }
         }
 
         fn to_map(&self) -> common::TestVectorMap {
-            let buf = codec::scalar_encode::<S>(&self.c);
+            let buf = common::scalar_encode::<S>(&self.c);
             let proof_c = &buf[..utils::common::CHALLENGE_LEN];
             let items = [
                 ("proof_c", hex::encode(proof_c)),
-                ("proof_s", hex::encode(codec::scalar_encode::<S>(&self.s))),
+                ("proof_s", hex::encode(common::scalar_encode::<S>(&self.s))),
             ];
             let mut map = self.base.to_map();
             items.into_iter().for_each(|(name, value)| {

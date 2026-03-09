@@ -30,7 +30,6 @@ impl crate::testing::SuiteExt for TestSuite {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    codec_suite_tests!(TestSuite);
     ietf_suite_tests!(TestSuite);
     pedersen_suite_tests!(TestSuite);
     thin_suite_tests!(TestSuite);

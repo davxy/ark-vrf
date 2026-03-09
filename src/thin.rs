@@ -478,8 +478,8 @@ pub(crate) mod testing {
 
     impl<S: ThinVrfSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let r = hex::encode(codec::point_encode::<S>(&self.proof_r));
-            let s = hex::encode(codec::scalar_encode::<S>(&self.proof_s));
+            let r = hex::encode(common::point_encode::<S>(&self.proof_r));
+            let s = hex::encode(common::scalar_encode::<S>(&self.proof_s));
             f.debug_struct("TestVector")
                 .field("base", &self.base)
                 .field("proof_r", &r)
@@ -514,8 +514,8 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let proof_r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let proof_s = codec::scalar_decode::<S>(&map.get_bytes("proof_s"));
+            let proof_r = common::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
+            let proof_s = common::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self {
                 base,
                 proof_r,
@@ -527,11 +527,11 @@ pub(crate) mod testing {
             let items = [
                 (
                     "proof_r",
-                    hex::encode(codec::point_encode::<S>(&self.proof_r)),
+                    hex::encode(common::point_encode::<S>(&self.proof_r)),
                 ),
                 (
                     "proof_s",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof_s)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof_s)),
                 ),
             ];
             let mut map = self.base.to_map();
