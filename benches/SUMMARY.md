@@ -57,15 +57,15 @@ Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scal
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| thin_prove             | 275.2 us |
-| thin_verify            | 316.7 us |
+| thin_prove             | 310.6 us |
+| thin_verify            | 355.9 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.45 us  | 2.91 us  | 5.88 us  | 11.6 us  | 23.2 us  | 47.5 us  | 96.1 us  | 193.8 us | 385.1 us |
-| batch_verify         | 470.8 us | 545.9 us | 694.5 us | 1.67 ms  | 1.99 ms  | 3.37 ms  | 5.80 ms  | 7.76 ms  | 13.9 ms  |
+| batch_prepare        | 2.00 us  | 3.68 us  | 7.44 us  | 15.8 us  | 29.5 us  | 64.5 us  | 132.4 us | 261.2 us | 521.1 us |
+| batch_verify         | 490.2 us | 548.6 us | 692.5 us | 1.67 ms  | 2.18 ms  | 3.64 ms  | 6.24 ms  | 8.51 ms  | 15.1 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 

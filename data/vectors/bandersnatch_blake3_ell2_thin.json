@@ -1,0 +1,93 @@
+[
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-1",
+    "sk": "1c9affaf70d2b2945ccc2dadd9d185c4e1dfb9472cb184a4a5ee9f0a5b7b4d01",
+    "pk": "c167516bb9ad9db61d1640a031f93a705e2fd5ab353fdf9273a4460a3350103f",
+    "alpha": "",
+    "salt": "",
+    "ad": "",
+    "h": "49e3e16e0d210bdbea11f45b78c7e363695c04eefcbd126f702c4aa7f6a6f580",
+    "gamma": "5fd023fe4e8d5ae4cdca7724d38bcf606f1ce54e9c70271a865226b0a04ffa28",
+    "beta": "f66dd9c7904dc8f0ad7777c923a349743dd9042673bde070d8e791144dd092d3",
+    "proof_r": "1bed7abaf710bf0ad9ef69aee80aa92c819e7048b1fc1af09cace33a4096cebf",
+    "proof_s": "95edee274e8f764c5e457e3db639986c37f4df082b93fd0d02b8c41c9afe4e02"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-2",
+    "sk": "b9cc5d3a612851553700d01d7d43b8292b4d5a0777de6f576684d9ddfc54c60f",
+    "pk": "d626611dc0664936a35d53ec5cb19de649317d880d96aee787519ec31fe11b94",
+    "alpha": "0a",
+    "salt": "",
+    "ad": "",
+    "h": "ce2f4a97517108394a47af4233e34ed510d2bcb1967b56b946d359e03e46a5ae",
+    "gamma": "9cd078a52b74812ee84246dae0314a0a44540d5fb5a5c95382996555096ce7cb",
+    "beta": "2968b256c99913b65871137fb99f781ae70d3a156d400088639e6e6616e95f47",
+    "proof_r": "c212d1c91842ffe7b47a44b1943a23a44873a36cb04ba62624e3478f979e3484",
+    "proof_s": "18462f6ce3683fefc34d8c101d0a4b0a1f8ff0142a8e2fa86d40ccf0d930cb11"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-3",
+    "sk": "802365dfe43528f9ae32bf40c9049999649addf7154f931347d717a6fc273a06",
+    "pk": "c954d572630e8149e8454c9961359da2396e5298bcf900f4d99fd3232cb4395d",
+    "alpha": "",
+    "salt": "",
+    "ad": "0b8c",
+    "h": "49e3e16e0d210bdbea11f45b78c7e363695c04eefcbd126f702c4aa7f6a6f580",
+    "gamma": "089d60a56d4256ac722f721afd04e1df2d40cff3f2367c97a29c648cd46bf398",
+    "beta": "c9d275b42b684e23d10981c49a0a7f8a8a139de6649ab90d56458b31b7c2bc66",
+    "proof_r": "463d280b31561c4fd2c7b4a3dc636e385fd2d2285c8a61e0ca2aeb97a684850a",
+    "proof_s": "598e99e1b2546372c5fe71e6a04334770754999ece886ce28b9713103d5a9c09"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-4",
+    "sk": "cba48aed91be5a3cd0243356531fc628ac0bcca1861cb875a27b9ca37d890101",
+    "pk": "8237443078f9acedc3b458bbaa99c6b0fbb6fcc62937e6a8a6e90d8b9111b53c",
+    "alpha": "73616d706c65",
+    "salt": "",
+    "ad": "",
+    "h": "e54a130b51643b66e91c04364916f0b7bad73cdff95828124c9cf4d2e8893e5b",
+    "gamma": "f0bcdbeec676dc038a817591bfc318773708f07532ca01dca4568e0149215652",
+    "beta": "d68ea26e583ab6dba70a96b871d8fc728e91eac8a1ac901a98b797cb857cdad5",
+    "proof_r": "47c52b5cc0e252f14242f9e1ebaf862f9cea6941a2750e4ea2beb4e8c650a18d",
+    "proof_s": "4daba4d6399f0a880e9c25b0d13cb1cf9032a0c471ad045611520573e49af902"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-5",
+    "sk": "53f62bc9996033a87bc946b000c3f99df7aba7db15e01bb4d71ae5f327b97506",
+    "pk": "a44dd57b4edde96af6b2378958a999e1fa84e12f40116fd05eeac5cbddec5dbd",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "b582c6fae11d853dfd147f04f9005be5c00d2de71b28da245fe62a66eb004a18",
+    "beta": "203b192dcbcb070064b0fc09c1690092c2d7f17e085d35293811675b47ad787a",
+    "proof_r": "ccd67f7ab08df8240a16f75d233938e6f2fe1744e6aca0c65f9d6d1f2f783cb8",
+    "proof_s": "15409236ede7cb71fef78a4931e7846e138b87286771a165cba84da48a2b691c"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-6",
+    "sk": "53f62bc9996033a87bc946b000c3f99df7aba7db15e01bb4d71ae5f327b97506",
+    "pk": "a44dd57b4edde96af6b2378958a999e1fa84e12f40116fd05eeac5cbddec5dbd",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "b582c6fae11d853dfd147f04f9005be5c00d2de71b28da245fe62a66eb004a18",
+    "beta": "203b192dcbcb070064b0fc09c1690092c2d7f17e085d35293811675b47ad787a",
+    "proof_r": "63257517e1c3ac727552c6a36d1885427cf91f98f50de1a7a5edde43b291d3de",
+    "proof_s": "73d826524ec57674ab83d02d5ac584e3adce263d289308f0499db583fa3d5e1b"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_thin - vector-7",
+    "sk": "77c24c009858642e2daedd9c56b47efa1e9fb3295000bb2fae032294ed7f3302",
+    "pk": "f252ca550a2d0d918aafc26db5db1e612a56ba6c6bff048624e410c6697142ad",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "ca5dc37b164849a3a68a7416e4ab8d930e5de60c749806a5bb723cee5b415e50",
+    "beta": "9d4f14f4c2406d07e1b224187a059d4a4976f19a19487232594a9c9fef6f439d",
+    "proof_r": "59b7640e3733fd2df738026cb8576611201c26ae61db050c057511c479cad493",
+    "proof_s": "3f14d765c41694cdba9be2e9a5e41a384e1ed6a8d2856eeced177ae0d3decb03"
+  }
+]

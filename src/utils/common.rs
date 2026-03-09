@@ -1,23 +1,27 @@
 //! Common cryptographic utility functions.
 //!
 //! This module provides implementations of various cryptographic operations
-//! used throughout the VRF schemes, including hashing, challenge generation,
-//! and hash-to-curve algorithms.
+//! used throughout the VRF schemes, including challenge generation, nonce
+//! derivation, and delinearization.
 
 use crate::utils::transcript::Transcript;
 use crate::*;
-use ark_ec::{
-    AffineRepr,
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
-};
+use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
 use core::iter::Chain;
-use digest::{Digest, FixedOutputReset};
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
-const SECURITY_BITS: usize = 128;
+/// Target security level in bits.
+///
+/// Used to size scalar expansions (see [`expanded_scalar_len`]) and hash-to-field
+/// outputs so that modular reduction bias is at most `2^{-k}` where `k` is this
+/// value. Also determines the challenge encoding length ([`CHALLENGE_LEN`]).
+///
+/// Set to 128, matching the security level of the curves we target (Bandersnatch,
+/// Ed25519, JubJub) and the requirement in RFC 9381 section 5.5.
+pub(crate) const SECURITY_PARAMETER: usize = 128;
 
 /// Stack buffer size for small serialized objects (compressed points, scalars).
 const STACK_BUF_SIZE: usize = 128;
@@ -40,13 +44,17 @@ macro_rules! stack_buf {
 }
 
 /// Challenge encoding length in bytes (128-bit security).
-pub const CHALLENGE_LEN: usize = SECURITY_BITS / 8;
+pub const CHALLENGE_LEN: usize = SECURITY_PARAMETER / 8;
 
-/// This function computes the length in bytes that a hash function should output
-/// for hashing an element of type `Field`.
-/// See section 5.1 and 5.3 of the
-/// [IETF hash-to-curve standardization draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/)
-const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
+/// Number of bytes to squeeze for an unbiased scalar via `from_le_bytes_mod_order`.
+///
+/// Returns `ceil((ceil(log2(p)) + sec_bits) / 8)` where `p` is the scalar field
+/// modulus. The extra `sec_bits` padding ensures that the bias from modular
+/// reduction is at most `2^{-sec_bits}`.
+///
+/// See sections 5.1 and 5.3 of the
+/// [IETF hash-to-curve draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/).
+pub const fn expanded_scalar_len<S: Suite>(sec_bits: usize) -> usize {
     // ceil(log(p))
     let base_field_size_in_bits = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
     // ceil(log(p)) + security_parameter
@@ -56,13 +64,13 @@ const fn get_len_per_elem<S: Suite>(sec_bits: usize) -> usize {
 }
 
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
-    stack_buf!(buf, get_len_per_elem::<S>(SECURITY_BITS));
+    stack_buf!(buf, expanded_scalar_len::<S>(SECURITY_PARAMETER));
     t.squeeze_raw(buf);
     ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
 
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
-    let mut buf = [0u8; SECURITY_BITS / 8];
+    let mut buf = [0u8; SECURITY_PARAMETER / 8];
     t.squeeze_raw(&mut buf);
     ScalarField::<S>::from_le_bytes_mod_order(&buf)
 }
@@ -196,89 +204,6 @@ pub fn vrf_transcript_scalars<S: Suite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
     vrf_transcript_scalars_from_iter(ios.as_ref().iter().copied(), ad)
-}
-
-/// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
-///
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using the suite transcript.
-/// 2. Attempts to interpret the hash output as a curve point via
-///    [`AffineRepr::from_random_bytes`].
-/// 3. Clears the cofactor and checks the point is not the identity.
-/// 4. Repeats with an incremented counter (up to 256 attempts) if no valid
-///    point is found.
-///
-/// # Returns
-///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
-/// * `None` - If no valid point could be found after 256 attempts.
-pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
-    let base_len = BaseField::<S>::default().serialized_size(ark_serialize::Compress::Yes);
-    stack_buf!(hash, base_len);
-
-    let mut prefix = S::Transcript::new(S::SUITE_ID);
-    prefix.absorb_raw(&[DomSep::HashToCurveTai as u8]);
-    prefix.absorb_raw(data);
-
-    for ctr in 0..=255_u8 {
-        let mut t = prefix.clone();
-        t.absorb_raw(&[ctr]);
-        t.squeeze_raw(hash);
-        let Some(pt) = AffinePoint::<S>::from_random_bytes(hash) else {
-            continue;
-        };
-        let pt = pt.clear_cofactor();
-        if !pt.is_zero() {
-            return Some(pt);
-        }
-    }
-    None
-}
-
-/// Elligator2 hash-to-curve, inspired by RFC-9380 and RFC-9381 section 5.4.1.2.
-///
-/// Implements ECVRF_encode_to_curve using one of the several hash-to-curve options defined
-/// in RFC-9380. This method provides a constant-time hash-to-curve implementation that is
-/// more secure against side-channel attacks than the Try-And-Increment method.
-///
-/// The specific choice of the hash-to-curve option (called the Suite ID in RFC-9380)
-/// is given by the h2c_suite_ID_string parameter.
-///
-/// This function requires an additional `Hasher` type parameter because the arkworks
-/// hash-to-curve API (`DefaultFieldHasher`) needs a raw `Digest` type. This is separate
-/// from the suite's transcript.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point
-///   (defined to be `salt || alpha` according to RFC-9381)
-/// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC-9380
-///
-/// # Returns
-///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
-/// * `None` - If the hash-to-curve operation fails
-#[allow(unused)]
-pub fn hash_to_curve_ell2<S: Suite, H>(data: &[u8], h2c_suite_id: &[u8]) -> Option<AffinePoint<S>>
-where
-    H: Digest + Default + Clone + FixedOutputReset + 'static,
-    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
-    CurveConfig<S>: Elligator2Config,
-    Elligator2Map<CurveConfig<S>>:
-        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
-{
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
-    use ark_ff::field_hashers::DefaultFieldHasher;
-
-    // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
-    let dst: Vec<_> = [b"ECVRF_", h2c_suite_id, S::SUITE_ID].concat();
-
-    MapToCurveBasedHasher::<
-        <AffinePoint<S> as AffineRepr>::Group,
-        DefaultFieldHasher<H, 128>,
-        Elligator2Map<CurveConfig<S>>,
-    >::new(&dst)
-    .and_then(|hasher| hasher.hash(data))
-    .ok()
 }
 
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
@@ -480,14 +405,6 @@ pub fn delinearize<S: Suite>(
 mod tests {
     use super::*;
     use suites::testing::TestSuite;
-
-    #[test]
-    fn hash_to_curve_tai_works() {
-        let pt = hash_to_curve_tai::<TestSuite>(b"hello world").unwrap();
-        // Check that `pt` is in the prime subgroup
-        assert!(pt.is_on_curve());
-        assert!(pt.is_in_correct_subgroup_assuming_on_curve())
-    }
 
     #[test]
     fn vrf_transcript_merged_pair_matches_delinearize() {

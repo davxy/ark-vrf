@@ -1,0 +1,93 @@
+[
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-1",
+    "sk": "1c9affaf70d2b2945ccc2dadd9d185c4e1dfb9472cb184a4a5ee9f0a5b7b4d01",
+    "pk": "c167516bb9ad9db61d1640a031f93a705e2fd5ab353fdf9273a4460a3350103f",
+    "alpha": "",
+    "salt": "",
+    "ad": "",
+    "h": "49e3e16e0d210bdbea11f45b78c7e363695c04eefcbd126f702c4aa7f6a6f580",
+    "gamma": "5fd023fe4e8d5ae4cdca7724d38bcf606f1ce54e9c70271a865226b0a04ffa28",
+    "beta": "f66dd9c7904dc8f0ad7777c923a349743dd9042673bde070d8e791144dd092d3",
+    "proof_c": "5fc15c6ea0f8da2408fcc5d27e388987",
+    "proof_s": "ce79591fcd89b955c674f721492021d1fcd87ec2905427ae0be49398cd790d0f"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-2",
+    "sk": "b9cc5d3a612851553700d01d7d43b8292b4d5a0777de6f576684d9ddfc54c60f",
+    "pk": "d626611dc0664936a35d53ec5cb19de649317d880d96aee787519ec31fe11b94",
+    "alpha": "0a",
+    "salt": "",
+    "ad": "",
+    "h": "ce2f4a97517108394a47af4233e34ed510d2bcb1967b56b946d359e03e46a5ae",
+    "gamma": "9cd078a52b74812ee84246dae0314a0a44540d5fb5a5c95382996555096ce7cb",
+    "beta": "2968b256c99913b65871137fb99f781ae70d3a156d400088639e6e6616e95f47",
+    "proof_c": "741873ac9da42180b00fbde55b882504",
+    "proof_s": "12688c5e9b8682cf76e8fc028adc3f204687c3369c9c4727574125f7c4bac01a"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-3",
+    "sk": "802365dfe43528f9ae32bf40c9049999649addf7154f931347d717a6fc273a06",
+    "pk": "c954d572630e8149e8454c9961359da2396e5298bcf900f4d99fd3232cb4395d",
+    "alpha": "",
+    "salt": "",
+    "ad": "0b8c",
+    "h": "49e3e16e0d210bdbea11f45b78c7e363695c04eefcbd126f702c4aa7f6a6f580",
+    "gamma": "089d60a56d4256ac722f721afd04e1df2d40cff3f2367c97a29c648cd46bf398",
+    "beta": "c9d275b42b684e23d10981c49a0a7f8a8a139de6649ab90d56458b31b7c2bc66",
+    "proof_c": "497aac4b98373983bde1f63230444dfc",
+    "proof_s": "67d620a0d702f4c062321e24bbd8d397d8f54d619bb2f9d749aed3087681f913"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-4",
+    "sk": "cba48aed91be5a3cd0243356531fc628ac0bcca1861cb875a27b9ca37d890101",
+    "pk": "8237443078f9acedc3b458bbaa99c6b0fbb6fcc62937e6a8a6e90d8b9111b53c",
+    "alpha": "73616d706c65",
+    "salt": "",
+    "ad": "",
+    "h": "e54a130b51643b66e91c04364916f0b7bad73cdff95828124c9cf4d2e8893e5b",
+    "gamma": "f0bcdbeec676dc038a817591bfc318773708f07532ca01dca4568e0149215652",
+    "beta": "d68ea26e583ab6dba70a96b871d8fc728e91eac8a1ac901a98b797cb857cdad5",
+    "proof_c": "153f9a1b7c4524c59a88a357fcc02116",
+    "proof_s": "3cb1276fede33f80c8b2936699de1b4f3c7bd36b0304a43aedff9a62d5e35c10"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-5",
+    "sk": "53f62bc9996033a87bc946b000c3f99df7aba7db15e01bb4d71ae5f327b97506",
+    "pk": "a44dd57b4edde96af6b2378958a999e1fa84e12f40116fd05eeac5cbddec5dbd",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "b582c6fae11d853dfd147f04f9005be5c00d2de71b28da245fe62a66eb004a18",
+    "beta": "203b192dcbcb070064b0fc09c1690092c2d7f17e085d35293811675b47ad787a",
+    "proof_c": "02cf2a4b92a17b77be1c1099573eafdc",
+    "proof_s": "861571872dbc8a21cf10436eca66353159b89850e3778fc44b89c3768b62fe0c"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-6",
+    "sk": "53f62bc9996033a87bc946b000c3f99df7aba7db15e01bb4d71ae5f327b97506",
+    "pk": "a44dd57b4edde96af6b2378958a999e1fa84e12f40116fd05eeac5cbddec5dbd",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "b582c6fae11d853dfd147f04f9005be5c00d2de71b28da245fe62a66eb004a18",
+    "beta": "203b192dcbcb070064b0fc09c1690092c2d7f17e085d35293811675b47ad787a",
+    "proof_c": "6e843a933630763477fd9fad9e5e2723",
+    "proof_s": "ba462e912a357759b168840298a7190b45eb66b8586697bc48ad3df3767b3419"
+  },
+  {
+    "comment": "bandersnatch_blake3_ell2_ietf - vector-7",
+    "sk": "77c24c009858642e2daedd9c56b47efa1e9fb3295000bb2fae032294ed7f3302",
+    "pk": "f252ca550a2d0d918aafc26db5db1e612a56ba6c6bff048624e410c6697142ad",
+    "alpha": "42616e646572736e6174636820766563746f72",
+    "salt": "",
+    "ad": "1f42",
+    "h": "7a7fc72f10a69f08db6993d79f1c364befa985e383bfcbfc8b8955ac899ab5e9",
+    "gamma": "ca5dc37b164849a3a68a7416e4ab8d930e5de60c749806a5bb723cee5b415e50",
+    "beta": "9d4f14f4c2406d07e1b224187a059d4a4976f19a19487232594a9c9fef6f439d",
+    "proof_c": "14a2452706d2b03c31e0bfd810024d59",
+    "proof_s": "6c8443cbfb7475cbfe177514a7aa6775afcee0625ebad79c8cfd9f5afbf3e206"
+  }
+]

@@ -33,6 +33,10 @@ pub mod secp256r1;
 
 #[cfg(feature = "bandersnatch")]
 pub mod bandersnatch;
+#[cfg(all(feature = "bandersnatch", feature = "blake3"))]
+pub mod bandersnatch_blake3;
+#[cfg(all(feature = "bandersnatch", feature = "shake128"))]
+pub mod bandersnatch_shake128;
 #[cfg(feature = "bandersnatch")]
 pub mod bandersnatch_sw;
 

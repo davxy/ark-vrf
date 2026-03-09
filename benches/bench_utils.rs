@@ -58,6 +58,24 @@ impl BenchInfo for ark_vrf::suites::ed25519::Ed25519Sha512Tai {
     const NONCE_TAG: &'static str = "rfc_8032";
 }
 
+#[cfg(all(feature = "bandersnatch", feature = "blake3"))]
+impl BenchInfo for ark_vrf::suites::bandersnatch_blake3::BandersnatchBlake3Ell2 {
+    const SUITE_NAME: &'static str = "bandersnatch-blake3";
+    const DATA_TO_POINT_TAG: &'static str = "ell2_rfc_9380";
+    const CHALLENGE_TAG: &'static str = "rfc_9381";
+    const POINT_TO_HASH_TAG: &'static str = "rfc_9381";
+    const NONCE_TAG: &'static str = "rfc_8032";
+}
+
+#[cfg(all(feature = "bandersnatch", feature = "shake128"))]
+impl BenchInfo for ark_vrf::suites::bandersnatch_shake128::BandersnatchShake128Ell2 {
+    const SUITE_NAME: &'static str = "bandersnatch-shake128";
+    const DATA_TO_POINT_TAG: &'static str = "ell2_rfc_9380";
+    const CHALLENGE_TAG: &'static str = "rfc_9381";
+    const POINT_TO_HASH_TAG: &'static str = "rfc_9381";
+    const NONCE_TAG: &'static str = "rfc_8032";
+}
+
 #[cfg(feature = "secp256r1")]
 impl BenchInfo for ark_vrf::suites::secp256r1::Secp256r1Sha256Tai {
     const SUITE_NAME: &'static str = "secp256r1";
@@ -72,6 +90,10 @@ macro_rules! for_each_suite {
     ($c:expr, $fn:ident) => {
         #[cfg(feature = "bandersnatch")]
         $fn::<ark_vrf::suites::bandersnatch::BandersnatchSha512Ell2>($c);
+        #[cfg(all(feature = "bandersnatch", feature = "blake3"))]
+        $fn::<ark_vrf::suites::bandersnatch_blake3::BandersnatchBlake3Ell2>($c);
+        #[cfg(all(feature = "bandersnatch", feature = "shake128"))]
+        $fn::<ark_vrf::suites::bandersnatch_shake128::BandersnatchShake128Ell2>($c);
         #[cfg(feature = "jubjub")]
         $fn::<ark_vrf::suites::jubjub::JubJubSha512Ell2>($c);
         #[cfg(feature = "baby-jubjub")]

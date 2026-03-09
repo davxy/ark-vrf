@@ -14,10 +14,12 @@ impl Suite for TestSuite {
 
 impl PedersenSuite for TestSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("5477687224379464434972397475173922127513070182596494094025530052162096206304");
-        const Y: BaseField =
-            MontFp!("9172565768957182840993570105344204954102057020640798540535539704135195545294");
+        const X: BaseField = MontFp!(
+            "42853713924297965022036356941469589757111027906610347623015329185401484086249"
+        );
+        const Y: BaseField = MontFp!(
+            "56369105949535158264976407077432774331707120328273874628994074007990884246649"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 }

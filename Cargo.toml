@@ -19,6 +19,8 @@ digest = { version = "0.10", default-features = false }
 generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
+blake3 = { version = "1.8", default-features = false, features = ["traits-preview"], optional = true }
+sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
 w3f-ring-proof = { version = "0.0.6", default-features = false, optional = true }
 # Curves
@@ -85,6 +87,7 @@ baby-jubjub = [ "ark-ed-on-bn254", "ark-bn254/curve" ]
 secp256r1 = [ "ark-secp256r1" ]
 # Miscellanea
 ring = [ "w3f-ring-proof" ]
+shake128 = [ "sha3" ]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
@@ -96,7 +99,8 @@ parallel = [
 asm = [
   "ark-ff/asm",
   "w3f-ring-proof?/asm",
-  "sha2/asm"
+  "sha2/asm",
+  "sha3?/asm"
 ]
 # Deterministic, no-zk, ring-proof (unsafe)
 test-vectors = [ "w3f-ring-proof?/test-vectors" ]

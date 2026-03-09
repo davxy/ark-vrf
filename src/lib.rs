@@ -149,9 +149,8 @@ pub trait Suite: Copy {
 
     /// Fiat-Shamir transcript.
     ///
-    /// Provides absorb/squeeze interface with ChaCha20 extension for
-    /// unlimited output. Used for challenge generation, nonce derivation,
-    /// delinearization, and other hash-based operations.
+    /// Provides absorb/squeeze interface for challenge generation,
+    /// nonce derivation, delinearization, and other hash-based operations.
     type Transcript: Transcript;
 
     /// Generator used through all the suite.
@@ -189,7 +188,7 @@ pub trait Suite: Copy {
     /// In other words, salt is not applied by this function.
     ///
     /// Defaults to [`utils::hash_to_curve_tai`] (try-and-increment).
-    /// Override for alternative methods like [`utils::hash_to_curve_ell2`] (Elligator2).
+    /// Override for alternative methods like [`utils::hash_to_curve_ell2_xmd`] (Elligator2).
     #[inline(always)]
     fn data_to_point(data: &[u8]) -> Option<AffinePoint<Self>> {
         utils::hash_to_curve_tai::<Self>(data)
@@ -452,7 +451,7 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "56cdbd774cc0faabe19140541b95febb73fb6ab3548140e38842117ef865f38c";
+        let expected = "f5ba9c5f0d8ed2b3de008c8a00d7ccc230c86bb5daa29f266abaa0d624cf21ab";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 
