@@ -1221,7 +1221,8 @@ pub(crate) mod testing {
 
             let params = <S as RingSuiteExt>::params();
 
-            let rng = &mut ark_std::test_rng();
+            use ark_std::rand::SeedableRng;
+            let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
             let prover_idx = 3;
             let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
             ring_pks[prover_idx] = public.0;
