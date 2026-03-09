@@ -6,8 +6,8 @@ use ark_vrf::Suite;
 pub trait BenchInfo: Suite {
     const SUITE_NAME: &'static str;
     const DATA_TO_POINT_TAG: &'static str;
-    const CHALLENGE_TAG: &'static str;
     const POINT_TO_HASH_TAG: &'static str;
+    const CHALLENGE_TAG: &'static str;
     const NONCE_TAG: &'static str;
 
     fn print_info() {
@@ -15,8 +15,8 @@ pub trait BenchInfo: Suite {
         println!("suite_name: {}", Self::SUITE_NAME,);
         println!("suite_id: {}", String::from_utf8_lossy(Self::SUITE_ID));
         println!("data_to_point (h2c): {}", Self::DATA_TO_POINT_TAG);
-        println!("challenge: {}", Self::CHALLENGE_TAG);
         println!("point_to_hash: {}", Self::POINT_TO_HASH_TAG);
+        println!("challenge: {}", Self::CHALLENGE_TAG);
         println!("nonce: {}", Self::NONCE_TAG);
         println!("---------------------------------------------------------------\n");
     }

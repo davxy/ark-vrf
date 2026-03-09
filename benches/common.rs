@@ -3,25 +3,10 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::{rand::SeedableRng, UniformRand};
 use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-
-fn bench_key_from_seed<S: BenchInfo>(c: &mut Criterion) {
-    let name = format!("{}/key_from_seed", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| Secret::<S>::from_seed(black_box(b"bench secret seed")));
-    });
-}
-
-fn bench_key_from_scalar<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
-    let name = format!("{}/key_from_scalar", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| Secret::<S>::from_scalar(black_box(*secret.scalar())));
-    });
-}
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed(b"bench secret seed");
@@ -82,46 +67,6 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_point_encode<S: BenchInfo>(c: &mut Criterion) {
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let point = AffinePoint::<S>::rand(&mut rng);
-
-    let name = format!("{}/point_encode", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::codec::point_encode::<S>(black_box(&point)));
-    });
-}
-
-fn bench_point_decode<S: BenchInfo>(c: &mut Criterion) {
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let point = AffinePoint::<S>::rand(&mut rng);
-    let encoded = ark_vrf::codec::point_encode::<S>(&point);
-
-    let name = format!("{}/point_decode", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::codec::point_decode::<S>(black_box(&encoded)).unwrap());
-    });
-}
-
-fn bench_scalar_encode<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
-
-    let name = format!("{}/scalar_encode", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::codec::scalar_encode::<S>(black_box(secret.scalar())));
-    });
-}
-
-fn bench_scalar_decode<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
-    let encoded = ark_vrf::codec::scalar_encode::<S>(secret.scalar());
-
-    let name = format!("{}/scalar_decode", S::SUITE_NAME);
-    c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::codec::scalar_decode::<S>(black_box(&encoded)));
-    });
-}
-
 fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     const DELINEARIZE_SIZES: &[usize] = &[2, 4, 8, 16, 32, 64, 128, 256];
     let secret = Secret::<S>::from_seed(b"bench secret seed");
@@ -150,17 +95,11 @@ fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
 // All common benchmarks for a single suite.
 fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
     S::print_info();
-    bench_key_from_seed::<S>(c);
-    bench_key_from_scalar::<S>(c);
     bench_vrf_output::<S>(c);
     bench_data_to_point::<S>(c);
-    bench_challenge::<S>(c);
     bench_point_to_hash::<S>(c);
+    bench_challenge::<S>(c);
     bench_nonce::<S>(c);
-    bench_point_encode::<S>(c);
-    bench_point_decode::<S>(c);
-    bench_scalar_encode::<S>(c);
-    bench_scalar_decode::<S>(c);
     bench_delinearize::<S>(c);
 }
 
