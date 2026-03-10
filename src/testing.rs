@@ -5,7 +5,7 @@ use ark_std::{vec, vec::Vec};
 use crate::*;
 use ark_std::{UniformRand, rand::RngCore};
 
-pub const TEST_SEED: &[u8] = b"seed";
+pub const TEST_SEED: [u8; 32] = [0; 32];
 
 // Points and scalars encoding utilities (little-endian, compressed).
 
@@ -139,7 +139,7 @@ impl TestVectorMap {
 pub trait TestVectorTrait {
     fn name() -> String;
 
-    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self;
+    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self;
 
     fn from_map(map: &TestVectorMap) -> Self;
 
@@ -209,8 +209,8 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         S::suite_name() + "_base"
     }
 
-    fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
-        let sk = Secret::<S>::from_seed(seed);
+    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        let sk = Secret::<S>::from_seed(*seed);
         let pk = sk.public().0;
 
         let h2c_data = [salt, alpha].concat();
@@ -321,7 +321,9 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(identifier: &
         let alpha = hex::decode(var_data.1).unwrap();
         let ad = hex::decode(var_data.2).unwrap();
         let comment = format!("{} - vector-{}", identifier, i + 1);
-        let vector = V::new(&comment, &[var_data.0], &alpha, b"", &ad);
+        let mut seed = [0u8; 32];
+        seed[0] = var_data.0;
+        let vector = V::new(&comment, &seed, &alpha, b"", &ad);
         println!("Gen test vector: {}", comment);
         vector.run();
         vector_maps.push(vector.to_map());

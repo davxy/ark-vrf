@@ -9,7 +9,7 @@ use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_ma
 fn bench_thin_prove<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::thin::Prover;
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
@@ -22,7 +22,7 @@ fn bench_thin_prove<S: BenchInfo>(c: &mut Criterion) {
 fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::thin::{Prover, Verifier};
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
@@ -43,7 +43,7 @@ const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::thin::{BatchVerifier, Prover};
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 

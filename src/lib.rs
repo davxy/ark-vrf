@@ -41,7 +41,7 @@
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
 //!
-//! let secret = Secret::from_seed(b"example seed");
+//! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
 //! let output = secret.output(input);
@@ -276,16 +276,16 @@ impl<S: Suite> Secret<S> {
     /// The caller is responsible for ensuring that the resulting scalar is
     /// used safely with respect to the target curve's cofactor and subgroup
     /// properties.
-    pub fn from_seed(seed: &[u8]) -> Self {
+    pub fn from_seed(seed: [u8; 32]) -> Self {
         let mut cnt = 0_u8;
-        let zero = ScalarField::<S>::zero();
+        let sk = ScalarField::<S>::from_le_bytes_mod_order(&seed);
         let scalar = loop {
             let mut transcript = S::Transcript::new(b"ark-vrf-keygen");
-            transcript.absorb_raw(seed);
+            transcript.absorb_raw(&seed);
             if cnt > 0 {
                 transcript.absorb_raw(&[cnt]);
             }
-            let scalar = utils::nonce::<S>(&zero, Some(transcript.clone()));
+            let scalar = utils::nonce::<S>(&sk, Some(transcript.clone()));
             if !scalar.is_zero() {
                 break scalar;
             }
@@ -298,7 +298,7 @@ impl<S: Suite> Secret<S> {
     pub fn from_rand(rng: &mut impl ark_std::rand::RngCore) -> Self {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
-        Self::from_seed(&seed)
+        Self::from_seed(seed)
     }
 
     /// Get the secret scalar.
@@ -454,7 +454,7 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "fbca07e9d34c72da587a9cf1880e71e3110378359c2c2735ae7549cc222f3ac1";
+        let expected = "d1f696ceddb2dbd49ae0640e71090439f5a42589e913cc57d51b308c4e63136f";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

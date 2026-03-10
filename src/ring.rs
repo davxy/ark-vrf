@@ -17,7 +17,11 @@
 //!
 //! // Create a ring of public keys
 //! let mut ring = (0..RING_SIZE)
-//!     .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
+//!     .map(|i| {
+//!         let mut seed = [0u8; 32];
+//!         seed[..8].copy_from_slice(&i.to_le_bytes());
+//!         Secret::from_seed(seed).public().0
+//!     })
 //!     .collect::<Vec<_>>();
 //! ring[prover_key_index] = public.0;
 //!
@@ -1207,7 +1211,7 @@ pub(crate) mod testing {
             S::suite_name() + "_ring"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);
 

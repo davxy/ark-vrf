@@ -55,7 +55,7 @@ The library conditionally includes the following pre-configured suites (see feat
 use ark_vrf::suites::bandersnatch::*;
 
 // Create a secret key from a seed
-let secret = Secret::from_seed(b"example seed");
+let secret = Secret::from_seed([0; 32]);
 
 // Derive the corresponding public key
 let public = secret.public();
@@ -173,7 +173,11 @@ let prover_key_index = 3;
 
 // Construct an example ring with dummy keys
 let mut ring = (0..RING_SIZE)
-    .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
+    .map(|i| {
+        let mut seed = [0u8; 32];
+        seed[..8].copy_from_slice(&i.to_le_bytes());
+        Secret::from_seed(seed).public().0
+    })
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover

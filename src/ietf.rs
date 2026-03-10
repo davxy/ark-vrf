@@ -11,7 +11,7 @@
 //!
 //! ```rust,ignore
 //! // Key generation
-//! let secret = Secret::<MySuite>::from_seed(b"seed");
+//! let secret = Secret::<MySuite>::from_seed([0; 32]);
 //! let public = secret.public();
 //!
 //! // Proving
@@ -351,7 +351,7 @@ pub mod testing {
             S::suite_name() + "_ietf"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
             let io = VrfIo {

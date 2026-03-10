@@ -9,7 +9,7 @@ use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_ma
 fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
@@ -22,7 +22,7 @@ fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{Prover, Verifier};
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
     let (proof, _blinding) = secret.prove(io, b"ad");
@@ -38,7 +38,7 @@ const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{BatchVerifier, Prover};
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
     let mut rng = ark_std::test_rng();

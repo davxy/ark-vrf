@@ -123,13 +123,13 @@ where
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
-    HashToCurveTai = 0x01,
-    Challenge = 0x02,
-    PointToHash = 0x03,
-    Delinearize = 0x04,
-    NonceExpand = 0x05,
-    Nonce = 0x06,
-    PedersenBlinding = 0xCC,
+    Challenge = 0x01,
+    NonceExpand = 0x02,
+    Nonce = 0x03,
+    PointToHash = 0x04,
+    Delinearize = 0x05,
+    PedersenBlinding = 0x80,
+    HashToCurveTai = 0x81,
 }
 
 /// Common VRF transcript construction: absorb I/O pairs, fork for

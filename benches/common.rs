@@ -9,7 +9,7 @@ use bench_utils::BenchInfo;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let name = format!("{}/vrf_output", S::SUITE_NAME);
     c.bench_function(&name, |b| {
@@ -47,7 +47,7 @@ where
 }
 
 fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input);
     let generator = S::generator();
@@ -80,7 +80,7 @@ fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
 }
 
 fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
 
     let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
@@ -91,7 +91,7 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
 
 fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
     const DELINEARIZE_SIZES: &[usize] = &[2, 4, 8, 16, 32, 64, 128, 256];
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let max_size = DELINEARIZE_SIZES[DELINEARIZE_SIZES.len() - 1];
 
     let mut rng = ark_std::test_rng();

@@ -24,7 +24,7 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //! use ark_vrf::thin::{Prover, Verifier};
 //!
-//! let secret = Secret::from_seed(b"seed");
+//! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
 //! let io = secret.vrf_io(input);
@@ -496,7 +496,7 @@ pub(crate) mod testing {
             S::suite_name() + "_thin"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, salt, ad);
             let io = VrfIo {

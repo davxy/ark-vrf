@@ -22,7 +22,7 @@ struct RingSetup<S: RingSuite> {
 
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> RingSetup<S> {
     let mut rng = ark_std::test_rng();
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
