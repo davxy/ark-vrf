@@ -274,6 +274,7 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -
     // Derive nonce: H(transcript_state || Nonce || sk_hash)
     t.absorb_raw(&[DomSep::Nonce as u8]);
     t.absorb_raw(&sk_hash);
+    sk_hash.zeroize();
     nonce_scalar::<S>(&mut t)
 }
 
