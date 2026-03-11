@@ -139,7 +139,7 @@ impl TestVectorMap {
 pub trait TestVectorTrait {
     fn name() -> String;
 
-    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self;
+    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self;
 
     fn from_map(map: &TestVectorMap) -> Self;
 
@@ -157,8 +157,6 @@ pub struct TestVector<S: Suite> {
     pub pk: AffinePoint<S>,
     /// VRF input raw data.
     pub alpha: Vec<u8>,
-    /// VRF input salt.
-    pub salt: Vec<u8>,
     /// Signature additional raw data.
     pub ad: Vec<u8>,
     /// VRF input point.
@@ -174,7 +172,6 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
         let sk = hex::encode(scalar_encode::<S>(&self.sk));
         let pk = hex::encode(point_encode::<S>(&self.pk));
         let alpha = hex::encode(&self.alpha);
-        let salt = hex::encode(&self.salt);
         let ad = hex::encode(&self.ad);
         let h = hex::encode(point_encode::<S>(&self.h));
         let gamma = hex::encode(point_encode::<S>(&self.gamma));
@@ -184,7 +181,6 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
             .field("sk", &sk)
             .field("pk", &pk)
             .field("alpha", &alpha)
-            .field("salt", &salt)
             .field("ad", &ad)
             .field("h", &h)
             .field("gamma", &gamma)
@@ -202,12 +198,11 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         S::SUITE_NAME.to_string() + "_base"
     }
 
-    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+    fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
         let sk = Secret::<S>::from_seed(*seed);
         let pk = sk.public().0;
 
-        let h2c_data = [salt, alpha].concat();
-        let h = <S as Suite>::data_to_point(&h2c_data).unwrap();
+        let h = <S as Suite>::data_to_point(alpha).unwrap();
         let input = Input::from_affine(h);
 
         let alpha = alpha.to_vec();
@@ -220,7 +215,6 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             sk: sk.scalar,
             pk,
             alpha,
-            salt: salt.to_vec(),
             ad: ad.to_vec(),
             h,
             gamma,
@@ -234,7 +228,6 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let sk = scalar_decode::<S>(&item_bytes("sk"));
         let pk = point_decode::<S>(&item_bytes("pk")).unwrap();
         let alpha = item_bytes("alpha");
-        let salt = item_bytes("salt");
         let ad = item_bytes("ad");
         let h = point_decode::<S>(&item_bytes("h")).unwrap();
         let gamma = point_decode::<S>(&item_bytes("gamma")).unwrap();
@@ -244,7 +237,6 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             sk,
             pk,
             alpha,
-            salt,
             ad,
             h,
             gamma,
@@ -258,7 +250,6 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
             ("sk", hex::encode(scalar_encode::<S>(&self.sk))),
             ("pk", hex::encode(point_encode::<S>(&self.pk))),
             ("alpha", hex::encode(&self.alpha)),
-            ("salt", hex::encode(&self.salt)),
             ("ad", hex::encode(&self.ad)),
             ("h", hex::encode(point_encode::<S>(&self.h))),
             ("gamma", hex::encode(point_encode::<S>(&self.gamma))),
@@ -277,8 +268,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let pk = sk.public();
         assert_eq!(self.pk, pk.0, "public key ('pk') mismatch");
 
-        let h2c_data = [&self.salt[..], &self.alpha[..]].concat();
-        let h = S::data_to_point(&h2c_data).unwrap();
+        let h = S::data_to_point(&self.alpha).unwrap();
         assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
         let input = Input::<S>::from_affine(h);
 
@@ -316,7 +306,7 @@ pub fn test_vectors_generate<V: TestVectorTrait + std::fmt::Debug>(identifier: &
         let comment = format!("{} - vector-{}", identifier, i + 1);
         let mut seed = [0u8; 32];
         seed[0] = var_data.0;
-        let vector = V::new(&comment, &seed, &alpha, b"", &ad);
+        let vector = V::new(&comment, &seed, &alpha, &ad);
         println!("Gen test vector: {}", comment);
         vector.run();
         vector_maps.push(vector.to_map());

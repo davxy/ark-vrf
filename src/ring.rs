@@ -1207,9 +1207,9 @@ pub(crate) mod testing {
             S::SUITE_NAME.to_string() + "_ring"
         }
 
-        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
-            let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);
+            let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
             let public = secret.public();

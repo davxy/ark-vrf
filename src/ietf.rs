@@ -352,9 +352,9 @@ pub mod testing {
             S::SUITE_NAME.to_string() + "_ietf"
         }
 
-        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
-            let base = common::TestVector::new(comment, seed, alpha, salt, ad);
+            let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
                 input: Input::from_affine(base.h),
                 output: Output::from_affine(base.gamma),
