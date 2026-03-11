@@ -55,17 +55,11 @@ use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
-/// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
-///
-/// (en) *"The foundation of the accumulator which in the silence of time guards the hidden secret"*
-pub const ACCUMULATOR_BASE_SEED: &[u8] =
-    b"substratum accumulatoris quod in silentio temporis arcanum absconditum custodit";
+/// Seed hashed to curve to produce [`RingSuite::ACCUMULATOR_BASE`] in built-in suites.
+pub const ACCUMULATOR_BASE_SEED: &[u8] = b"ring-accumulator";
 
-/// Magic spell for [RingSuite::PADDING] generation in built-in implementations.
-///
-/// (en) *"A shadow that fills the void left by lost souls echoing among the darkness"*
-pub const PADDING_SEED: &[u8] =
-    b"umbra quae vacuum implet ab animabus perditis relictum inter tenebras resonans";
+/// Seed hashed to curve to produce [`RingSuite::PADDING`] in built-in suites.
+pub const PADDING_SEED: &[u8] = b"ring-padding";
 
 /// Ring suite.
 ///

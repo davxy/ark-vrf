@@ -32,14 +32,12 @@
 
 use crate::ietf::IetfSuite;
 use crate::utils;
+use crate::utils::common::DomSep;
 use crate::*;
 use ark_ec::VariableBaseMSM;
 
-/// Magic spell for [`PedersenSuite::BLINDING_BASE`] generation in built-in implementations.
-///
-/// (en) *"the blinding foundation of hidden light which eludes the mind and creates darkness for those who see"*
-pub const PEDERSEN_BASE_SEED: &[u8] =
-    b"basis caecans lucis occultae quae mentem fugit et tenebras iis qui vident creat";
+/// Seed hashed to curve to produce [`PedersenSuite::BLINDING_BASE`] in built-in suites.
+pub const PEDERSEN_BLINDING_BASE_SEED: &[u8] = b"pedersen-blinding";
 
 /// Suite extension for Pedersen VRF support.
 ///
@@ -52,7 +50,6 @@ pub trait PedersenSuite: IetfSuite {
     ///
     /// Default implementation is deterministic. All parameters but `secret` are public.
     fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
-        use crate::utils::common::DomSep;
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
         Self::nonce(secret, Some(transcript))
     }
@@ -138,7 +135,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        let (t, io) = utils::vrf_transcript::<S>(ios, ad);
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
         // Build blinding factor
         let blinding = S::blinding(&self.scalar, t.clone());
@@ -208,7 +205,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
-        let (t, io) = utils::vrf_transcript::<S>(ios, ad);
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[pk_com, r, ok], Some(t));
@@ -278,7 +275,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let (t, io) = utils::vrf_transcript::<S>(ios, ad);
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
         let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], Some(t));
         BatchItem {
             c,
@@ -535,7 +532,7 @@ pub(crate) mod testing {
         // Check that point has been computed using the magic spell.
         assert_eq!(
             S::BLINDING_BASE,
-            S::data_to_point(PEDERSEN_BASE_SEED).unwrap()
+            S::data_to_point(PEDERSEN_BLINDING_BASE_SEED).unwrap()
         );
         // Check that the point is on curve.
         assert!(S::BLINDING_BASE.check(true).is_ok());

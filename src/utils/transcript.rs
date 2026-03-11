@@ -15,12 +15,6 @@ pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript with the given domain label.
     fn new(label: &[u8]) -> Self;
 
-    fn fork(&self, label: &[u8]) -> Self {
-        let mut t = self.clone();
-        t.absorb_raw(label);
-        t
-    }
-
     /// Absorb data into the transcript.
     ///
     /// # Panics
@@ -170,7 +164,6 @@ where
 {
     fn new(label: &[u8]) -> Self {
         let mut h = H::default();
-        h.update(&(label.len() as u32).to_le_bytes());
         h.update(label);
         Self {
             state: XofState::Absorbing(h),

@@ -58,7 +58,7 @@ type ThisSuite = BandersnatchSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512_ELL2";
+    const SUITE_ID: &'static [u8] = &[0x01, 0x01, 0x01, 0x01];
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
@@ -73,9 +73,9 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField =
-            MontFp!("6150229251051246713677296363717454238956877613358614224171740096471278798312");
+            MontFp!("5226425992571220769365843487102064307101272980791993134273780736997544949382");
         const Y: BaseField = MontFp!(
-            "28442734166467795856797249030329035618871580593056783094884474814923353898473"
+            "46544868206883149332782258938702216106598247683423727002885664111567608220426"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -87,20 +87,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "37805570861274048643170021838972902516980894313648523898085159469000338764576"
+            "42303668360647658687880456753606405401141031996216729331450763906967498848487"
         );
         const Y: BaseField = MontFp!(
-            "14738305321141000190236674389841754997202271418876976886494444739226156422510"
+            "41898972259388202032055565840730004413653698329702630697317353721966090663285"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "26287722405578650394504321825321286533153045350760430979437739593351290020913"
+            "29586100106858075217954567072572265001347911471605742544678436487322334776392"
         );
         const Y: BaseField = MontFp!(
-            "19058981610000167534379068105702216971787064146691007947119244515951752366738"
+            "21753411410084671346581650250322348778806357231808407562422401169820213423498"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -113,7 +113,11 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        fn suite_name() -> String {
+            "bandersnatch_sha-512_ell2".to_string()
+        }
+    }
 
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);

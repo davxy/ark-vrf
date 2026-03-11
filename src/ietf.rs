@@ -26,6 +26,7 @@
 //! ```
 
 use super::*;
+use utils::common::DomSep;
 
 /// Marker trait for suites that support the IETF VRF scheme.
 ///
@@ -161,7 +162,7 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// different outputs are ever provided for the same `(secret, input, ad)` tuple
     /// — which would otherwise enable secret key recovery.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (t, io) = utils::vrf_transcript(ios, ad);
+        let (t, io) = utils::vrf_transcript(DomSep::IetfVrf, ios, ad);
 
         let k = S::nonce(&self.scalar, Some(t.clone()));
 
@@ -193,7 +194,7 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let (t, io) = utils::vrf_transcript(ios, ad);
+        let (t, io) = utils::vrf_transcript(DomSep::IetfVrf, ios, ad);
 
         let Proof { c, s } = proof;
 

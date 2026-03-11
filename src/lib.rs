@@ -280,7 +280,7 @@ impl<S: Suite> Secret<S> {
         let mut cnt = 0_u8;
         let sk = ScalarField::<S>::from_le_bytes_mod_order(&seed);
         let scalar = loop {
-            let mut transcript = S::Transcript::new(b"ark-vrf-keygen");
+            let mut transcript = S::Transcript::new(S::SUITE_ID);
             transcript.absorb_raw(&seed);
             if cnt > 0 {
                 transcript.absorb_raw(&[cnt]);
@@ -454,7 +454,7 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "d1f696ceddb2dbd49ae0640e71090439f5a42589e913cc57d51b308c4e63136f";
+        let expected = "9a1bab62207a088b29133c3f97e10cf9e45857e196a7f0d0c2ad801a9030068d";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 
@@ -494,7 +494,8 @@ mod tests {
             input,
             output: malicious_output,
         };
-        let (t, _) = utils::vrf_transcript(malicious_io, ad);
+        use utils::common::DomSep;
+        let (t, _) = utils::vrf_transcript(DomSep::IetfVrf, malicious_io, ad);
 
         let mut ctr = 0u64;
         let (proof, _) = loop {

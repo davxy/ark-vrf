@@ -36,7 +36,7 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::{utils::challenge_scalar, *};
+use crate::{utils::challenge_scalar, utils::common::DomSep, *};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -80,7 +80,7 @@ fn vrf_transcript<S: ThinVrfSuite>(
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_from_iter(chain_ios(public, ios.as_ref()), ad)
+    utils::vrf_transcript_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
 }
 
 /// Build a Thin-VRF transcript returning raw delinearization scalars.
@@ -93,7 +93,7 @@ fn vrf_transcript_scalars<S: ThinVrfSuite>(
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    utils::vrf_transcript_scalars_from_iter(chain_ios(public, ios.as_ref()), ad)
+    utils::vrf_transcript_scalars_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
 }
 
 /// Trait for types that can generate Thin VRF proofs.

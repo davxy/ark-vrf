@@ -128,23 +128,28 @@ pub(crate) enum DomSep {
     Nonce = 0x03,
     PointToHash = 0x04,
     Delinearize = 0x05,
+    IetfVrf = 0x10,
+    ThinVrf = 0x11,
+    PedersenVrf = 0x12,
     PedersenBlinding = 0x80,
     HashToCurveTai = 0x81,
 }
 
-/// Common VRF transcript construction: absorb I/O pairs, fork for
+/// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
 /// delinearization scalars, absorb additional data.
 ///
 /// Returns the transcript (with ad absorbed), the delinearization scalar
 /// stream, and the number of I/O pairs.
 fn vrf_transcript_base<S: Suite>(
+    scheme: DomSep,
     ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, DelinearizeScalars<S>, usize) {
     let n = ios.len();
     let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[scheme as u8]);
     absorb_ios::<S>(&mut t, ios);
-    let scalars = delinearize_scalars::<S>(n, t.clone());
+    let scalars = delinearize_scalars::<S>(t.clone());
     let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
     t.absorb_raw(&ad_len.to_le_bytes());
     t.absorb_raw(ad.as_ref());
@@ -153,15 +158,17 @@ fn vrf_transcript_base<S: Suite>(
 
 /// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Absorbs the raw I/O pairs into the transcript, derives delinearization
-/// scalars from a fork (so pairs are absorbed only once), merges the pairs
-/// into a single I/O, then absorbs the length-prefixed additional data.
-pub fn vrf_transcript_from_iter<S: Suite>(
+/// Absorbs the scheme tag and raw I/O pairs into the transcript, derives
+/// delinearization scalars from a fork (so pairs are absorbed only once),
+/// merges the pairs into a single I/O, then absorbs the length-prefixed
+/// additional data.
+pub(crate) fn vrf_transcript_from_iter<S: Suite>(
+    scheme: DomSep,
     ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     let n = ios.len();
-    let (t, scalars, _) = vrf_transcript_base(ios.clone(), ad);
+    let (t, scalars, _) = vrf_transcript_base(scheme, ios.clone(), ad);
 
     let zero = AffinePoint::<S>::zero();
     let io = if n == 0 {
@@ -184,27 +191,23 @@ pub fn vrf_transcript_from_iter<S: Suite>(
 /// the z scalars instead of the merged I/O pair. Used by batch verification
 /// which needs the individual points and z scalars to build an expanded MSM
 /// without computing the merged pair.
-pub fn vrf_transcript_scalars_from_iter<S: Suite>(
+pub(crate) fn vrf_transcript_scalars_from_iter<S: Suite>(
+    scheme: DomSep,
     ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    let (t, mut scalars, n) = vrf_transcript_base(ios, ad);
+    let (t, mut scalars, n) = vrf_transcript_base(scheme, ios, ad);
     (t, scalars.take(n))
 }
 
-pub fn vrf_transcript<S: Suite>(
+pub(crate) fn vrf_transcript<S: Suite>(
+    scheme: DomSep,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    vrf_transcript_from_iter(ios.as_ref().iter().copied(), ad)
+    vrf_transcript_from_iter(scheme, ios.as_ref().iter().copied(), ad)
 }
 
-pub fn vrf_transcript_scalars<S: Suite>(
-    ios: impl AsRef<[VrfIo<S>]>,
-    ad: impl AsRef<[u8]>,
-) -> (S::Transcript, Vec<ScalarField<S>>) {
-    vrf_transcript_scalars_from_iter(ios.as_ref().iter().copied(), ad)
-}
 
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
@@ -299,12 +302,9 @@ impl<S: Suite> DelinearizeScalars<S> {
 /// The caller must have absorbed the I/O pairs into `transcript` before
 /// calling this function (e.g. via [`absorb_ios`]).
 pub(crate) fn delinearize_scalars<S: Suite>(
-    n: usize,
     mut transcript: S::Transcript,
 ) -> DelinearizeScalars<S> {
-    let n = u32::try_from(n).expect("too many input-output pairs");
     transcript.absorb_raw(&[DomSep::Delinearize as u8]);
-    transcript.absorb_raw(&n.to_le_bytes());
     DelinearizeScalars { transcript }
 }
 
@@ -398,7 +398,7 @@ pub fn delinearize<S: Suite>(
 
     let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
     absorb_ios(&mut t, iter.clone());
-    merge_ios(iter, delinearize_scalars::<S>(n, t))
+    merge_ios(iter, delinearize_scalars::<S>(t))
 }
 
 #[cfg(test)]
@@ -406,8 +406,9 @@ mod tests {
     use super::*;
     use suites::testing::TestSuite;
 
+    /// Verify that the scheme tag produces distinct transcripts.
     #[test]
-    fn vrf_transcript_merged_pair_matches_delinearize() {
+    fn scheme_tag_domain_separation() {
         use crate::{Input, Output, VrfIo};
 
         let sk = ScalarField::<TestSuite>::from(42u64);
@@ -422,12 +423,13 @@ mod tests {
             })
             .collect();
 
-        // vrf_transcript_from_iter's merged pair must match standalone delinearize.
-        let (_, io_from_transcript) = vrf_transcript::<TestSuite>(&ios, b"foo");
-        let io_standalone = delinearize::<TestSuite>(ios.iter().copied(), None);
-        assert_eq!(
-            io_from_transcript, io_standalone,
-            "merged I/O pair mismatch"
-        );
+        let (_, io_ietf) = vrf_transcript::<TestSuite>(DomSep::IetfVrf, &ios, b"foo");
+        let (_, io_thin) = vrf_transcript::<TestSuite>(DomSep::ThinVrf, &ios, b"foo");
+        let (_, io_ped) = vrf_transcript::<TestSuite>(DomSep::PedersenVrf, &ios, b"foo");
+
+        // Different scheme tags must produce different merged pairs (for n >= 2).
+        assert_ne!(io_ietf, io_thin);
+        assert_ne!(io_ietf, io_ped);
+        assert_ne!(io_thin, io_ped);
     }
 }
