@@ -9,8 +9,8 @@
     "h": "9646c575af23c811c5d4691a26121c845b80a3805452c7267c2dbe2110baa6e3",
     "gamma": "ba004f4c74f7f55bab8c67d3dc38954d5d6f3155356028541d97b9bbb9762c03",
     "beta": "8f62d23d0275c7fbe1dcb412a6b6740a3626178bf78078892936c1530436d525",
-    "proof_c": "12e787f8c2f196669ce700895ac5cbe8",
-    "proof_s": "857349214b72e206a85e29b5f1e35d192dd2673867cd9f26f755306033b0ec15"
+    "proof_c": "04ca9f155939141f5d2abdf6e31f0c78",
+    "proof_s": "9a8a4123abfd8bdde07edc7c046eb302f10c83bb2d1fe0fdc5e1c7433e60b610"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-2",
@@ -22,8 +22,8 @@
     "h": "a208afb3b276ef91530ce906abe1e64917b612b6e062a0bb93090c77d9c5ba95",
     "gamma": "e7bce7bf0721b64ebfe3586a08f5334c87afa2a7a787230e421b556abe9807db",
     "beta": "1b71fd7287039cdb377fd3eb15792d0e50f2286ceaff7dfb4864341ab607c63e",
-    "proof_c": "a8086b36f42eac574ec44a126021f89e",
-    "proof_s": "b98b9a46b94ab57ba1b3cfa34370cec020ed1679037c040bb5355e9013cd2814"
+    "proof_c": "2f6a518662272dd1ed5dcf025b795699",
+    "proof_s": "6925c5e724b53f1ecda80ec7aff1c9d5c3e9ec7bf02c3458f40b2a5980769819"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-3",
@@ -35,8 +35,8 @@
     "h": "9646c575af23c811c5d4691a26121c845b80a3805452c7267c2dbe2110baa6e3",
     "gamma": "951fc558e4cee0e02f1bf6e4c95b12e3d5101b5e2e4ec9635443943cf58e9d83",
     "beta": "91069a31fb87cca70398eb4206c5ea408b167a5ed7ca1d68f5ecf1666c0c7954",
-    "proof_c": "c22bb7578b8c19ffa5b5b023af6cdff2",
-    "proof_s": "96b6d74cbb01165aeabfeb957cb26b3b33f090eaa84354adcf3b2aeed0104f16"
+    "proof_c": "de8935bbceb908dc15d85e57086519a6",
+    "proof_s": "98b5e53e4f6ac575590a196e7706d5c75afbf673dd1602493c3055bacbed590a"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-4",
@@ -48,8 +48,8 @@
     "h": "f534e99a16886cb60e3672a9bcd65b57ec8a76a3d3f005850e9b38ea17d81636",
     "gamma": "d7d3b99dbdef1e16fa1ca992dac684686cf4b16c5a3ed39fd353cd049337c9c6",
     "beta": "2fa4933f445d9b3e6eec45bd35f56a40ca18d6f385e8f7d50981aeab63f2b818",
-    "proof_c": "9ef24c4e9153e70d9a9a1a01414cd88d",
-    "proof_s": "ef1c6656ccb4b705c31c25bc926746f90cab5908a2594aa71179a3d90e779013"
+    "proof_c": "d1922c21eec05cd2aab63dafab9fd3a7",
+    "proof_s": "29738df3fda8b65e9464aa7794eedf1fdd3c765ff35d00c956e05cf136e3310b"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-5",
@@ -61,8 +61,8 @@
     "h": "47a25c71b9fccb60c72c2f5f9851df8594a9d346cda259dcef6ab5e6e441b795",
     "gamma": "6c558345591f2d52eba804ff1bab56c9fa4bac85ab661b16b2c68a891954e4ce",
     "beta": "671ed2923f25bc913b1905c026412876297b2736fe056376b0e4af800ad10958",
-    "proof_c": "de0cf759b4fbe56d362eff0017447894",
-    "proof_s": "3967c2c618573aff9197e86d89c6f8ae3d2ad72220a9d061ca4f7cdb6ef0a809"
+    "proof_c": "0c24fd703d9bfffb2d7a7a8599e86196",
+    "proof_s": "9f683f933cb5f1810fd34632b82465a48d960079fb949cd7b01608b0c485d206"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-6",
@@ -74,8 +74,8 @@
     "h": "47a25c71b9fccb60c72c2f5f9851df8594a9d346cda259dcef6ab5e6e441b795",
     "gamma": "6c558345591f2d52eba804ff1bab56c9fa4bac85ab661b16b2c68a891954e4ce",
     "beta": "671ed2923f25bc913b1905c026412876297b2736fe056376b0e4af800ad10958",
-    "proof_c": "4984a85fe4ad7b16df70cc38bc185da4",
-    "proof_s": "809dbe49e29514f2079508f6ca080a563a6bce4390f095733b2d359f0d76d10c"
+    "proof_c": "7f6028091eab9338d1f64885a1b004b7",
+    "proof_s": "de5420c744dd1cfef46c834e29ccf75e3a0fc179fd7203529fef5c517027db09"
   },
   {
     "comment": "bandersnatch_sha-512_ell2_ietf - vector-7",
@@ -87,7 +87,7 @@
     "h": "47a25c71b9fccb60c72c2f5f9851df8594a9d346cda259dcef6ab5e6e441b795",
     "gamma": "12ac0121bf3b2662596c88f0df13cf947911815fc794dd241db2f35ba2b5edbf",
     "beta": "90c458cf7f33035689ea4b60df842a51bbc5f3c42112023e0b2e03fa617939bc",
-    "proof_c": "c7052c7ced62b7d607193dd63752a852",
-    "proof_s": "7e87e08924e4818e17e95d9f31c67f2165f5e70bf2f1a8f8e86fb387f771170c"
+    "proof_c": "b0928e26be7ac81ae06060736aeac044",
+    "proof_s": "93d20ab13c5a887ddef7d561bdbbd0d04abd37953c8508936b610b1ccd9b5d0a"
   }
 ]

@@ -6,7 +6,7 @@ mod bench_utils;
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -30,8 +30,8 @@ where
     ark_vrf::CurveConfig<S>: ark_ec::hashing::curve_maps::elligator2::Elligator2Config,
     ark_ec::hashing::curve_maps::elligator2::Elligator2Map<ark_vrf::CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<
-                <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
-            >,
+            <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
+        >,
 {
     let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
     let name = format!("{}/data_to_point_ell2", S::SUITE_NAME);
@@ -89,31 +89,6 @@ fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_delinearize<S: BenchInfo>(c: &mut Criterion) {
-    const DELINEARIZE_SIZES: &[usize] = &[2, 4, 8, 16, 32, 64, 128, 256];
-    let secret = Secret::<S>::from_seed([0; 32]);
-    let max_size = DELINEARIZE_SIZES[DELINEARIZE_SIZES.len() - 1];
-
-    let mut rng = ark_std::test_rng();
-    let ios: Vec<_> = (0..max_size)
-        .map(|_| {
-            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
-            secret.vrf_io(input)
-        })
-        .collect();
-
-    let group_name = format!("{}/delinearize", S::SUITE_NAME);
-    for &size in DELINEARIZE_SIZES {
-        c.benchmark_group(&group_name)
-            .bench_function(BenchmarkId::from_parameter(size), |b| {
-                b.iter(|| {
-                    let iter = ios[..size].iter().copied();
-                    ark_vrf::utils::delinearize::<S>(black_box(iter), None)
-                });
-            });
-    }
-}
-
 // All common benchmarks for a single suite.
 fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
     S::print_info();
@@ -122,7 +97,6 @@ fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
     bench_point_to_hash::<S>(c);
     bench_challenge::<S>(c);
     bench_nonce::<S>(c);
-    bench_delinearize::<S>(c);
 }
 
 fn bench_common(c: &mut Criterion) {

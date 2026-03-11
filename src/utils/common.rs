@@ -308,7 +308,14 @@ pub(crate) fn delinearize_scalars<S: Suite>(
 }
 
 /// Absorb I/O pairs into a transcript.
-pub(crate) fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl Iterator<Item = VrfIo<S>>) {
+///
+/// The count is absorbed first as a little-endian `u32` so that the
+/// framing is unambiguous even though each `VrfIo` already has a
+/// fixed-size serialization. This is cheap and avoids any implicit
+/// dependency on the serialization being fixed-length.
+fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item = VrfIo<S>>) {
+    let n = u32::try_from(ios.len()).expect("too many ios");
+    t.absorb_raw(&n.to_le_bytes());
     for io in ios {
         t.absorb_serialize(&io);
     }
@@ -348,56 +355,6 @@ fn merge_ios<S: Suite>(
         input: Input(norms[0]),
         output: Output(norms[1]),
     }
-}
-
-/// Delinearize multiple input-output pairs into a single pair.
-///
-/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
-/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
-/// The resulting `(Input, Output)` can be passed directly to a scheme's
-/// `prove` / `verify` to obtain or check a single proof covering all pairs.
-///
-/// The ordering of items matters: the delinearization scalars are derived from
-/// the hash of the pairs in the given order, so the prover and verifier must
-/// use the same ordering to obtain the same merged pair.
-///
-/// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
-/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
-///   and returns their linear combination.
-///
-/// The iterator must be `ExactSizeIterator` (to know N) and `Clone` (for the
-/// two-pass hash-then-fold without allocation).
-///
-/// # WARNING: N=0
-///
-/// When the iterator is empty, both returned points are the identity (zero point).
-/// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
-/// into a Schnorr signature over the additional data -- it binds the public key
-/// but provides **no VRF output**. The `Output` is a public constant
-/// (the identity point) and **must not** be used to derive VRF randomness.
-/// Doing so would produce a predictable, key-independent value.
-pub fn delinearize<S: Suite>(
-    iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    transcript: Option<S::Transcript>,
-) -> VrfIo<S> {
-    let zero = AffinePoint::<S>::zero();
-    let n = iter.len();
-
-    if n == 0 {
-        return VrfIo {
-            input: Input(zero),
-            output: Output(zero),
-        };
-    }
-
-    if n == 1 {
-        return iter.clone().next().expect("len is 1 but iterator is empty");
-    }
-
-    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
-    absorb_ios(&mut t, iter.clone());
-    merge_ios(iter, delinearize_scalars::<S>(t))
 }
 
 #[cfg(test)]
