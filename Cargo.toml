@@ -16,10 +16,11 @@ ark-std = { version = "0.5", default-features = false }
 ark-serialize = { version = "0.5", default-features = false }
 zeroize = { version = "1.8", default-features = false }
 digest = { version = "0.10", default-features = false }
+generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
-rand_chacha = { version = "0.3", default-features = false }
+blake3 = { version = "1.8", default-features = false, features = ["traits-preview"], optional = true }
+sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-hmac = {version = "0.12", default-features = false, optional = true }
 w3f-ring-proof = { version = "0.0.6", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.5", default-features = false, optional = true }
@@ -46,6 +47,10 @@ harness = false
 
 [[bench]]
 name = "ietf"
+harness = false
+
+[[bench]]
+name = "thin"
 harness = false
 
 [[bench]]
@@ -78,10 +83,10 @@ ed25519 = [ "ark-ed25519" ]
 jubjub = [ "ark-ed-on-bls12-381", "ark-bls12-381/curve" ]
 bandersnatch = [ "ark-ed-on-bls12-381-bandersnatch", "ark-bls12-381/curve" ]
 baby-jubjub = [ "ark-ed-on-bn254", "ark-bn254/curve" ]
-secp256r1 = [ "ark-secp256r1", "rfc-6979" ]
+secp256r1 = [ "ark-secp256r1" ]
 # Miscellanea
 ring = [ "w3f-ring-proof" ]
-rfc-6979 = [ "hmac" ]
+shake128 = [ "sha3" ]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
@@ -93,7 +98,8 @@ parallel = [
 asm = [
   "ark-ff/asm",
   "w3f-ring-proof?/asm",
-  "sha2/asm"
+  "sha2/asm",
+  "sha3?/asm"
 ]
 # Deterministic, no-zk, ring-proof (unsafe)
 test-vectors = [ "w3f-ring-proof?/test-vectors" ]

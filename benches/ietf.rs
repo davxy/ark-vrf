@@ -8,7 +8,7 @@ use criterion::{Criterion, black_box, criterion_group, criterion_main};
 fn bench_ietf_prove<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf::Prover;
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
@@ -21,7 +21,7 @@ fn bench_ietf_prove<S: BenchInfo>(c: &mut Criterion) {
 fn bench_ietf_verify<S: BenchInfo>(c: &mut Criterion) {
     use ark_vrf::ietf::{Prover, Verifier};
 
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);

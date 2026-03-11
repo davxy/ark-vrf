@@ -12,15 +12,14 @@
 //!   - G.x = 8076246640662884909881801758704306714034609987455869804520522091855516602923
 //!   - G.y = 13262374693698910701929044844600465831413122818447359594527400194675274060458
 //!
-//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
-//!   approximately 128-bit security level.
+//! * `cLen` = 16 (128-bit security level).
 //!
 //! * The key pair generation primitive is `PK = sk * G`, with x the secret
 //!   key scalar and `G` the group generator. In this ciphersuite, the secret
 //!   scalar x is equal to the secret key scalar sk.
 //!
-//! * The ECVRF_nonce_generation function is as specified in Section 5.4.2.2
-//!   of RFC-9381.
+//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
+//!   adapted to use the suite's pluggable transcript.
 //!
 //! * The int_to_string function encodes into the 32 bytes little endian
 //!   representation.
@@ -41,9 +40,10 @@
 //! * The hash function Hash is SHA-512 as specified in
 //!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
 //!
-//! * The `ECVRF_encode_to_curve` function uses try and increment.
-//!   as defined by RFC 9381 section 5.4.1.1.
+//! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
+//!   by Section 5.4.1.1 of RFC-9381.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -55,37 +55,18 @@ type ThisSuite = JubJubSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"JubJub_SHA-512_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::JUBJUB, hash::SHA512, h2c::TAI);
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
-    type Hasher = sha2::Sha512;
-    type Codec = codec::ArkworksCodec;
-
-    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
-    }
-
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
+    type Transcript = utils::HashTranscript;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "37791828864254608560512771045116976813822653252235145186847263146550774983573"
+            "14088272717444220980825150810482263247621810030608483637435479797431775763279"
         );
         const Y: BaseField = MontFp!(
-            "50281913639439767680904572037590409137260543547209066044189908038266865562866"
+            "13796421240900593523525509384051870368689221759130366164823027840773041692265"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -97,19 +78,19 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "50008126318621921789650212178911280404845722060756705823229864813583862671008"
+            "40177398145918848680990286310899742309120014011106291118156860953722055578241"
         );
         const Y: BaseField = MontFp!(
-            "41012592374371064331685030146264227241724139137619547652567048787727972666716"
+            "24580461085941406724617429929213008319759882489120668940976036376266160372089"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField =
-            MontFp!("1579641385451470422997368464254681757635356627098777421858237888879067551015");
+            MontFp!("6772452481506626108392295149286597703472937758047167206866244287250038966509");
         const Y: BaseField = MontFp!(
-            "29815194172647243959461075220326959546380827704355488508192118227246739677800"
+            "26523946863257481314969479465636671409021884994578884163995302179665568572489"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -122,9 +103,10 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "jubjub_sha-512_tai";
+    }
 
-    codec_suite_tests!(ThisSuite);
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);

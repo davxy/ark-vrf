@@ -24,7 +24,7 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //! use ark_vrf::thin::{Prover, Verifier};
 //!
-//! let secret = Secret::from_seed(b"seed");
+//! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
 //! let io = secret.vrf_io(input);
@@ -36,8 +36,7 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::*;
-use ark_ec::VariableBaseMSM;
+use crate::{utils::challenge_scalar, utils::common::DomSep, *};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -59,19 +58,42 @@ pub struct Proof<S: ThinVrfSuite> {
     pub s: ScalarField<S>,
 }
 
-/// Merge VRF I/O pairs and Schnorr key pair into a single delinearized pair.
-#[inline(always)]
-fn merge<S: ThinVrfSuite>(
-    public: &AffinePoint<S>,
-    ios: impl AsRef<[VrfIo<S>]>,
-    ad: impl AsRef<[u8]>,
-) -> (Input<S>, Output<S>) {
+fn chain_ios<'a, S: ThinVrfSuite>(
+    public: AffinePoint<S>,
+    ios: &'a [VrfIo<S>],
+) -> impl ExactSizeIterator<Item = VrfIo<S>> + Clone + 'a {
     let schnorr = core::iter::once(VrfIo {
         input: Input(S::generator()),
-        output: Output(*public),
+        output: Output(public),
     });
-    let chained = utils::common::ExactChain::new(schnorr, ios.as_ref().iter().copied());
-    utils::delinearize::<S>(chained, ad.as_ref())
+    utils::common::ExactChain::new(schnorr, ios.iter().copied())
+}
+
+/// Build a Thin-VRF transcript from public key, VRF I/O pairs, and additional data.
+///
+/// Absorbs the raw I/O pairs (Schnorr pair + VRF pairs) into the transcript,
+/// delinearizes them into a single merged pair via [`merge_ios`], then absorbs
+/// additional data. Returns the transcript and the merged `VrfIo`.
+#[inline(always)]
+fn vrf_transcript<S: ThinVrfSuite>(
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    utils::vrf_transcript_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
+}
+
+/// Build a Thin-VRF transcript returning raw delinearization scalars.
+///
+/// Used by batch verification, which needs the individual points and z scalars
+/// to build an expanded MSM without computing the merged pair.
+#[inline(always)]
+fn vrf_transcript_scalars<S: ThinVrfSuite>(
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    utils::vrf_transcript_scalars_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -93,17 +115,16 @@ pub trait Verifier<S: ThinVrfSuite> {
 
 impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&self.public.0, ios, ad);
+        let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, &[&merged_input.0, &merged_output.0], ad);
+        let k = S::nonce(&self.scalar, Some(t.clone()));
 
-        // R = k * I_m (secret nonce)
-        let r = smul!(merged_input.0, k).into_affine();
+        // R = k * I_m (secret nonce on merged input)
+        let r = smul!(merged.input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let c = S::challenge(&[&r], Some(t));
 
         // Response
         let s = k + c * self.scalar;
@@ -120,15 +141,15 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         proof: &Proof<S>,
     ) -> Result<(), Error> {
         let Proof { r, s } = proof;
-        let ad = ad.as_ref();
-
-        let (merged_input, merged_output) = merge::<S>(&self.0, ios, ad);
+        let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, r], ad);
+        let c = S::challenge(&[r], Some(t));
 
-        // Verify: R + c*O_m == s*I_m
-        if *r + merged_output.0 * c != merged_input.0 * s {
+        // Verification: s * I_m == R + c * O_m
+        let lhs = smul!(merged.input.0, *s);
+        let rhs = r.into_group() + smul!(merged.output.0, c);
+        if lhs != rhs {
             return Err(Error::VerificationFailure);
         }
 
@@ -138,12 +159,14 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
 
 /// Deferred Thin VRF verification data for batch verification.
 ///
-/// Captures all the information needed to verify a single Thin VRF proof,
-/// allowing multiple proofs to be verified together via a single MSM.
+/// Stores raw points and delinearization scalars instead of the merged pair,
+/// so that `prepare` requires no EC ops (just hashing). The expanded
+/// verification equation uses these directly in the batch MSM.
 pub struct BatchItem<S: ThinVrfSuite> {
     c: ScalarField<S>,
-    i_m: AffinePoint<S>,
-    o_m: AffinePoint<S>,
+    pk: AffinePoint<S>,
+    ios: Vec<VrfIo<S>>,
+    zs: Vec<ScalarField<S>>,
     r: AffinePoint<S>,
     s: ScalarField<S>,
 }
@@ -170,22 +193,23 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 
     /// Prepare a proof for batch verification.
     ///
-    /// Computes delinearization, merged pair, and challenge. This is cheap
-    /// (hashes, no scalar multiplications on secret data) and can be done
-    /// in parallel.
+    /// Computes delinearization scalars and challenge via hashing only (no EC
+    /// ops). Stores the raw points and z scalars for the expanded verification
+    /// equation in [`Self::verify`].
     pub fn prepare(
         public: &Public<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let ad = ad.as_ref();
-        let (merged_input, merged_output) = merge::<S>(&public.0, ios, ad);
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &proof.r], ad);
+        let ios = ios.as_ref();
+        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let c = S::challenge(&[&proof.r], Some(t));
         BatchItem {
             c,
-            i_m: merged_input.0,
-            o_m: merged_output.0,
+            pk: public.0,
+            ios: ios.to_vec(),
+            zs,
             r: proof.r,
             s: proof.s,
         }
@@ -210,62 +234,68 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 
     /// Batch-verify all collected proofs using a single multi-scalar multiplication.
     ///
-    /// For each proof i, the verification equation is:
-    ///   R_i + c_i*O_m_i - s_i*I_m_i == 0
+    /// For each proof j, the expanded verification equation is:
+    ///   R_j + c_j*z0_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*z0_j*G - sum_i(s_j*z_ij*I_ij) == 0
     ///
-    /// With random weights w_i the combined check becomes a 3N-point MSM:
-    ///   sum_i w_i*R_i + (w_i*c_i)*O_m_i - (w_i*s_i)*I_m_i == 0
+    /// With random weights w_j, G is accumulated as a shared base, yielding a
+    /// `(sum_j(2 + 2*M_j) + 1)`-point MSM (where M_j is the number of VRF
+    /// pairs in proof j).
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
-        use ark_std::rand::{RngCore, SeedableRng};
+        use ark_ec::VariableBaseMSM;
+        use ark_ff::Zero;
 
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
         }
 
-        let n = items.len();
-
-        // Deterministic RNG seeded from all (c, s) pairs.
-        let mut hasher = S::Hasher::new();
-        let mut buf = Vec::with_capacity(2 * S::Codec::SCALAR_ENCODED_LEN);
+        // Deterministic random scalars derived from all (c, s) pairs.
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(b"thin-batch");
         for e in items {
-            buf.clear();
-            S::Codec::scalar_encode_into(&e.c, &mut buf);
-            S::Codec::scalar_encode_into(&e.s, &mut buf);
-            hasher.update(&buf);
+            t.absorb_serialize(&e.c);
+            t.absorb_serialize(&e.s);
         }
-        let hash = hasher.finalize();
-        let mut seed = [0u8; 32];
-        let copy_len = hash.len().min(32);
-        seed[..copy_len].copy_from_slice(&hash[..copy_len]);
 
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        // Build MSM with expanded equation: per-proof (2+2M) points + 1 shared G.
+        let total_points: usize = items.iter().map(|e| 2 + 2 * e.ios.len()).sum::<usize>() + 1;
+        let mut bases = Vec::with_capacity(total_points);
+        let mut scalars = Vec::with_capacity(total_points);
+        let mut g_scalar = ScalarField::<S>::zero();
 
-        // 128-bit random weights for Schwartz-Zippel soundness.
-        let random_scalars: Vec<ScalarField<S>> = (0..n)
-            .map(|_| {
-                let mut buf = [0u8; 16];
-                rng.fill_bytes(&mut buf);
-                ScalarField::<S>::from_le_bytes_mod_order(&buf)
-            })
-            .collect();
+        for item in items.iter() {
+            // 128-bit random weights for Schwartz-Zippel soundness.
+            let w = challenge_scalar::<S>(&mut t);
 
-        // Build 3N-point MSM: w_i*R_i + (w_i*c_i)*O_m_i - (w_i*s_i)*I_m_i
-        let mut bases = Vec::with_capacity(3 * n);
-        let mut scalars = Vec::with_capacity(3 * n);
+            let wc = w * item.c;
+            let ws = w * item.s;
 
-        for (e, w) in items.iter().zip(random_scalars.iter()) {
-            bases.push(e.r);
-            scalars.push(*w);
+            // R_j with scalar w_j
+            bases.push(item.r);
+            scalars.push(w);
 
-            bases.push(e.o_m);
-            scalars.push(*w * e.c);
+            // pk_j with scalar w_j*c_j*z0_j
+            bases.push(item.pk);
+            scalars.push(wc * item.zs[0]);
 
-            bases.push(e.i_m);
-            scalars.push(-(*w * e.s));
+            // Accumulate G scalar: -w_j*s_j*z0_j
+            g_scalar -= ws * item.zs[0];
+
+            // Per VRF pair: O_i with w*c*z_i, I_i with -w*s*z_i
+            for (i, io) in item.ios.iter().enumerate() {
+                bases.push(io.output.0);
+                scalars.push(wc * item.zs[i + 1]);
+
+                bases.push(io.input.0);
+                scalars.push(-(ws * item.zs[i + 1]));
+            }
         }
+
+        // Shared generator base.
+        bases.push(S::generator());
+        scalars.push(g_scalar);
 
         let result = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
         if !result.is_zero() {
@@ -448,8 +478,8 @@ pub(crate) mod testing {
 
     impl<S: ThinVrfSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let r = hex::encode(codec::point_encode::<S>(&self.proof_r));
-            let s = hex::encode(codec::scalar_encode::<S>(&self.proof_s));
+            let r = hex::encode(common::point_encode::<S>(&self.proof_r));
+            let s = hex::encode(common::scalar_encode::<S>(&self.proof_s));
             f.debug_struct("TestVector")
                 .field("base", &self.base)
                 .field("proof_r", &r)
@@ -463,12 +493,12 @@ pub(crate) mod testing {
         S: ThinVrfSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::suite_name() + "_thin"
+            S::SUITE_NAME.to_string() + "_thin"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
-            let base = common::TestVector::new(comment, seed, alpha, salt, ad);
+            let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
                 input: Input::<S>::from_affine(base.h),
                 output: Output::from_affine(base.gamma),
@@ -484,8 +514,8 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let proof_r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let proof_s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
+            let proof_r = common::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
+            let proof_s = common::scalar_decode::<S>(&map.get_bytes("proof_s"));
             Self {
                 base,
                 proof_r,
@@ -497,11 +527,11 @@ pub(crate) mod testing {
             let items = [
                 (
                     "proof_r",
-                    hex::encode(codec::point_encode::<S>(&self.proof_r)),
+                    hex::encode(common::point_encode::<S>(&self.proof_r)),
                 ),
                 (
                     "proof_s",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof_s)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof_s)),
                 ),
             ];
             let mut map = self.base.to_map();
@@ -554,37 +584,36 @@ pub(crate) mod testing {
         let honest_output = (input_pt * sk).into_affine();
 
         // Attacker picks a DIFFERENT output: O' = t * G, with t != sk * d.
-        let t = Sc::from(1234);
-        let fake_output_pt = (g * t).into_affine();
+        let t_scalar = Sc::from(1234);
+        let fake_output_pt = (g * t_scalar).into_affine();
         assert_ne!(fake_output_pt, honest_output);
         let fake_output = Output::<S>::from_affine(fake_output_pt);
 
         let ad: &[u8] = b"attack";
+        let fake_io = VrfIo {
+            input,
+            output: fake_output,
+        };
 
-        // Extract delinearization coefficients z0, z1.
-        //
-        // merged_pairs passes [(G, pk), (I, O')] to delinearize.
-        let ios = [(Input::<S>(g), Output::<S>(pk)), (input, fake_output)];
-        let iter = ios.iter().map(|&(input, output)| VrfIo { input, output });
+        // Replicate what prove/verify do.
+        let fake_ios: &[VrfIo<S>] = &[fake_io];
+        let (transcript, zs) = vrf_transcript_scalars::<S>(pk, fake_ios, ad);
+        let (z0, z1) = (zs[0], zs[1]);
 
-        let mut zs = utils::delinearize_scalars::<S>(iter.clone(), ad);
-        let (z0, z1) = (zs.next(), zs.next());
-
-        let (merged_input, merged_output) = utils::delinearize::<S>(iter, ad);
-        let expected_merged_input = (g * z0 + input_pt * z1).into_affine();
-        assert_eq!(merged_input.0, expected_merged_input);
+        // Compute merged input I_m = z0*G + z1*I for the forgery.
+        let merged_input = (g * z0 + input_pt * z1).into_affine();
 
         // --- Forge the proof ---
         //
         // Because I = d*G, the merged input is I_m = (z0 + z1*d) * G and the
         // merged output is O_m = (z0*sk + z1*t) * G, both multiples of G.
         // The effective DLEQ secret is x = (z0*sk + z1*t) / (z0 + z1*d).
-        let x = (z0 * sk + z1 * t) * (z0 + z1 * d).inverse().unwrap();
+        let x = (z0 * sk + z1 * t_scalar) * (z0 + z1 * d).inverse().unwrap();
 
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
-        let r = (merged_input.0 * k).into_affine();
-        let c = S::challenge(&[&merged_input.0, &merged_output.0, &r], ad);
+        let r = (merged_input * k).into_affine();
+        let c = S::challenge(&[&r], Some(transcript));
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };
@@ -606,10 +635,6 @@ pub(crate) mod testing {
         //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
         //       = RHS
         let public = Public::<S>(pk);
-        let fake_io = VrfIo {
-            input,
-            output: fake_output,
-        };
         assert!(
             public.verify(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"

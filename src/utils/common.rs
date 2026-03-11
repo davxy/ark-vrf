@@ -1,38 +1,78 @@
 //! Common cryptographic utility functions.
 //!
 //! This module provides implementations of various cryptographic operations
-//! used throughout the VRF schemes, including hashing, challenge generation,
-//! and hash-to-curve algorithms.
+//! used throughout the VRF schemes, including challenge generation, nonce
+//! derivation, and delinearization.
 
+use crate::utils::transcript::Transcript;
 use crate::*;
-use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
-    short_weierstrass::{Affine as SWAffine, SWCurveConfig},
-    twisted_edwards::{Affine as TEAffine, TECurveConfig},
-    AffineRepr,
-};
+use ark_ec::AffineRepr;
+use ark_ff::PrimeField;
 use core::iter::Chain;
-use digest::{Digest, FixedOutputReset};
 
-/// Construct an affine point from a single base field coordinate.
+#[cfg(not(feature = "std"))]
+use ark_std::vec::Vec;
+
+/// Target security level in bits.
 ///
-/// For SW curves the coordinate is x; for TE curves it is y.
-/// Returns the point with the "positive" (smaller) second coordinate,
-/// or `None` if no point exists for the given input.
-pub trait PointFromCoord: AffineRepr {
-    fn from_coord(coord: Self::BaseField) -> Option<Self>;
+/// Used to size scalar expansions (see [`expanded_scalar_len`]) and hash-to-field
+/// outputs so that modular reduction bias is at most `2^{-k}` where `k` is this
+/// value. Also determines the challenge encoding length ([`CHALLENGE_LEN`]).
+///
+/// Set to 128, matching the security level of the curves we target (Bandersnatch,
+/// Ed25519, JubJub).
+pub(crate) const SECURITY_PARAMETER: usize = 128;
+
+/// Stack buffer size for small serialized objects (compressed points, scalars).
+const STACK_BUF_SIZE: usize = 128;
+
+/// Declare a zeroed `[u8; STACK_BUF_SIZE]` array and bind `$name` to a
+/// `&mut [u8]` slice of the first `$len` bytes.
+///
+/// Intended for small serialized objects such as single compressed points
+/// or scalar field elements. Panics if `$len > STACK_BUF_SIZE`.
+macro_rules! stack_buf {
+    ($name:ident, $len:expr) => {
+        let _sb_len: usize = $len;
+        assert!(
+            _sb_len <= STACK_BUF_SIZE,
+            "requested {_sb_len} bytes exceeds STACK_BUF_SIZE ({STACK_BUF_SIZE})"
+        );
+        let mut _sb_backing = [0u8; STACK_BUF_SIZE];
+        let $name = &mut _sb_backing[.._sb_len];
+    };
 }
 
-impl<P: SWCurveConfig> PointFromCoord for SWAffine<P> {
-    fn from_coord(x: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_x_unchecked(x, false)
-    }
+/// Challenge encoding length in bytes (128-bit security).
+pub const CHALLENGE_LEN: usize = SECURITY_PARAMETER / 8;
+
+/// Number of bytes to squeeze for an unbiased scalar via `from_le_bytes_mod_order`.
+///
+/// Returns `ceil((ceil(log2(p)) + sec_bits) / 8)` where `p` is the scalar field
+/// modulus. The extra `sec_bits` padding ensures that the bias from modular
+/// reduction is at most `2^{-sec_bits}`.
+///
+/// See sections 5.1 and 5.3 of the
+/// [IETF hash-to-curve draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/).
+pub const fn expanded_scalar_len<S: Suite>(sec_bits: usize) -> usize {
+    // ceil(log(p))
+    let base_field_size_in_bits = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
+    // ceil(log(p)) + security_parameter
+    let base_field_size_with_security_padding_in_bits = base_field_size_in_bits + sec_bits;
+    // ceil( (ceil(log(p)) + security_parameter) / 8)
+    base_field_size_with_security_padding_in_bits.div_ceil(8)
 }
 
-impl<P: TECurveConfig> PointFromCoord for TEAffine<P> {
-    fn from_coord(y: Self::BaseField) -> Option<Self> {
-        Self::get_point_from_y_unchecked(y, false)
-    }
+pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    stack_buf!(buf, expanded_scalar_len::<S>(SECURITY_PARAMETER));
+    t.squeeze_raw(buf);
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
+}
+
+pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    let mut buf = [0u8; SECURITY_PARAMETER / 8];
+    t.squeeze_raw(&mut buf);
+    ScalarField::<S>::from_le_bytes_mod_order(&buf)
 }
 
 /// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
@@ -83,481 +123,226 @@ where
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
-    HashToCurveTai = 0x01,
-    Challenge = 0x02,
-    PointToHash = 0x03,
-    Delinearize = 0x04,
-    PedersenBlinding = 0xCC,
-    End = 0x00,
+    Challenge = 0x01,
+    NonceExpand = 0x02,
+    Nonce = 0x03,
+    PointToHash = 0x04,
+    Delinearize = 0x05,
+    IetfVrf = 0x10,
+    ThinVrf = 0x11,
+    PedersenVrf = 0x12,
+    PedersenBlinding = 0x80,
+    HashToCurveTai = 0x81,
 }
 
-#[cfg(not(feature = "std"))]
-use ark_std::vec::Vec;
-
-/// Generic hash wrapper.
+/// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
+/// delinearization scalars, absorb additional data.
 ///
-/// Computes a hash of the provided data using the specified hash function.
-pub fn hash<H: Digest>(data: &[u8]) -> digest::Output<H> {
-    H::new().chain_update(data).finalize()
+/// Returns the transcript (with ad absorbed), the delinearization scalar
+/// stream, and the number of I/O pairs.
+fn vrf_transcript_base<S: Suite>(
+    scheme: DomSep,
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, DelinearizeScalars<S>, usize) {
+    let n = ios.len();
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[scheme as u8]);
+    absorb_ios::<S>(&mut t, ios);
+    let scalars = delinearize_scalars::<S>(t.clone());
+    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
+    t.absorb_raw(&ad_len.to_le_bytes());
+    t.absorb_raw(ad.as_ref());
+    (t, scalars, n)
 }
 
-/// Generic HMAC wrapper.
+/// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Computes an HMAC of the provided data using the specified key and hash function.
-/// Used for deterministic nonce generation in RFC-6979.
-#[cfg(feature = "rfc-6979")]
-fn hmac<H: Digest + digest::core_api::BlockSizeUser>(sk: &[u8], data: &[u8]) -> Vec<u8> {
-    use hmac::{Mac, SimpleHmac};
-    SimpleHmac::<H>::new_from_slice(sk)
-        .expect("HMAC can take key of any size")
-        .chain_update(data)
-        .finalize()
-        .into_bytes()
-        .to_vec()
-}
+/// Absorbs the scheme tag and raw I/O pairs into the transcript, derives
+/// delinearization scalars from a fork (so pairs are absorbed only once),
+/// merges the pairs into a single I/O, then absorbs the length-prefixed
+/// additional data.
+pub(crate) fn vrf_transcript_from_iter<S: Suite>(
+    scheme: DomSep,
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    let n = ios.len();
+    let (t, scalars, _) = vrf_transcript_base(scheme, ios.clone(), ad);
 
-/// Try-And-Increment method inspired by RFC-9381 section 5.4.1.1.
-///
-/// This implementation deviates from RFC-9381 in how the hash output is
-/// interpreted as a field element. The RFC defines a suite-specific
-/// `interpret_hash_value_as_a_point` function (e.g. `string_to_point(0x02 || s)`
-/// for P-256) that treats the hash as a serialized compressed point, coupling
-/// the procedure to the curve type and serialization format.
-///
-/// Instead, this implementation:
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using `Suite::Hasher`.
-/// 2. Reduces the hash output modulo the base field prime (little-endian) to
-///    obtain a field element. This uses all hash bytes and always produces a
-///    valid field element, introducing a negligible bias of ~`p / 2^hash_bits`
-///    when the hash is larger than the field (e.g. SHA-512 on a 255-bit field).
-/// 3. Interprets the field element as a curve coordinate via [`PointFromCoord`]:
-///    x-coordinate for short Weierstrass, y-coordinate for twisted Edwards.
-///    The "positive" (smaller) second coordinate is always selected.
-/// 4. Clears the cofactor and checks the point is not the identity.
-/// 5. Repeats with an incremented counter (up to 256 attempts) if no valid
-///    point is found.
-///
-/// On average, approximately two iterations are needed.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point
-///   (typically `salt || alpha` per RFC-9381).
-///
-/// # Returns
-///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
-/// * `None` - If no valid point could be found after 256 attempts.
-pub fn hash_to_curve_tai_rfc_9381<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>>
-where
-    AffinePoint<S>: PointFromCoord,
-    BaseField<S>: ark_ff::PrimeField,
-{
-    let prefix = S::Hasher::new()
-        .chain_update(S::SUITE_ID)
-        .chain_update([DomSep::HashToCurveTai as u8])
-        .chain_update(data);
-
-    for ctr in 0..=255u8 {
-        let hash = prefix
-            .clone()
-            .chain_update([ctr, DomSep::End as u8])
-            .finalize();
-        let coord = BaseField::<S>::from_le_bytes_mod_order(&hash);
-        let Some(pt) = AffinePoint::<S>::from_coord(coord) else {
-            continue;
-        };
-        let pt = pt.clear_cofactor();
-        if !pt.is_zero() {
-            return Some(pt);
+    let zero = AffinePoint::<S>::zero();
+    let io = if n == 0 {
+        VrfIo {
+            input: Input(zero),
+            output: Output(zero),
         }
-    }
-    None
+    } else if n == 1 {
+        ios.clone().next().expect("len is 1 but iterator is empty")
+    } else {
+        merge_ios(ios, scalars)
+    };
+
+    (t, io)
 }
 
-/// Elligator2 method as defined by RFC-9380 and further refined in RFC-9381 section 5.4.1.2.
+/// Build a VRF transcript returning raw delinearization scalars.
 ///
-/// Implements ECVRF_encode_to_curve using one of the several hash-to-curve options defined
-/// in RFC-9380. This method provides a constant-time hash-to-curve implementation that is
-/// more secure against side-channel attacks than the Try-And-Increment method.
-///
-/// The specific choice of the hash-to-curve option (called the Suite ID in RFC-9380)
-/// is given by the h2c_suite_ID_string parameter.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point
-///   (defined to be `salt || alpha` according to RFC-9381)
-/// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC-9380
-///
-/// # Returns
-///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup
-/// * `None` - If the hash-to-curve operation fails
-#[allow(unused)]
-pub fn hash_to_curve_ell2_rfc_9380<S: Suite>(
-    data: &[u8],
-    h2c_suite_id: &[u8],
-) -> Option<AffinePoint<S>>
-where
-    <S as Suite>::Hasher: Default + Clone + FixedOutputReset + 'static,
-    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
-    CurveConfig<S>: Elligator2Config,
-    Elligator2Map<CurveConfig<S>>:
-        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
-{
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
-    use ark_ff::field_hashers::DefaultFieldHasher;
-
-    // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
-    let dst: Vec<_> = [b"ECVRF_", h2c_suite_id, S::SUITE_ID].concat();
-
-    MapToCurveBasedHasher::<
-        <AffinePoint<S> as AffineRepr>::Group,
-        DefaultFieldHasher<<S as Suite>::Hasher, 128>,
-        Elligator2Map<CurveConfig<S>>,
-    >::new(&dst)
-    .and_then(|hasher| hasher.hash(data))
-    .ok()
+/// Same transcript construction as [`vrf_transcript_from_iter`] but returns
+/// the z scalars instead of the merged I/O pair. Used by batch verification
+/// which needs the individual points and z scalars to build an expanded MSM
+/// without computing the merged pair.
+pub(crate) fn vrf_transcript_scalars_from_iter<S: Suite>(
+    scheme: DomSep,
+    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    let (t, mut scalars, n) = vrf_transcript_base(scheme, ios, ad);
+    (t, scalars.take(n))
 }
 
-/// Challenge generation according to RFC-9381 section 5.4.3.
+pub(crate) fn vrf_transcript<S: Suite>(
+    scheme: DomSep,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    vrf_transcript_from_iter(scheme, ios.as_ref().iter().copied(), ad)
+}
+
+/// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
-/// Generates a challenge scalar by hashing a sequence of curve points and additional data.
-/// This is used in the Schnorr-like signature scheme for VRF proofs.
+/// Generates a challenge scalar by absorbing curve points into the transcript
+/// and squeezing. Used in the Schnorr-like proofs for VRF schemes.
 ///
-/// The function follows the procedure specified in RFC-9381:
-/// 1. Start with a domain separator and suite ID
-/// 2. Append the encoded form of each provided point
-/// 3. Append the additional data
-/// 4. Hash the result and interpret it as a scalar
+/// When `transcript` is `Some`, uses the pre-built transcript (which typically
+/// carries shared state from `vrf_transcript`). When `None`, creates a fresh
+/// transcript from `SUITE_ID`.
 ///
-/// # Parameters
-///
-/// * `pts` - Array of curve points to include in the challenge
-/// * `ad` - Additional data to bind to the challenge
-///
-/// Returns a scalar field element derived from the hash of the inputs
-pub fn challenge_rfc_9381<S: Suite>(pts: &[&AffinePoint<S>], ad: &[u8]) -> ScalarField<S> {
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::Challenge as u8]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
+/// Returns a scalar field element derived from the hash of the inputs.
+pub fn challenge<S: Suite>(
+    pts: &[&AffinePoint<S>],
+    transcript: Option<S::Transcript>,
+) -> ScalarField<S> {
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
+    t.absorb_raw(&[DomSep::Challenge as u8]);
     for p in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(p, &mut pt_buf);
-        hasher.update(&pt_buf);
+        t.absorb_serialize(*p);
     }
-    hasher.update(ad);
-    hasher.update([DomSep::End as u8]);
-    let hash = hasher.finalize();
-    S::Codec::scalar_decode(&hash[..S::CHALLENGE_LEN])
+    challenge_scalar::<S>(&mut t)
 }
 
-/// Point to a hash according to RFC-9381 section 5.2.
+/// Point-to-hash inspired by RFC-9381 section 5.2.
 ///
-/// Converts an elliptic curve point to a hash value, following the procedure in RFC-9381.
-/// This is used to derive the final VRF output bytes from the VRF output point.
+/// Converts an elliptic curve point to a hash value. Used to derive the
+/// final VRF output bytes from the VRF output point.
 ///
-/// According to the RFC, the input point `pt` should be multiplied by the cofactor
-/// before being hashed. However, in typical usage, the hashed point is the result
-/// of a scalar multiplication on a point produced by the `Suite::data_to_point`
-/// (also referred to as the _hash-to-curve_ or _h2c_) algorithm, which is expected
-/// to yield a point that already belongs to the prime order subgroup of the curve.
-///
-/// Therefore, assuming the `data_to_point` function is implemented correctly, the
-/// input point `pt` will inherently reside in the prime order subgroup, making the
-/// cofactor multiplication unnecessary and redundant in terms of security. The primary
-/// purpose of multiplying by the cofactor is as a safeguard against potential issues
-/// with an incorrect implementation of `data_to_point`.
-///
-/// # Parameters
-///
-/// * `pt` - The elliptic curve point to hash
-/// * `mul_by_cofactor` - Whether to multiply the point by the cofactor before hashing
-///
-/// # Returns
-///
-/// A hash value derived from the encoded point
-pub fn point_to_hash_rfc_9381<S: Suite>(
+/// The `mul_by_cofactor` flag optionally multiplies the point by the cofactor
+/// before hashing, as specified in the RFC. In practice this is unnecessary
+/// when `data_to_point` already yields a prime-order subgroup point.
+pub fn point_to_hash<S: Suite, const N: usize>(
     pt: &AffinePoint<S>,
     mul_by_cofactor: bool,
-) -> HashOutput<S> {
+) -> [u8; N] {
     use ark_std::borrow::Cow::*;
     let pt = match mul_by_cofactor {
         false => Borrowed(pt),
         true => Owned(pt.mul_by_cofactor()),
     };
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::PointToHash as u8]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    S::Codec::point_encode_into(&pt, &mut pt_buf);
-    hasher.update(&pt_buf);
-    hasher.update([DomSep::End as u8]);
-    hasher.finalize()
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[DomSep::PointToHash as u8]);
+    t.absorb_serialize(&*pt);
+    let mut out = [0; N];
+    t.squeeze_raw(&mut out);
+    out
 }
 
-/// Nonce generation according to RFC-9381 section 5.4.2.2.
+/// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
 ///
-/// This procedure is based on section 5.1.6 of RFC 8032: "Edwards-Curve Digital
-/// Signature Algorithm (EdDSA)". It generates a deterministic nonce by hashing
-/// the secret key and input point together.
-///
-/// The deterministic generation ensures that the same nonce is never used twice
-/// with the same secret key for different inputs, which is critical for security.
-///
-/// The `ad` (additional data) is mixed into the hash to ensure distinct nonces
-/// when the same secret key and input are used with different auxiliary data.
-///
-/// # Parameters
-///
-/// * `sk` - The secret scalar key
-/// * `pts` - Points to bind into the nonce derivation
-/// * `ad` - Additional data bound to the proof
-///
-/// # Returns
-///
-/// A scalar field element to be used as a nonce
-///
-/// # Panics
-///
-/// This function panics if `Suite::Hasher` output is less than 64 bytes.
-pub fn nonce_rfc_8032<S: Suite>(
-    sk: &ScalarField<S>,
-    pts: &[&AffinePoint<S>],
-    ad: &[u8],
-) -> ScalarField<S> {
-    assert!(
-        S::Hasher::output_size() >= 64,
-        "Suite::Hasher output is required to be >= 64 bytes"
-    );
+/// Hashes the secret key to derive a 64-byte expanded key, then absorbs the
+/// upper half into the transcript and squeezes a nonce. The transcript typically
+/// carries shared state from `vrf_transcript`, binding the nonce to the I/O
+/// pairs and additional data.
+pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -> ScalarField<S> {
+    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
 
-    let sk_buf = codec::scalar_encode::<S>(sk);
-    let sk_hash = hash::<S::Hasher>(&sk_buf);
+    // Expand sk: H(transcript_state || NonceExpand || sk)
+    let mut t_exp = t.clone();
+    t_exp.absorb_raw(&[DomSep::NonceExpand as u8]);
+    t_exp.absorb_serialize(sk);
+    let mut sk_hash = [0u8; 64];
+    t_exp.squeeze_raw(&mut sk_hash);
 
-    let mut hasher = S::Hasher::new();
-    hasher.update(&sk_hash[32..]);
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    for pt in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(pt, &mut pt_buf);
-        hasher.update(&pt_buf);
-    }
-    hasher.update(ad);
-    let h = hasher.finalize();
-
-    S::Codec::scalar_decode(&h)
+    // Derive nonce: H(transcript_state || Nonce || sk_hash)
+    t.absorb_raw(&[DomSep::Nonce as u8]);
+    t.absorb_raw(&sk_hash);
+    nonce_scalar::<S>(&mut t)
 }
 
-/// Nonce generation according to RFC 9381 section 5.4.2.1.
-///
-/// This procedure is based on section 3.2 of RFC 6979: "Deterministic Usage of
-/// the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature
-/// Algorithm (ECDSA)".
-///
-/// It generates a deterministic nonce using HMAC-based extraction, which provides
-/// strong security guarantees against nonce reuse or biased nonce generation.
-///
-/// The `ad` (additional data) is mixed into the initial hash to ensure distinct
-/// nonces when the same secret key and input are used with different auxiliary data.
-///
-/// Note: the candidate nonce is decoded via `scalar_decode`, which internally uses
-/// `from_(le/be)_bytes_mod_order` (i.e. reduction mod q) rather than the raw `bits2int`
-/// prescribed by RFC 6979. Strictly, candidates with `bits2int(T) >= q` should be
-/// rejected and trigger a retry; here they are instead reduced to a valid scalar.
-/// This introduces a negligible bias for curves where `q` is close to `2^(8*qbytes)`
-/// (e.g. secp256r1, where the probability of hitting `>= q` is ~2^{-128}).
-///
-/// # Parameters
-///
-/// * `sk` - The secret scalar key
-/// * `pts` - Points to bind into the nonce derivation
-/// * `ad` - Additional data bound to the proof
-///
-/// # Returns
-///
-/// A scalar field element to be used as a nonce
-#[cfg(feature = "rfc-6979")]
-pub fn nonce_rfc_6979<S: Suite>(
-    sk: &ScalarField<S>,
-    pts: &[&AffinePoint<S>],
-    ad: &[u8],
-) -> ScalarField<S>
-where
-    S::Hasher: digest::core_api::BlockSizeUser,
-{
-    let mut h1_hasher = S::Hasher::new();
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    for pt in pts {
-        pt_buf.clear();
-        S::Codec::point_encode_into(pt, &mut pt_buf);
-        h1_hasher.update(&pt_buf);
-    }
-    h1_hasher.update(ad);
-    let h1 = h1_hasher.finalize();
-
-    let v = [1; 32];
-    let k = [0; 32];
-
-    // K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
-    let x = codec::scalar_encode::<S>(sk);
-    let raw = [&v[..], &[0x00], &x[..], &h1[..]].concat();
-    let k = hmac::<S::Hasher>(&k, &raw);
-
-    // V = HMAC_K(V)
-    let v = hmac::<S::Hasher>(&k, &v);
-
-    // K = HMAC_K(V || 0x01 || int2octets(x) || bits2octets(h1))
-    let raw = [&v[..], &[0x01], &x[..], &h1[..]].concat();
-    let mut k = hmac::<S::Hasher>(&k, &raw);
-
-    // V = HMAC_K(V)
-    let mut v = hmac::<S::Hasher>(&k, &v);
-
-    // RFC 6979 section 3.2 step h
-    // qlen: bit length of q; qbytes: byte length (used for T construction)
-    let qlen = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
-    let qbytes = qlen.div_ceil(8);
-    loop {
-        // h.1: T = empty
-        let mut t = Vec::with_capacity(qbytes);
-        // h.2: while tlen < qlen, V = HMAC_K(V), T = T || V
-        while t.len() * 8 < qlen {
-            v = hmac::<S::Hasher>(&k, &v);
-            t.extend_from_slice(&v);
-        }
-        // h.3: k = bits2int(T), check k in [1, q-1]
-        let nonce = S::Codec::scalar_decode(&t[..qbytes]);
-        if !nonce.is_zero() {
-            return nonce;
-        }
-        // K = HMAC_K(V || 0x00), V = HMAC_K(V)
-        let data = [&v[..], &[0x00]].concat();
-        k = hmac::<S::Hasher>(&k, &data);
-        v = hmac::<S::Hasher>(&k, &v);
-    }
-}
-
-/// Stateful stream of 128-bit delinearization scalars backed by a seeded
-/// ChaCha20 PRNG. Created by [`delinearize_scalars`].
+/// Stateful stream of 128-bit delinearization scalars backed by a transcript's
+/// squeeze stream. Created by [`delinearize_scalars`].
 pub(crate) struct DelinearizeScalars<S: Suite> {
-    rng: rand_chacha::ChaCha20Rng,
-    _marker: core::marker::PhantomData<S>,
+    transcript: S::Transcript,
 }
 
 impl<S: Suite> DelinearizeScalars<S> {
     /// Draw the next 128-bit scalar.
     pub fn next(&mut self) -> ScalarField<S> {
-        use ark_std::rand::RngCore;
-        let mut buf = [0u8; 16];
-        self.rng.fill_bytes(&mut buf);
-        S::Codec::scalar_decode(&buf)
+        challenge_scalar::<S>(&mut self.transcript)
     }
 
     /// Collect `n` scalars into a `Vec`.
-    pub fn take_vec(&mut self, n: usize) -> Vec<ScalarField<S>> {
+    pub fn take(&mut self, n: usize) -> Vec<ScalarField<S>> {
         (0..n).map(|_| self.next()).collect()
     }
 }
 
-/// Seed a [`DelinearizeScalars`] stream from an iterator of [`VrfIo`] pairs
-/// and auxiliary data. The seed is derived deterministically by hashing all
-/// encoded points together with `ad`.
+/// Create a [`DelinearizeScalars`] stream from a transcript that has already
+/// absorbed the I/O pairs. Adds domain separation and starts the squeeze.
+///
+/// The caller must have absorbed the I/O pairs into `transcript` before
+/// calling this function (e.g. via [`absorb_ios`]).
 pub(crate) fn delinearize_scalars<S: Suite>(
-    iter: impl ExactSizeIterator<Item = VrfIo<S>>,
-    ad: &[u8],
+    mut transcript: S::Transcript,
 ) -> DelinearizeScalars<S> {
-    use ark_std::rand::SeedableRng;
+    transcript.absorb_raw(&[DomSep::Delinearize as u8]);
+    DelinearizeScalars { transcript }
+}
 
-    let n = u32::try_from(iter.len()).expect("too many input-output pairs");
-
-    // Seed: H(suite_id || dom_sep || N || encode(H_0) || encode(Gamma_0) || ... || ad || 0x00)
-    let mut hasher = S::Hasher::new();
-    hasher.update(S::SUITE_ID);
-    hasher.update([DomSep::Delinearize as u8]);
-    hasher.update(n.to_le_bytes());
-
-    let mut pt_buf = Vec::with_capacity(S::Codec::POINT_ENCODED_LEN);
-    for io in iter {
-        pt_buf.clear();
-        S::Codec::point_encode_into(&io.input.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-        pt_buf.clear();
-        S::Codec::point_encode_into(&io.output.0, &mut pt_buf);
-        hasher.update(&pt_buf);
-    }
-    hasher.update(ad);
-    hasher.update([DomSep::End as u8]);
-    let seed = hasher.finalize();
-
-    assert!(seed.len() >= 32, "hash output too short for ChaCha20 seed");
-    let mut rng_seed = [0u8; 32];
-    rng_seed.copy_from_slice(&seed[..32]);
-
-    DelinearizeScalars {
-        rng: rand_chacha::ChaCha20Rng::from_seed(rng_seed),
-        _marker: core::marker::PhantomData,
+/// Absorb I/O pairs into a transcript.
+///
+/// The count is absorbed first as a little-endian `u32` so that the
+/// framing is unambiguous even though each `VrfIo` already has a
+/// fixed-size serialization. This is cheap and avoids any implicit
+/// dependency on the serialization being fixed-length.
+fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item = VrfIo<S>>) {
+    let n = u32::try_from(ios.len()).expect("too many ios");
+    t.absorb_raw(&n.to_le_bytes());
+    for io in ios {
+        t.absorb_serialize(&io);
     }
 }
 
-/// Delinearize multiple input-output pairs into a single pair.
+/// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
-/// Derives 128-bit delinearization scalars (Privacy Pass / dleq_vrf technique)
-/// and folds the ios into `(sum(z_i * input_i), sum(z_i * output_i))`.
-/// The resulting `(Input, Output)` can be passed directly to a scheme's
-/// `prove` / `verify` to obtain or check a single proof covering all pairs.
-///
-/// The ordering of items matters: the delinearization scalars are derived from
-/// the hash of the pairs in the given order, so the prover and verifier must
-/// use the same ordering to obtain the same merged pair.
-///
-/// - N=0: returns the identity point for both input and output.
-/// - N=1: returns the pair as-is, no hashing or scalar multiplications.
-/// - N>1: derives per-pair 128-bit scalars (2^{-128} Schwartz-Zippel soundness)
-///   and returns their linear combination.
-///
-/// The iterator must be `ExactSizeIterator` (to know N) and `Clone` (for the
-/// two-pass hash-then-fold without allocation).
-///
-/// # WARNING: N=0
-///
-/// When the iterator is empty, both returned points are the identity (zero point).
-/// Since `sk * 0 = 0` for every secret key, the resulting DLEQ proof degenerates
-/// into a Schnorr signature over the additional data -- it binds the public key
-/// to `ad` but provides **no VRF output**. The `Output` is a public constant
-/// (the identity point) and **must not** be used to derive VRF randomness.
-/// Doing so would produce a predictable, key-independent value.
-pub fn delinearize<S: Suite>(
+/// Caller must ensure `iter.len() >= 2` and that `scalars` yields at least
+/// that many values.
+fn merge_ios<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    ad: &[u8],
-) -> (Input<S>, Output<S>) {
-    let zero = AffinePoint::<S>::zero();
+    mut scalars: DelinearizeScalars<S>,
+) -> VrfIo<S> {
     let n = iter.len();
-
-    if n == 0 {
-        return (Input(zero), Output(zero));
-    }
-
-    if n == 1 {
-        let io = iter.clone().next().unwrap();
-        return (io.input, io.output);
-    }
 
     // MSM has bucket-setup overhead that dominates for small N.
     // Fold is faster below this threshold; MSM wins above it.
     const MSM_THRESHOLD: usize = 16;
 
-    let mut scalars = delinearize_scalars(iter.clone(), ad);
-
-    let zero = zero.into_group();
+    let zero = AffinePoint::<S>::zero().into_group();
     let (input, output) = if n < MSM_THRESHOLD {
         iter.fold((zero, zero), |(h_acc, g_acc), io| {
             let z = scalars.next();
             (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
         })
     } else {
-        let scalars = scalars.take_vec(n);
+        let scalars = scalars.take(n);
         let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
@@ -566,7 +351,10 @@ pub fn delinearize<S: Suite>(
         (input, output)
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);
-    (Input(norms[0]), Output(norms[1]))
+    VrfIo {
+        input: Input(norms[0]),
+        output: Output(norms[1]),
+    }
 }
 
 #[cfg(test)]
@@ -574,11 +362,30 @@ mod tests {
     use super::*;
     use suites::testing::TestSuite;
 
+    /// Verify that the scheme tag produces distinct transcripts.
     #[test]
-    fn hash_to_curve_tai_works() {
-        let pt = hash_to_curve_tai_rfc_9381::<TestSuite>(b"hello world").unwrap();
-        // Check that `pt` is in the prime subgroup
-        assert!(pt.is_on_curve());
-        assert!(pt.is_in_correct_subgroup_assuming_on_curve())
+    fn scheme_tag_domain_separation() {
+        use crate::{Input, Output, VrfIo};
+
+        let sk = ScalarField::<TestSuite>::from(42u64);
+        let ios: Vec<VrfIo<TestSuite>> = (0..3u8)
+            .map(|i| {
+                let input = TestSuite::data_to_point(&[i]).unwrap();
+                let output = (input * sk).into_affine();
+                VrfIo {
+                    input: Input(input),
+                    output: Output(output),
+                }
+            })
+            .collect();
+
+        let (_, io_ietf) = vrf_transcript::<TestSuite>(DomSep::IetfVrf, &ios, b"foo");
+        let (_, io_thin) = vrf_transcript::<TestSuite>(DomSep::ThinVrf, &ios, b"foo");
+        let (_, io_ped) = vrf_transcript::<TestSuite>(DomSep::PedersenVrf, &ios, b"foo");
+
+        // Different scheme tags must produce different merged pairs (for n >= 2).
+        assert_ne!(io_ietf, io_thin);
+        assert_ne!(io_ietf, io_ped);
+        assert_ne!(io_thin, io_ped);
     }
 }

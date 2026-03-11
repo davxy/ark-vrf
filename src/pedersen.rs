@@ -13,7 +13,7 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //! use ark_vrf::pedersen::{Prover, Verifier, PedersenSuite};
 //!
-//! let secret = Secret::from_seed(b"seed");
+//! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
 //! let io = secret.vrf_io(input);
@@ -32,14 +32,12 @@
 
 use crate::ietf::IetfSuite;
 use crate::utils;
+use crate::utils::common::DomSep;
 use crate::*;
 use ark_ec::VariableBaseMSM;
 
-/// Magic spell for [`PedersenSuite::BLINDING_BASE`] generation in built-in implementations.
-///
-/// (en) *"the blinding foundation of hidden light which eludes the mind and creates darkness for those who see"*
-pub const PEDERSEN_BASE_SEED: &[u8] =
-    b"basis caecans lucis occultae quae mentem fugit et tenebras iis qui vident creat";
+/// Seed hashed to curve to produce [`PedersenSuite::BLINDING_BASE`] in built-in suites.
+pub const PEDERSEN_BLINDING_BASE_SEED: &[u8] = b"pedersen-blinding";
 
 /// Suite extension for Pedersen VRF support.
 ///
@@ -50,32 +48,10 @@ pub trait PedersenSuite: IetfSuite {
 
     /// Pedersen blinding factor.
     ///
-    /// Default implementation is deterministic and loosely inspired by the RFC-9381
-    /// challenge procedure. All parameters but `secret` are public.
-    fn blinding(
-        secret: &ScalarField<Self>,
-        input: &AffinePoint<Self>,
-        aux: &[u8],
-    ) -> ScalarField<Self> {
-        use crate::utils::common::DomSep;
-        use digest::Digest;
-        let mut buf = Vec::with_capacity(Self::Codec::POINT_ENCODED_LEN);
-        let hash = Self::Hasher::new()
-            .chain_update(Self::SUITE_ID)
-            .chain_update([DomSep::PedersenBlinding as u8])
-            .chain_update({
-                Self::Codec::scalar_encode_into(secret, &mut buf);
-                &buf
-            })
-            .chain_update({
-                buf.clear();
-                Self::Codec::point_encode_into(input, &mut buf);
-                &buf
-            })
-            .chain_update(aux)
-            .chain_update([DomSep::End as u8])
-            .finalize();
-        codec::scalar_decode::<Self>(&hash)
+    /// Default implementation is deterministic. All parameters but `secret` are public.
+    fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
+        transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
+        Self::nonce(secret, Some(transcript))
     }
 }
 
@@ -159,29 +135,26 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        let ad = ad.as_ref();
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
         // Build blinding factor
-        let blinding = S::blinding(&self.scalar, &input.0, ad);
+        let blinding = S::blinding(&self.scalar, t.clone());
 
-        // k nonce: bind input, output, and blinding.
-        // The blinding factor is mixed into `ad` so that two proofs with the
-        // same (secret, input, ad) but different blinding factors produce
+        // k nonce: bind blinding factor so that two proofs with the
+        // same (secret, io, ad) but different blinding factors produce
         // distinct nonces, preventing secret key recovery via
         // x = (s1 - s2) / (c1 - c2).
-        let blinding_buf = codec::scalar_encode::<S>(&blinding);
-        let buf = [blinding_buf.as_slice(), ad].concat();
-        let k = S::nonce(&self.scalar, &[&input.0, &output.0], &buf);
+        let mut t_k = t.clone();
+        t_k.absorb_serialize(&blinding);
+        let k = S::nonce(&self.scalar, Some(t_k));
 
-        // kb nonce: bind input, output, and secret key.
-        // The secret key is mixed into `ad` so that two proofs with the
+        // kb nonce: bind secret key so that two proofs with the
         // same (blinding, input, ad) but different secret keys produce
         // distinct nonces, preventing blinding factor recovery via
         // b = (sb1 - sb2) / (c1 - c2).
-        let secret_buf = codec::scalar_encode::<S>(&self.scalar);
-        let buf = [secret_buf.as_slice(), ad].concat();
-        let kb = S::nonce(&blinding, &[&input.0, &output.0], &buf);
+        let mut t_kb = t.clone();
+        t_kb.absorb_serialize(&self.scalar);
+        let kb = S::nonce(&blinding, Some(t_kb));
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -194,13 +167,13 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let r = kg + kbb;
 
         // Ok = k*I
-        let ok = smul!(input.0, k);
+        let ok = smul!(io.input.0, k);
 
         let norms = CurveGroup::normalize_batch(&[pk_com, r, ok]);
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad);
+        let c = S::challenge(&[&pk_com, &r, &ok], Some(t));
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -224,9 +197,6 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let ad = ad.as_ref();
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
-
         let Proof {
             pk_com,
             r,
@@ -235,14 +205,16 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[pk_com, &input.0, &output.0, r, ok], ad);
+        let c = S::challenge(&[pk_com, r, ok], Some(t));
 
         // Eq1: Ok + c*O = s*I
         // Verifies that the VRF output O is correctly derived from the input I
         // using the same secret scalar x committed in the proof. Expanding the
         // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
-        if output.0 * c + ok != input.0 * s {
+        if io.output.0 * c + ok != io.input.0 * s {
             return Err(Error::VerificationFailure);
         }
 
@@ -303,16 +275,12 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let ad = ad.as_ref();
-        let (input, output) = utils::delinearize(ios.as_ref().iter().copied(), ad);
-        let c = S::challenge(
-            &[&proof.pk_com, &input.0, &output.0, &proof.r, &proof.ok],
-            ad,
-        );
+        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], Some(t));
         BatchItem {
             c,
-            input: input.0,
-            output: output.0,
+            input: io.input.0,
+            output: io.output.0,
             pk_com: proof.pk_com,
             r: proof.r,
             ok: proof.ok,
@@ -343,8 +311,6 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
-        use ark_std::rand::{RngCore, SeedableRng};
-
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
@@ -353,25 +319,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let n = items.len();
 
         // Generate deterministic random scalars from entry data.
-        // Hash (c, s, sb) per entry into a seed, then use ChaCha20Rng to sample 2N scalars.
+        // Absorb (c, s, sb) per entry, then squeeze 2N random scalars.
         // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
         // response scalars s and sb need to be included separately.
-        let mut hasher = S::Hasher::new();
-        let mut buf = Vec::with_capacity(3 * S::Codec::SCALAR_ENCODED_LEN);
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(b"pedersen-batch");
         for e in items {
-            buf.clear();
-            S::Codec::scalar_encode_into(&e.c, &mut buf);
-            S::Codec::scalar_encode_into(&e.s, &mut buf);
-            S::Codec::scalar_encode_into(&e.sb, &mut buf);
-            hasher.update(&buf);
+            t.absorb_serialize(&e.c);
+            t.absorb_serialize(&e.s);
+            t.absorb_serialize(&e.sb);
         }
-        let hash = hasher.finalize();
-        let mut seed = [0u8; 32];
-        let copy_len = hash.len().min(32);
-        seed[..copy_len].copy_from_slice(&hash[..copy_len]);
-
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
-
         // Sample 2N random 128-bit scalars (t_i for eq1, u_i for eq2).
         // 128-bit scalars are sufficient for the Schwartz-Zippel soundness argument
         // (error probability 2^{-128}) and roughly halve the MSM cost compared to
@@ -380,7 +337,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
                 let mut buf = [0u8; 32];
-                rng.fill_bytes(&mut buf);
+                t.squeeze_raw(&mut buf);
                 let t = ScalarField::<S>::from_le_bytes_mod_order(&buf[..16]);
                 let u = ScalarField::<S>::from_le_bytes_mod_order(&buf[16..]);
                 (t, u)
@@ -575,7 +532,7 @@ pub(crate) mod testing {
         // Check that point has been computed using the magic spell.
         assert_eq!(
             S::BLINDING_BASE,
-            S::data_to_point(PEDERSEN_BASE_SEED).unwrap()
+            S::data_to_point(PEDERSEN_BLINDING_BASE_SEED).unwrap()
         );
         // Check that the point is on curve.
         assert!(S::BLINDING_BASE.check(true).is_ok());
@@ -647,12 +604,12 @@ pub(crate) mod testing {
         S: PedersenSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::suite_name() + "_pedersen"
+            S::SUITE_NAME.to_string() + "_pedersen"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
-            let base = common::TestVector::new(comment, seed, alpha, salt, ad);
+            let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
                 input: Input::<S>::from_affine(base.h),
                 output: Output::from_affine(base.gamma),
@@ -664,12 +621,12 @@ pub(crate) mod testing {
 
         fn from_map(map: &common::TestVectorMap) -> Self {
             let base = common::TestVector::from_map(map);
-            let blind = S::Codec::scalar_decode(&map.get_bytes("blinding"));
-            let pk_com = S::Codec::point_decode(&map.get_bytes("proof_pk_com")).unwrap();
-            let r = codec::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
-            let ok = codec::point_decode::<S>(&map.get_bytes("proof_ok")).unwrap();
-            let s = S::Codec::scalar_decode(&map.get_bytes("proof_s"));
-            let sb = S::Codec::scalar_decode(&map.get_bytes("proof_sb"));
+            let blind = common::scalar_decode::<S>(&map.get_bytes("blinding"));
+            let pk_com = common::point_decode::<S>(&map.get_bytes("proof_pk_com")).unwrap();
+            let r = common::point_decode::<S>(&map.get_bytes("proof_r")).unwrap();
+            let ok = common::point_decode::<S>(&map.get_bytes("proof_ok")).unwrap();
+            let s = common::scalar_decode::<S>(&map.get_bytes("proof_s"));
+            let sb = common::scalar_decode::<S>(&map.get_bytes("proof_sb"));
             let proof = Proof {
                 pk_com,
                 r,
@@ -684,27 +641,27 @@ pub(crate) mod testing {
             let items = [
                 (
                     "blinding",
-                    hex::encode(codec::scalar_encode::<S>(&self.blind)),
+                    hex::encode(common::scalar_encode::<S>(&self.blind)),
                 ),
                 (
                     "proof_pk_com",
-                    hex::encode(codec::point_encode::<S>(&self.proof.pk_com)),
+                    hex::encode(common::point_encode::<S>(&self.proof.pk_com)),
                 ),
                 (
                     "proof_r",
-                    hex::encode(codec::point_encode::<S>(&self.proof.r)),
+                    hex::encode(common::point_encode::<S>(&self.proof.r)),
                 ),
                 (
                     "proof_ok",
-                    hex::encode(codec::point_encode::<S>(&self.proof.ok)),
+                    hex::encode(common::point_encode::<S>(&self.proof.ok)),
                 ),
                 (
                     "proof_s",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof.s)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof.s)),
                 ),
                 (
                     "proof_sb",
-                    hex::encode(codec::scalar_encode::<S>(&self.proof.sb)),
+                    hex::encode(common::scalar_encode::<S>(&self.proof.sb)),
                 ),
             ];
             let mut map = self.base.to_map();

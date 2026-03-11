@@ -13,15 +13,14 @@
 //!   - G.x = 30900340493481298850216505686589334086208278925799850409469406976849338430199
 //!   - G.y = 12663882780877899054958035777720958383845500985908634476792678820121468453298
 //!
-//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
-//!   approximately 128-bit security level.
+//! * `cLen` = 16 (128-bit security level).
 //!
 //! * The key pair generation primitive is `PK = sk * G`, with x the secret
 //!   key scalar and `G` the group generator. In this ciphersuite, the secret
 //!   scalar x is equal to the secret key scalar sk.
 //!
-//! * The ECVRF_nonce_generation function is as specified in Section 5.4.2.2
-//!   of RFC-9381.
+//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
+//!   adapted to use the suite's pluggable transcript.
 //!
 //! * The int_to_string function encodes into the 32 bytes little endian
 //!   representation.
@@ -42,11 +41,12 @@
 //! * The hash function Hash is SHA-512 as specified in
 //!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
 //!
-//! * The `ECVRF_encode_to_curve` function uses *Try and Increment* method described in
-//!   described in section 5.4.1.1 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
+//! * The `ECVRF_encode_to_curve` function uses *Try and Increment*, inspired
+//!   by section 5.4.1.1 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
 //!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_TAI_RO_"`
 //!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;
 
@@ -56,37 +56,18 @@ pub struct BandersnatchSha512Tai;
 type ThisSuite = BandersnatchSha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch_SW_SHA-512_TAI";
-    const CHALLENGE_LEN: usize = 16;
-
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH_SW, hash::SHA512, h2c::TAI);
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
-    type Hasher = sha2::Sha512;
-    type Codec = codec::ArkworksCodec;
-
-    fn data_to_point(data: &[u8]) -> Option<crate::AffinePoint<Self>> {
-        utils::hash_to_curve_tai_rfc_9381::<Self>(data)
-    }
-
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
-    }
-
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
-    }
+    type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "33223102492293568862667525992851581100134652813290854063999801661683711349441"
+            "10413751950535591369078765238590012968075206568063041317263886972378371012853"
         );
         const Y: BaseField = MontFp!(
-            "11471669233886126419935509816675628354323498643841018718785268427039029920189"
+            "31698624715027881378813868644416181655372768903967759448893249923688709504207"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -100,21 +81,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "14011983808319200849127077839132679184203263985589814120312954133368857865548"
+            "34010873273258452675040463430802802677417457821460464945309773992358762628740"
         );
         const Y: BaseField = MontFp!(
-            "48034271482717835584039816720772062644919811813170829667241990727041498185505"
+            "39755110905861027119195697698236011185916328147048110359272244254573640474128"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "31378218336833040701410495456020361782280695891255129849639307536616026506256"
+            "13967716177648357518350250459837378876904366672394018504844950608437166926790"
         );
-        const Y: BaseField = MontFp!(
-            "51980319720485342089114943355158054026957947498805576908085629236529250639779"
-        );
+        const Y: BaseField =
+            MontFp!("9176097829703990078931039457110992015397061835052297579313878592536142960884");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -141,9 +121,10 @@ mod tests {
     use crate::{ietf_suite_tests, testing};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "bandersnatch_sw_sha-512_tai";
+    }
 
-    codec_suite_tests!(ThisSuite);
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);

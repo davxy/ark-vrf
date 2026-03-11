@@ -13,15 +13,14 @@
 //!   - G.x = 18886178867200960497001835917649091219057080094937609519140440539760939937304
 //!   - G.y = 19188667384257783945677642223292697773471335439753913231509108946878080696678
 //!
-//! * `cLen` = 16. As prescribed by RFC-9381 section 5.5 for curves with
-//!   approximately 128-bit security level.
+//! * `cLen` = 16 (128-bit security level).
 //!
 //! * The key pair generation primitive is _PK = sk * G_, with x the secret
 //!   key scalar and G the group generator. In this ciphersuite, the secret
 //!   scalar x is equal to the secret key scalar sk.
 //!
-//! * The ECVRF_nonce_generation function is as specified in Section 5.4.2.2
-//!   of RFC-9381.
+//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
+//!   adapted to use the suite's pluggable transcript.
 //!
 //! * The int_to_string function encodes into the 32 bytes little endian
 //!   representation.
@@ -48,6 +47,7 @@
 //!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_ELL2_RO_"`
 //!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -59,40 +59,24 @@ type ThisSuite = BandersnatchSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch_SHA-512_ELL2";
-    const CHALLENGE_LEN: usize = 16;
-
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH, hash::SHA512, h2c::ELL2);
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
-    type Hasher = sha2::Sha512;
-    type Codec = codec::ArkworksCodec;
-
+    type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
         // "XMD" for expand_message_xmd (Section 5.3.1).
         // "RO" for random oracle (Section 3 - hash_to_curve method)
         let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
-        utils::hash_to_curve_ell2_rfc_9380::<Self>(data, h2c_suite_id)
-    }
-
-    fn nonce(sk: &ScalarField, pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, pts, ad)
-    }
-
-    fn challenge(pts: &[&AffinePoint], ad: &[u8]) -> ScalarField {
-        utils::challenge_rfc_9381::<Self>(pts, ad)
-    }
-
-    fn point_to_hash(pt: &AffinePoint) -> crate::HashOutput<Self> {
-        utils::point_to_hash_rfc_9381::<Self>(pt, false)
+        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data, h2c_suite_id)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField =
-            MontFp!("6150229251051246713677296363717454238956877613358614224171740096471278798312");
+            MontFp!("5226425992571220769365843487102064307101272980791993134273780736997544949382");
         const Y: BaseField = MontFp!(
-            "28442734166467795856797249030329035618871580593056783094884474814923353898473"
+            "46544868206883149332782258938702216106598247683423727002885664111567608220426"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -104,20 +88,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "37805570861274048643170021838972902516980894313648523898085159469000338764576"
+            "42303668360647658687880456753606405401141031996216729331450763906967498848487"
         );
         const Y: BaseField = MontFp!(
-            "14738305321141000190236674389841754997202271418876976886494444739226156422510"
+            "41898972259388202032055565840730004413653698329702630697317353721966090663285"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "26287722405578650394504321825321286533153045350760430979437739593351290020913"
+            "29586100106858075217954567072572265001347911471605742544678436487322334776392"
         );
         const Y: BaseField = MontFp!(
-            "19058981610000167534379068105702216971787064146691007947119244515951752366738"
+            "21753411410084671346581650250322348778806357231808407562422401169820213423498"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -130,9 +114,10 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "bandersnatch_sha-512_ell2";
+    }
 
-    codec_suite_tests!(ThisSuite);
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);

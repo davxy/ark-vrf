@@ -4,19 +4,27 @@
 //! throughout the VRF implementations.
 
 pub mod common;
+pub mod hash_to_curve;
 pub mod te_sw_map;
+pub mod transcript;
 
 /// Standard cryptographic procedures.
 ///
-/// Includes hash functions, challenge generation, and point-to-hash conversions
-/// following RFC-9381 and other standards.
+/// Includes challenge generation, nonce derivation, and point-to-hash conversions
+/// inspired by RFC-9381 and RFC-8032.
 pub use common::*;
+
+/// Hash-to-curve implementations (TAI, Elligator2 with XMD/XOF).
+pub use hash_to_curve::*;
 
 /// Twisted Edwards to Short Weierstrass curve mapping.
 ///
 /// Provides bidirectional mappings between different curve representations,
 /// allowing operations to be performed in the most convenient form.
 pub use te_sw_map::*;
+
+/// Fiat-Shamir transcript abstraction.
+pub use transcript::*;
 
 /// Point scalar multiplication with optional secret splitting.
 ///

@@ -1,7 +1,7 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::{UniformRand, rand::SeedableRng};
+use ark_std::UniformRand;
 use ark_vrf::{
     AffinePoint, Input, Secret, VrfIo,
     ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
@@ -21,8 +21,8 @@ struct RingSetup<S: RingSuite> {
 }
 
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> RingSetup<S> {
-    let mut rng = rand_chacha::ChaCha20Rng::from_seed([42; 32]);
-    let secret = Secret::<S>::from_seed(b"bench secret seed");
+    let mut rng = ark_std::test_rng();
+    let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
@@ -166,22 +166,19 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let batch_items: Vec<BatchItem<S>> = (0..max_batch_size)
         .into_par_iter()
-        .map_init(
-            || rand_chacha::ChaCha20Rng::from_seed([0; 32]),
-            |rng, i| {
-                let input = Input::<S>::from_affine(AffinePoint::<S>::rand(rng));
-                let io = setup.secret.vrf_io(input);
-                let ad = format!("ad-{i}").into_bytes();
-                let proof = setup.secret.prove(io, &ad, &prover);
-                let prev = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let prev_pct = prev * 10 / max_batch_size;
-                let curr_pct = (prev + 1) * 10 / max_batch_size;
-                if curr_pct > prev_pct {
-                    println!("  {}%", curr_pct * 10);
-                }
-                BatchItem { io, ad, proof }
-            },
-        )
+        .map_init(ark_std::test_rng, |rng, i| {
+            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(rng));
+            let io = setup.secret.vrf_io(input);
+            let ad = format!("ad-{i}").into_bytes();
+            let proof = setup.secret.prove(io, &ad, &prover);
+            let prev = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let prev_pct = prev * 10 / max_batch_size;
+            let curr_pct = (prev + 1) * 10 / max_batch_size;
+            if curr_pct > prev_pct {
+                println!("  {}%", curr_pct * 10);
+            }
+            BatchItem { io, ad, proof }
+        })
         .collect();
 
     let verifier_key = setup.params.verifier_key(&setup.ring);

@@ -16,23 +16,18 @@ Criterion: `--quick` mode
 
 | Benchmark                    |     Time |
 |:-----------------------------|---------:|
-| key_from_seed                | 84.1 us  |
-| key_from_scalar              | 82.0 us  |
-| vrf_output                   | 80.8 us  |
-| hash_to_curve_ell2_rfc_9380  | 74.5 us  |
-| challenge_rfc_9381           | 920 ns   |
-| point_to_hash_rfc_9381       | 336.7 ns |
-| nonce_rfc_8032               | 2.26 us  |
-| point_encode                 | 46.0 ns  |
-| point_decode                 | 15.3 us  |
-| scalar_encode                | 21.2 ns  |
-| scalar_decode                | 120.9 ns |
+| vrf_output                   | 81.7 us  |
+| data_to_point_tai            | 48.3 us  |
+| data_to_point_ell2           | 70.3 us  |
+| point_to_hash                | 354 ns   |
+| challenge                    | 866 ns   |
+| nonce_rfc_8032               | 1.79 us  |
 
 ### Delinearization
 
 | Benchmark      | n=2     | n=4     | n=8     | n=16    | n=32    | n=64    | n=128   | n=256   |
 |:---------------|---------|---------|---------|---------|---------|---------|---------|---------|
-| delinearize    | 177 us  | 401 us  | 805 us  | 1.15 ms | 2.13 ms | 3.49 ms | 4.45 ms | 7.51 ms |
+| delinearize    | 174 us  | 360 us  | 720 us  | 1.11 ms | 2.07 ms | 3.41 ms | 4.15 ms | 7.19 ms |
 
 Uses a hybrid strategy: sequential fold for N < 16, MSM (Pippenger) for N >= 16.
 Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scaling.
@@ -41,48 +36,62 @@ Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scal
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| ietf_prove             | 169.5 us |
-| ietf_verify            | 258.1 us |
+| ietf_prove             | 165.4 us |
+| ietf_verify            | 266.4 us |
 
 ## Pedersen VRF Operations (`pedersen.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| pedersen_prove         | 482.6 us |
-| pedersen_verify        | 358.1 us |
+| pedersen_prove         | 478.0 us |
+| pedersen_verify        | 377.9 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 0.91 us  | 1.84 us  | 3.65 us  | 6.73 us  | 13.4 us  | 27.3 us  | 60.2 us  | 115.6 us | 229.6 us |
-| batch_verify         | 507.6 us | 600.2 us | 711.9 us | 1.63 ms  | 1.98 ms  | 3.36 ms  | 6.24 ms  | 8.41 ms  | 14.8 ms  |
+| batch_prepare        | 0.99 us  | 1.94 us  | 3.91 us  | 7.80 us  | 15.5 us  | 30.9 us  | 61.8 us  | 123.7 us | 248.0 us |
+| batch_verify         | 507.3 us | 593.8 us | 773.3 us | 1.79 ms  | 2.13 ms  | 3.63 ms  | 6.21 ms  | 8.51 ms  | 15.4 ms  |
+
+## Thin VRF Operations (`thin.rs`)
+
+| Benchmark              |     Time |
+|:-----------------------|---------:|
+| thin_prove             | 310.6 us |
+| thin_verify            | 355.9 us |
+
+### Batch Verification
+
+| Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
+|:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
+| batch_prepare        | 2.00 us  | 3.68 us  | 7.44 us  | 15.8 us  | 29.5 us  | 64.5 us  | 132.4 us | 261.2 us | 521.1 us |
+| batch_verify         | 490.2 us | 548.6 us | 692.5 us | 1.67 ms  | 2.18 ms  | 3.64 ms  | 6.24 ms  | 8.51 ms  | 15.1 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 
 | Benchmark              | n=255     | n=1023    | n=2047    |
 |:-----------------------|----------:|----------:|----------:|
-| ring_params_setup      | 0.84 ms   | 3.91 ms   | 8.43 ms   |
-| ring_prover_key        | 44.4 ms   | 136.6 ms  | 250.0 ms  |
-| ring_verifier_key      | 44.1 ms   | 137.1 ms  | 244.0 ms  |
-| ring_prove             | 150.0 ms  | 464.7 ms  | 820.3 ms  |
-| ring_verify            | 3.51 ms   | 3.49 ms   | 3.24 ms   |
-| ring_verifier_from_key | 255.7 us  | 275.4 us  | 317.8 us  |
-| ring_vk_from_commitment| 74.4 ns   | 74.7 ns   | 69.7 ns   |
-| ring_vk_builder_create | 314.5 ms  | 1.457 s   | 3.075 s   |
-| ring_vk_builder_append | 16.3 ms   | 47.9 ms   | 81.1 ms   |
-| ring_vk_builder_finalize | 108.9 ns | 108.8 ns  | 101.2 ns  |
+| ring_params_setup      | 0.85 ms   | 3.94 ms   | 7.86 ms   |
+| ring_prover_key        | 44.3 ms   | 136.9 ms  | 251.8 ms  |
+| ring_verifier_key      | 44.1 ms   | 136.5 ms  | 228.9 ms  |
+| ring_prove             | 149.5 ms  | 462.1 ms  | 803.1 ms  |
+| ring_verify            | 3.42 ms   | 3.45 ms   | 3.51 ms   |
+| ring_verifier_from_key | 254.3 us  | 274.0 us  | 304.5 us  |
+| ring_vk_from_commitment| 75.3 ns   | 75.0 ns   | 75.0 ns   |
+| ring_vk_builder_create | 317.0 ms  | 1.381 s   | 3.066 s   |
+| ring_vk_builder_append | 16.4 ms   | 44.1 ms   | 80.0 ms   |
+| ring_vk_builder_finalize | 107.2 ns | 100.2 ns  | 98.6 ns   |
 
 ### Batch Verification (ring size = 1023)
 
 | Benchmark          | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:-------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_verifier_new | 258 us   | -        | -        | -        | -        | -        | -        | -        | -        |
-| batch_push         | 51.8 us  | 97.4 us  | 215.8 us | 433.5 us | 826.6 us | 1.66 ms  | 3.34 ms  | 6.63 ms  | 14.4 ms  |
-| batch_prepare_seq  | 40.8 us  | 82.8 us  | 182.4 us | 361.5 us | 754.5 us | 1.53 ms  | 3.38 ms  | 6.10 ms  | 12.3 ms  |
-| batch_prepare_par  | 41.1 us  | 69.0 us  | 107.8 us | 157.9 us | 239.7 us | 248.6 us | 233.1 us | 474.0 us | 823.0 us |
-| batch_push_prepared| 5.2 us   | 10.5 us  | 19.8 us  | 39.8 us  | 69.9 us  | 171.7 us | 268.0 us | 543.2 us | 1.14 ms  |
-| batch_verify       | 3.28 ms  | 4.17 ms  | 5.48 ms  | 8.03 ms  | 12.8 ms  | 20.5 ms  | 32.7 ms  | 54.7 ms  | 89.9 ms  |
+| batch_verifier_new | 269 us   | -        | -        | -        | -        | -        | -        | -        | -        |
+| batch_push         | 48.0 us  | 102.0 us | 201.1 us | 433.2 us | 876.9 us | 1.75 ms  | 3.25 ms  | 6.50 ms  | 13.2 ms  |
+| batch_prepare_seq  | 41.5 us  | 83.6 us  | 164.8 us | 384.2 us | 828.3 us | 1.61 ms  | 3.02 ms  | 6.02 ms  | 12.5 ms  |
+| batch_prepare_par  | 40.2 us  | 76.4 us  | 97.2 us  | 151.8 us | 210.6 us | 237.9 us | 246.1 us | 459.7 us | 790.7 us |
+| batch_push_prepared| 5.6 us   | 9.2 us   | 17.6 us  | 37.5 us  | 72.5 us  | 134.4 us | 264.9 us | 543.1 us | 1.05 ms  |
+| batch_verify       | 3.45 ms  | 4.43 ms  | 5.92 ms  | 8.58 ms  | 12.7 ms  | 19.4 ms  | 30.7 ms  | 57.7 ms  | 90.7 ms  |
 
 ## Notes
 

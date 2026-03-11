@@ -17,7 +17,11 @@
 //!
 //! // Create a ring of public keys
 //! let mut ring = (0..RING_SIZE)
-//!     .map(|i| Secret::from_seed(&i.to_le_bytes()).public().0)
+//!     .map(|i| {
+//!         let mut seed = [0u8; 32];
+//!         seed[..8].copy_from_slice(&i.to_le_bytes());
+//!         Secret::from_seed(seed).public().0
+//!     })
 //!     .collect::<Vec<_>>();
 //! ring[prover_key_index] = public.0;
 //!
@@ -51,17 +55,11 @@ use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
-/// Magic spell for [RingSuite::ACCUMULATOR_BASE] generation in built-in implementations.
-///
-/// (en) *"The foundation of the accumulator which in the silence of time guards the hidden secret"*
-pub const ACCUMULATOR_BASE_SEED: &[u8] =
-    b"substratum accumulatoris quod in silentio temporis arcanum absconditum custodit";
+/// Seed hashed to curve to produce [`RingSuite::ACCUMULATOR_BASE`] in built-in suites.
+pub const ACCUMULATOR_BASE_SEED: &[u8] = b"ring-accumulator";
 
-/// Magic spell for [RingSuite::PADDING] generation in built-in implementations.
-///
-/// (en) *"A shadow that fills the void left by lost souls echoing among the darkness"*
-pub const PADDING_SEED: &[u8] =
-    b"umbra quae vacuum implet ab animabus perditis relictum inter tenebras resonans";
+/// Seed hashed to curve to produce [`RingSuite::PADDING`] in built-in suites.
+pub const PADDING_SEED: &[u8] = b"ring-padding";
 
 /// Ring suite.
 ///
@@ -253,10 +251,11 @@ pub(crate) fn piop_params<S: RingSuite>(domain_size: usize) -> PiopParams<S> {
 impl<S: RingSuite> RingProofParams<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
-    /// Creates parameters using a deterministic `ChaCha20Rng` seeded with `seed`.
+    /// Creates parameters using a transcript-based RNG seeded with `seed`.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
-        use ark_std::rand::SeedableRng;
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(&seed);
+        let mut rng = t.to_rng();
         Self::from_rand(ring_size, &mut rng)
     }
 
@@ -318,7 +317,7 @@ impl<S: RingSuite> RingProofParams<S> {
             prover_key,
             self.piop.clone(),
             key_index,
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -368,7 +367,7 @@ impl<S: RingSuite> RingProofParams<S> {
         RingVerifier::<S>::init(
             verifier_key,
             self.piop.clone(),
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -387,7 +386,7 @@ impl<S: RingSuite> RingProofParams<S> {
         RingVerifier::<S>::init(
             verifier_key,
             piop_params::<S>(piop_domain_size::<S>(ring_size)),
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -1205,12 +1204,12 @@ pub(crate) mod testing {
         S: RingSuiteExt + std::fmt::Debug + 'static,
     {
         fn name() -> String {
-            S::suite_name() + "_ring"
+            S::SUITE_NAME.to_string() + "_ring"
         }
 
-        fn new(comment: &str, seed: &[u8], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {
+        fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             use super::Prover;
-            let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, salt, ad);
+            let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
             let public = secret.public();
@@ -1223,7 +1222,7 @@ pub(crate) mod testing {
             let params = <S as RingSuiteExt>::params();
 
             use ark_std::rand::SeedableRng;
-            let rng = &mut rand_chacha::ChaCha20Rng::from_seed([0x11; 32]);
+            let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
             let prover_idx = 3;
             let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
             ring_pks[prover_idx] = public.0;
@@ -1243,7 +1242,6 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            // TODO: also dump the verifier pks commitment
             Self {
                 pedersen,
                 ring_pks: ring_pks.try_into().unwrap(),
