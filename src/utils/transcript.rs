@@ -11,11 +11,25 @@ use sha2::Sha512;
 ///
 /// Implements [`io::Write`] so that serializable types (points, scalars)
 /// can be written directly into the transcript without intermediate buffers.
+///
+/// Implementations do **not** need to handle domain separation or
+/// length-prefixing of variable-length inputs. The protocol layer
+/// ([`vrf_transcript`](crate::utils::common::vrf_transcript),
+/// [`challenge`](crate::utils::common::challenge), etc.) takes care of
+/// this by absorbing [`DomSep`](crate::utils::common::DomSep) tags and
+/// explicit lengths before variable-length data. Since `absorb_raw` is a
+/// plain concatenation into a single hash stream (absorb then squeeze,
+/// no resets), the domain-separation bytes injected by the caller are
+/// sufficient to prevent ambiguous parses.
 pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript from the suite identifier.
     fn new(id: crate::suites::SuiteId) -> Self;
 
-    /// Absorb data into the transcript.
+    /// Absorb raw bytes into the transcript.
+    ///
+    /// This is a plain concatenation into the internal hash state.
+    /// Domain separation and length-prefixing of variable-length fields
+    /// are the caller's responsibility (handled by the protocol layer).
     ///
     /// # Panics
     ///
