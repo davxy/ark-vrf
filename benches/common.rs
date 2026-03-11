@@ -6,7 +6,7 @@ mod bench_utils;
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
 use bench_utils::BenchInfo;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -30,8 +30,8 @@ where
     ark_vrf::CurveConfig<S>: ark_ec::hashing::curve_maps::elligator2::Elligator2Config,
     ark_ec::hashing::curve_maps::elligator2::Elligator2Map<ark_vrf::CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<
-            <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
-        >,
+                <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
+            >,
 {
     let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
     let name = format!("{}/data_to_point_ell2", S::SUITE_NAME);
