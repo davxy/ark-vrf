@@ -29,14 +29,14 @@
 //! let params = RingProofParams::from_seed(RING_SIZE, [0x42; 32]);
 //!
 //! // Proving
-//! let prover_key = params.prover_key(&ring);
+//! let prover_key = params.prover_key(&ring).unwrap();
 //! let prover = params.prover(prover_key, prover_key_index);
 //! let io = secret.vrf_io(input);
 //! let proof = secret.prove(io, b"aux data", &prover);
 //!
 //! // Verification
 //! use ark_vrf::ring::Verifier;
-//! let verifier_key = params.verifier_key(&ring);
+//! let verifier_key = params.verifier_key(&ring).unwrap();
 //! let verifier = params.verifier(verifier_key);
 //! let result = Public::verify(io, b"aux data", &proof, &verifier);
 //!
@@ -300,12 +300,16 @@ impl<S: RingSuite> RingProofParams<S> {
     /// Create a prover key for the given ring of public keys.
     ///
     /// Indexes the ring and prepares the cryptographic material needed for proving.
-    /// If the ring exceeds the maximum supported size, excess keys are ignored.
+    ///
+    /// Returns `Error::InvalidData` if `pks` exceeds `max_ring_size()`.
     ///
     /// * `pks` - Array of public keys forming the ring
-    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> RingProverKey<S> {
-        let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
-        ring_proof::index(&self.pcs, &self.piop, &pks).0
+    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
+        if pks.len() > self.max_ring_size() {
+            return Err(Error::InvalidData);
+        }
+        let pks = TEMapping::to_te_slice(pks);
+        Ok(ring_proof::index(&self.pcs, &self.piop, &pks).0)
     }
 
     /// Create a prover instance for a specific position in the ring.
@@ -324,12 +328,16 @@ impl<S: RingSuite> RingProofParams<S> {
     /// Create a verifier key for the given ring of public keys.
     ///
     /// Indexes the ring and prepares the cryptographic material needed for verification.
-    /// If the ring exceeds the maximum supported size, excess keys are ignored.
+    ///
+    /// Returns `Error::InvalidData` if `pks` exceeds `max_ring_size()`.
     ///
     /// * `pks` - Array of public keys forming the ring
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> RingVerifierKey<S> {
-        let pks = TEMapping::to_te_slice(&pks[..pks.len().min(self.max_ring_size())]);
-        ring_proof::index(&self.pcs, &self.piop, &pks).1
+    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
+        if pks.len() > self.max_ring_size() {
+            return Err(Error::InvalidData);
+        }
+        let pks = TEMapping::to_te_slice(pks);
+        Ok(ring_proof::index(&self.pcs, &self.piop, &pks).1)
     }
 
     /// Create a verifier key from a precomputed ring commitment.
@@ -836,12 +844,12 @@ pub(crate) mod testing {
         let prover_idx = 3;
         pks[prover_idx] = public.0;
 
-        let prover_key = params.prover_key(&pks);
+        let prover_key = params.prover_key(&pks).unwrap();
         let prover = params.prover(prover_key, prover_idx);
 
         let item = BatchItem::<S>::new(&secret, &prover, rng);
 
-        let verifier_key = params.verifier_key(&pks);
+        let verifier_key = params.verifier_key(&pks).unwrap();
         let verifier = params.verifier(verifier_key);
         let result = Public::verify(item.io, &item.ad, &item.proof, &verifier);
         assert!(result.is_ok());
@@ -862,10 +870,10 @@ pub(crate) mod testing {
         let prover_idx = 3;
         pks[prover_idx] = public.0;
 
-        let prover_key = params.prover_key(&pks);
+        let prover_key = params.prover_key(&pks).unwrap();
         let prover = params.prover(prover_key, prover_idx);
 
-        let verifier_key = params.verifier_key(&pks);
+        let verifier_key = params.verifier_key(&pks).unwrap();
         let verifier = params.verifier(verifier_key);
 
         let mut ios: Vec<VrfIo<S>> = (0..3u8)
@@ -907,7 +915,7 @@ pub(crate) mod testing {
         let prover_idx = 3;
         pks[prover_idx] = public.0;
 
-        let prover_key = params.prover_key(&pks);
+        let prover_key = params.prover_key(&pks).unwrap();
         let prover = params.prover(prover_key, prover_idx);
 
         // Generate proofs in parallel
@@ -918,7 +926,7 @@ pub(crate) mod testing {
             })
             .collect();
 
-        let verifier_key = params.verifier_key(&pks);
+        let verifier_key = params.verifier_key(&pks).unwrap();
         let verifier = params.verifier(verifier_key);
 
         // Batch verify all proofs
@@ -937,7 +945,7 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier_key = params.verifier_key(&pks);
+        let verifier_key = params.verifier_key(&pks).unwrap();
         let verifier = params.verifier(verifier_key);
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
         let start = std::time::Instant::now();
@@ -951,7 +959,7 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier_key = params.verifier_key(&pks);
+        let verifier_key = params.verifier_key(&pks).unwrap();
         let verifier = params.verifier(verifier_key);
         let mut batch_verifier = BatchVerifier::<S>::new(verifier);
         let start = std::time::Instant::now();
@@ -1016,7 +1024,7 @@ pub(crate) mod testing {
         let mut pks = random_vec::<AffinePoint<S>>(ring_size, Some(rng));
         pks[prover_idx] = public.0;
 
-        let prover_key = params.prover_key(&pks);
+        let prover_key = params.prover_key(&pks).unwrap();
         let prover = params.prover(prover_key, prover_idx);
         let proof = secret.prove(io, b"foo", &prover);
 
@@ -1227,11 +1235,11 @@ pub(crate) mod testing {
             let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
             ring_pks[prover_idx] = public.0;
 
-            let prover_key = params.prover_key(&ring_pks);
+            let prover_key = params.prover_key(&ring_pks).unwrap();
             let prover = params.prover(prover_key, prover_idx);
             let proof = secret.prove(io, ad, &prover);
 
-            let verifier_key = params.verifier_key(&ring_pks);
+            let verifier_key = params.verifier_key(&ring_pks).unwrap();
             let ring_pks_com = verifier_key.commitment();
 
             {
@@ -1288,10 +1296,10 @@ pub(crate) mod testing {
 
             let prover_idx = self.ring_pks.iter().position(|&pk| pk == public.0).unwrap();
 
-            let prover_key = params.prover_key(&self.ring_pks);
+            let prover_key = params.prover_key(&self.ring_pks).unwrap();
             let prover = params.prover(prover_key, prover_idx);
 
-            let verifier_key = params.verifier_key(&self.ring_pks);
+            let verifier_key = params.verifier_key(&self.ring_pks).unwrap();
             let verifier = params.verifier(verifier_key);
 
             let proof = secret.prove(io, &self.pedersen.base.ad, &prover);

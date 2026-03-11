@@ -64,16 +64,16 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_prover_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.prover_key(black_box(&setup.ring)));
+                b.iter(|| setup.params.prover_key(black_box(&setup.ring)).unwrap());
             });
 
         c.benchmark_group(format!("{}/ring_verifier_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.verifier_key(black_box(&setup.ring)));
+                b.iter(|| setup.params.verifier_key(black_box(&setup.ring)).unwrap());
             });
 
-        let prover_key = setup.params.prover_key(&setup.ring);
+        let prover_key = setup.params.prover_key(&setup.ring).unwrap();
         let prover = setup.params.prover(prover_key, setup.prover_idx);
 
         c.benchmark_group(format!("{}/ring_prove", S::SUITE_NAME))
@@ -83,7 +83,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             });
 
         let proof = setup.secret.prove(setup.io, b"ad", &prover);
-        let verifier_key = setup.params.verifier_key(&setup.ring);
+        let verifier_key = setup.params.verifier_key(&setup.ring).unwrap();
         let commitment = verifier_key.commitment();
         let verifier = setup.params.verifier(verifier_key.clone());
 
@@ -157,7 +157,7 @@ struct BatchItem<S: RingSuite> {
 fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let setup = make_ring_setup::<S>(1023);
 
-    let prover_key = setup.params.prover_key(&setup.ring);
+    let prover_key = setup.params.prover_key(&setup.ring).unwrap();
     let prover = setup.params.prover(prover_key, setup.prover_idx);
 
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
@@ -181,7 +181,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         })
         .collect();
 
-    let verifier_key = setup.params.verifier_key(&setup.ring);
+    let verifier_key = setup.params.verifier_key(&setup.ring).unwrap();
 
     // batch_verifier_new: cost is independent of batch size, bench once.
     c.benchmark_group(format!("{}/batch_verifier_new", S::SUITE_NAME))
