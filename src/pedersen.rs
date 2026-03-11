@@ -399,7 +399,7 @@ pub(crate) mod testing {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof, blinding) = secret.prove(io, b"foo");
@@ -416,7 +416,7 @@ pub(crate) mod testing {
         use pedersen::{BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof1, _) = secret.prove(io, b"foo");
@@ -456,7 +456,7 @@ pub(crate) mod testing {
         use pedersen::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof_single, blinding_single) = secret.prove(io, b"foo");
@@ -611,8 +611,8 @@ pub(crate) mod testing {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::<S>::from_affine(base.h),
-                output: Output::from_affine(base.gamma),
+                input: Input::<S>::from_affine_unchecked(base.h),
+                output: Output::from_affine_unchecked(base.gamma),
             };
             let secret = Secret::from_scalar(base.sk);
             let (proof, blind) = secret.prove(io, ad);
@@ -674,8 +674,8 @@ pub(crate) mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_affine(self.base.h),
-                output: Output::from_affine(self.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.base.h),
+                output: Output::from_affine_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove(io, &self.base.ad);

@@ -815,7 +815,7 @@ pub(crate) mod testing {
             prover: &RingProver<S>,
             rng: &mut dyn ark_std::rand::RngCore,
         ) -> Self {
-            let input = Input::from_affine(common::random_val(Some(rng)));
+            let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
             let io = secret.vrf_io(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
@@ -1008,7 +1008,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(common::random_val(Some(rng)));
+        let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
         let io = secret.vrf_io(input);
 
         let ring_size = params.max_ring_size();
@@ -1215,8 +1215,8 @@ pub(crate) mod testing {
             let public = secret.public();
 
             let io = VrfIo {
-                input: Input::<S>::from_affine(pedersen.base.h),
-                output: Output::from_affine(pedersen.base.gamma),
+                input: Input::<S>::from_affine_unchecked(pedersen.base.h),
+                output: Output::from_affine_unchecked(pedersen.base.gamma),
             };
 
             let params = <S as RingSuiteExt>::params();
@@ -1277,8 +1277,8 @@ pub(crate) mod testing {
             self.pedersen.run();
 
             let io = VrfIo {
-                input: Input::<S>::from_affine(self.pedersen.base.h),
-                output: Output::from_affine(self.pedersen.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.pedersen.base.h),
+                output: Output::from_affine_unchecked(self.pedersen.base.gamma),
             };
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();

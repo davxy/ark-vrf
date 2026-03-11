@@ -106,12 +106,12 @@ impl<C: SWCurveConfig> SWMapping<C> for SWAffine<C> {
 impl<C: MapConfig> SWMapping<C> for TEAffine<C> {
     #[inline(always)]
     fn from_sw(sw: SWAffine<C>) -> Self {
-        sw_to_te(&sw).unwrap_or_default()
+        sw_to_te(&sw).expect("SW to TE mapping failed (identity or degenerate point)")
     }
 
     #[inline(always)]
     fn into_sw(self) -> SWAffine<C> {
-        te_to_sw(&self).unwrap_or_default()
+        te_to_sw(&self).expect("TE to SW mapping failed (identity or degenerate point)")
     }
 
     #[inline(always)]
@@ -170,12 +170,12 @@ impl<C: TECurveConfig> TEMapping<C> for TEAffine<C> {
 impl<C: MapConfig> TEMapping<C> for SWAffine<C> {
     #[inline(always)]
     fn from_te(te: TEAffine<C>) -> Self {
-        te_to_sw(&te).unwrap_or_default()
+        te_to_sw(&te).expect("TE to SW mapping failed (identity or degenerate point)")
     }
 
     #[inline(always)]
     fn into_te(self) -> TEAffine<C> {
-        sw_to_te(&self).unwrap_or_default()
+        sw_to_te(&self).expect("SW to TE mapping failed (identity or degenerate point)")
     }
 
     #[inline(always)]

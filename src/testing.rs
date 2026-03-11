@@ -203,7 +203,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let pk = sk.public().0;
 
         let h = <S as Suite>::data_to_point(alpha).unwrap();
-        let input = Input::from_affine(h);
+        let input = Input::from_affine_unchecked(h);
 
         let alpha = alpha.to_vec();
         let output = sk.output(input);
@@ -270,7 +270,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         let h = S::data_to_point(&self.alpha).unwrap();
         assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
-        let input = Input::<S>::from_affine(h);
+        let input = Input::<S>::from_affine_unchecked(h);
 
         let output = sk.output(input);
         assert_eq!(self.gamma, output.0, "VRF pre-output ('gamma') mismatch");

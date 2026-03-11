@@ -44,7 +44,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     let mut rng = ark_std::test_rng();
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
-            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(&mut rng));
+            let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(&mut rng));
             let io = secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
             let (proof, _) = secret.prove(io, &ad);

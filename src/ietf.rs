@@ -16,7 +16,7 @@
 //!
 //! // Proving
 //! use ark_vrf::ietf::Prover;
-//! let input = Input::from_affine(my_data);
+//! let input = Input::from_affine_unchecked(my_data);
 //! let io = secret.vrf_io(input);
 //! let proof = secret.prove(io, aux_data);
 //!
@@ -218,7 +218,7 @@ pub mod testing {
     pub fn prove_verify<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(common::random_val(None));
+        let input = Input::from_affine_unchecked(common::random_val(None));
         let io = secret.vrf_io(input);
 
         let proof = secret.prove(io, b"foo");
@@ -243,7 +243,7 @@ pub mod testing {
     pub fn prove_verify_multi_single<S: IetfSuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(common::random_val(None));
+        let input = Input::from_affine_unchecked(common::random_val(None));
         let io = secret.vrf_io(input);
 
         let proof_single = secret.prove(io, b"foo");
@@ -356,8 +356,8 @@ pub mod testing {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::from_affine(base.h),
-                output: Output::from_affine(base.gamma),
+                input: Input::from_affine_unchecked(base.h),
+                output: Output::from_affine_unchecked(base.gamma),
             };
             let sk = Secret::from_scalar(base.sk);
             let proof: Proof<S> = sk.prove(io, ad);
@@ -392,8 +392,8 @@ pub mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_affine(self.base.h),
-                output: Output::from_affine(self.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.base.h),
+                output: Output::from_affine_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let proof = sk.prove(io, &self.base.ad);

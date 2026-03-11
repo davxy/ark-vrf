@@ -316,7 +316,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof = secret.prove(io, b"foo");
@@ -329,7 +329,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof1 = secret.prove(io, b"foo");
@@ -370,7 +370,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_affine(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof_single = secret.prove(io, b"foo");
@@ -500,8 +500,8 @@ pub(crate) mod testing {
             use super::Prover;
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::<S>::from_affine(base.h),
-                output: Output::from_affine(base.gamma),
+                input: Input::<S>::from_affine_unchecked(base.h),
+                output: Output::from_affine_unchecked(base.gamma),
             };
             let secret = Secret::from_scalar(base.sk);
             let proof: Proof<S> = secret.prove(io, ad);
@@ -544,8 +544,8 @@ pub(crate) mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_affine(self.base.h),
-                output: Output::from_affine(self.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.base.h),
+                output: Output::from_affine_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let proof = sk.prove(io, &self.base.ad);
@@ -578,7 +578,7 @@ pub(crate) mod testing {
         // Input with KNOWN discrete log: I = d * G.
         let d = Sc::from(7);
         let input_pt = (g * d).into_affine();
-        let input = Input::<S>::from_affine(input_pt);
+        let input = Input::<S>::from_affine_unchecked(input_pt);
 
         // Honest output would be O = sk * I.
         let honest_output = (input_pt * sk).into_affine();
@@ -587,7 +587,7 @@ pub(crate) mod testing {
         let t_scalar = Sc::from(1234);
         let fake_output_pt = (g * t_scalar).into_affine();
         assert_ne!(fake_output_pt, honest_output);
-        let fake_output = Output::<S>::from_affine(fake_output_pt);
+        let fake_output = Output::<S>::from_affine_unchecked(fake_output_pt);
 
         let ad: &[u8] = b"attack";
         let fake_io = VrfIo {

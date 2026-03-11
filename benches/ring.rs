@@ -167,7 +167,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let batch_items: Vec<BatchItem<S>> = (0..max_batch_size)
         .into_par_iter()
         .map_init(ark_std::test_rng, |rng, i| {
-            let input = Input::<S>::from_affine(AffinePoint::<S>::rand(rng));
+            let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(rng));
             let io = setup.secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
             let proof = setup.secret.prove(io, &ad, &prover);

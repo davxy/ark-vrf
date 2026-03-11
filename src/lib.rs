@@ -334,8 +334,18 @@ impl<S: Suite> Secret<S> {
 pub struct Public<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Public<S> {
-    /// Construct from an affine point.
-    pub fn from_affine(value: AffinePoint<S>) -> Self {
+    /// Construct from an affine point with subgroup validation.
+    ///
+    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
+        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
+        Ok(Self(value))
+    }
+
+    /// Construct from an affine point without subgroup checks.
+    ///
+    /// The caller must ensure `value` is in the prime-order subgroup.
+    pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
@@ -356,16 +366,29 @@ impl<S: Suite> Input<S> {
 }
 
 impl<S: Suite> Input<S> {
-    /// Construct from an affine point.
+    /// Construct from an affine point with subgroup validation.
+    ///
+    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    ///
+    /// Note: this only validates subgroup membership, not that the point was
+    /// produced by hash-to-curve. The caller is still responsible for ensuring
+    /// the point is not in a known discrete-log relation with the suite
+    /// generator (required for Thin-VRF soundness).
+    pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
+        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
+        Ok(Self(value))
+    }
+
+    /// Construct from an affine point without subgroup checks.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that `value` was produced by a hash-to-curve
-    /// procedure (or is otherwise not in a known discrete-log relation with
-    /// the suite generator). This is required for the soundness of schemes
-    /// like Thin-VRF where the input and generator are delinearized into a
-    /// single check.
-    pub fn from_affine(value: AffinePoint<S>) -> Self {
+    /// The caller must ensure that `value` is in the prime-order subgroup and
+    /// was produced by a hash-to-curve procedure (or is otherwise not in a
+    /// known discrete-log relation with the suite generator). The latter is
+    /// required for the soundness of schemes like Thin-VRF where the input
+    /// and generator are delinearized into a single check.
+    pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
@@ -377,8 +400,18 @@ impl<S: Suite> Input<S> {
 pub struct Output<S: Suite>(pub AffinePoint<S>);
 
 impl<S: Suite> Output<S> {
-    /// Construct from an affine point.
-    pub fn from_affine(value: AffinePoint<S>) -> Self {
+    /// Construct from an affine point with subgroup validation.
+    ///
+    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
+        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
+        Ok(Self(value))
+    }
+
+    /// Construct from an affine point without subgroup checks.
+    ///
+    /// The caller must ensure `value` is in the prime-order subgroup.
+    pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
     }
 }
@@ -453,7 +486,7 @@ mod tests {
         use ark_std::rand::SeedableRng;
         let mut rng = ark_std::rand::rngs::StdRng::from_seed([42; 32]);
         let secret = Secret::from_seed(TEST_SEED);
-        let input = Input::from_affine(random_val(Some(&mut rng)));
+        let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
         let expected = "63ffe0c88f515963d492ad7b72e7ba66e9a549390ec3e2f8b6bd873b10b868ef";
@@ -483,7 +516,8 @@ mod tests {
         assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
 
         // 2. Compute gamma' = gamma + L
-        let malicious_output = Output::from_affine((honest_output.0 + low_order_pt).into_affine());
+        let malicious_output =
+            Output::from_affine_unchecked((honest_output.0 + low_order_pt).into_affine());
         assert_ne!(honest_output, malicious_output);
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
 
