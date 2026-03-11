@@ -43,6 +43,7 @@
 //! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
 //!   by Section 5.4.1.1 of RFC-9381.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -54,7 +55,7 @@ type ThisSuite = BabyJubJubSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Baby-JubJub_SHA-512_TAI";
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BABY_JUBJUB, hash::SHA512, h2c::TAI);
     type Affine = ark_ed_on_bn254::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
@@ -62,10 +63,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "11907671048756006379519997326086103321909641728520778985112212265266192256535"
+            "19442178742199664168747190861414643193253700315892260870327228324936143149304"
         );
         const Y: BaseField = MontFp!(
-            "11968920768872481335872093363330513662172833025541892750197556824751689749797"
+            "18612041974710103916426409313376054859974389713712087299658684124444584143841"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -76,18 +77,20 @@ impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bn254::Bn254;
 
     const ACCUMULATOR_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("8669750919588907495559101264391083339382733477271089441335088701455668113260");
-        const Y: BaseField =
-            MontFp!("4547186443623661176522815713802097939427532238598387398921655117887357720042");
+        const X: BaseField = MontFp!(
+            "16022037102540880895718655666441935353348978573325476392518489245026571977680"
+        );
+        const Y: BaseField = MontFp!(
+            "20452241326564251086531829224890892890665805073862314900292576122014641287930"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField =
-            MontFp!("7161572288492918157752784955067761996729986065907030387775711830553622780582");
+            MontFp!("2752056900270219474898830887350704514650206951209606435479983096833067061599");
         const Y: BaseField = MontFp!(
-            "10160068613864304515128977802358862788041790349644284934327402332140071685891"
+            "14198847825812983253835824367663252004075136587663368840896910683213246181413"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -100,7 +103,9 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "baby-jubjub_sha-512_tai";
+    }
 
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);

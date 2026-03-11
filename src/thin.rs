@@ -493,7 +493,7 @@ pub(crate) mod testing {
         S: ThinVrfSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::suite_name() + "_thin"
+            S::SUITE_NAME.to_string() + "_thin"
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

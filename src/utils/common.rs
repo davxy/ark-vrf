@@ -208,7 +208,6 @@ pub(crate) fn vrf_transcript<S: Suite>(
     vrf_transcript_from_iter(scheme, ios.as_ref().iter().copied(), ad)
 }
 
-
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
 /// Generates a challenge scalar by absorbing curve points into the transcript

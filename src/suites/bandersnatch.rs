@@ -47,6 +47,7 @@
 //!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_ELL2_RO_"`
 //!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -58,7 +59,7 @@ type ThisSuite = BandersnatchSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = &[0x01, 0x01, 0x01, 0x01];
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH, hash::SHA512, h2c::ELL2);
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
@@ -114,9 +115,7 @@ pub(crate) mod tests {
     use super::*;
 
     impl crate::testing::SuiteExt for ThisSuite {
-        fn suite_name() -> String {
-            "bandersnatch_sha-512_ell2".to_string()
-        }
+        const SUITE_NAME: &str = "bandersnatch_sha-512_ell2";
     }
 
     ietf_suite_tests!(ThisSuite);

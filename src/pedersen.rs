@@ -604,7 +604,7 @@ pub(crate) mod testing {
         S: PedersenSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::suite_name() + "_pedersen"
+            S::SUITE_NAME.to_string() + "_pedersen"
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

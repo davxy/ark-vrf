@@ -15,6 +15,7 @@
 //!
 //! * The Fiat-Shamir transcript uses SHAKE128 in XOF mode.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -26,7 +27,7 @@ type ThisSuite = BandersnatchShake128Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch_SHAKE128_ELL2";
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH, hash::SHAKE128, h2c::ELL2);
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::Shake128Transcript;
 
@@ -39,10 +40,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "44187783804308655615893812990316292961554469480416662436801239487565822353178"
+            "49711633503578088461102475482758123714990448359295893023691701223600041108880"
         );
         const Y: BaseField = MontFp!(
-            "35971809727456608433294066984788155999592825372652107534495786488037270016538"
+            "21734535912282350924958086363828906945752028855014763377074407104422660758024"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -53,21 +54,20 @@ impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bls12_381::Bls12_381;
 
     const ACCUMULATOR_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "20639374388924227724771638774449398719556116172205860866799883237248913745842"
-        );
+        const X: BaseField =
+            MontFp!("1105742357637387425254396768873203554198272572277105936723136162395083529964");
         const Y: BaseField = MontFp!(
-            "38136419370012340917734197581369752597848441414667300682263855321096366682161"
+            "24692986946683088850660234448507437420531514109850582636728489358857902590633"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "38904451821106192188322921836918159879943183484139281754639349115574962210181"
+            "35722209352759705891151029231528077394352533506856562381258237384901639230791"
         );
         const Y: BaseField = MontFp!(
-            "10958085554412341870030204421258475929791168123815622987225019222099864665145"
+            "45896426634892825397032453843712070506002279593299307059809550559743613966408"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -80,7 +80,9 @@ ring_suite_types!(ThisSuite);
 pub(crate) mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "bandersnatch_shake128_ell2";
+    }
 
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);

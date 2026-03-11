@@ -46,6 +46,7 @@
 //!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_TAI_RO_"`
 //!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;
 
@@ -55,7 +56,7 @@ pub struct BandersnatchSha512Tai;
 type ThisSuite = BandersnatchSha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch_SW_SHA-512_TAI";
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH_SW, hash::SHA512, h2c::TAI);
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
@@ -63,10 +64,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "23408972570923202050060319005472247532688377309355511300582230133445124928822"
+            "10413751950535591369078765238590012968075206568063041317263886972378371012853"
         );
         const Y: BaseField = MontFp!(
-            "23188613831391941286807841978427446809482505460477821002133643254503136005107"
+            "31698624715027881378813868644416181655372768903967759448893249923688709504207"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -79,20 +80,21 @@ impl crate::ring::RingSuite for ThisSuite {
     type Pairing = ark_bls12_381::Bls12_381;
 
     const ACCUMULATOR_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("731178083335197775359133074273818837154062568204510477069410940803706049924");
-        const Y: BaseField =
-            MontFp!("2543384153411002202367790361381489681999319051427117556441278826605119400254");
+        const X: BaseField = MontFp!(
+            "34010873273258452675040463430802802677417457821460464945309773992358762628740"
+        );
+        const Y: BaseField = MontFp!(
+            "39755110905861027119195697698236011185916328147048110359272244254573640474128"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "36011378667784635611705133792437125665805447756572188208835826796585445569513"
+            "13967716177648357518350250459837378876904366672394018504844950608437166926790"
         );
-        const Y: BaseField = MontFp!(
-            "11796997184292370481280570466027375573670603672952822694409577524563846772024"
-        );
+        const Y: BaseField =
+            MontFp!("9176097829703990078931039457110992015397061835052297579313878592536142960884");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -119,7 +121,9 @@ mod tests {
     use crate::{ietf_suite_tests, testing};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "bandersnatch_sw_sha-512_tai";
+    }
 
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);

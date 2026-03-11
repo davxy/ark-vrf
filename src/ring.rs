@@ -253,7 +253,9 @@ impl<S: RingSuite> RingProofParams<S> {
     ///
     /// Creates parameters using a transcript-based RNG seeded with `seed`.
     pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
-        let mut rng = S::Transcript::new(&seed).to_rng();
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(&seed);
+        let mut rng = t.to_rng();
         Self::from_rand(ring_size, &mut rng)
     }
 
@@ -315,7 +317,7 @@ impl<S: RingSuite> RingProofParams<S> {
             prover_key,
             self.piop.clone(),
             key_index,
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -365,7 +367,7 @@ impl<S: RingSuite> RingProofParams<S> {
         RingVerifier::<S>::init(
             verifier_key,
             self.piop.clone(),
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -384,7 +386,7 @@ impl<S: RingSuite> RingProofParams<S> {
         RingVerifier::<S>::init(
             verifier_key,
             piop_params::<S>(piop_domain_size::<S>(ring_size)),
-            ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
         )
     }
 
@@ -1202,7 +1204,7 @@ pub(crate) mod testing {
         S: RingSuiteExt + std::fmt::Debug + 'static,
     {
         fn name() -> String {
-            S::suite_name() + "_ring"
+            S::SUITE_NAME.to_string() + "_ring"
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

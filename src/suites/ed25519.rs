@@ -38,6 +38,7 @@
 //! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
 //!    by Section 5.4.1.1 of RFC-9381.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -48,7 +49,7 @@ pub struct Ed25519Sha512Tai;
 type ThisSuite = Ed25519Sha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Ed25519_SHA-512_TAI";
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::ED25519, hash::SHA512, h2c::TAI);
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }
@@ -56,10 +57,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "36295583474313307408628688145858999985455683979892549111805148820123910068316"
+            "49065330825805308291741798471633826400100861489083083468953731094514820276040"
         );
         const Y: BaseField = MontFp!(
-            "26572103949519065985696377529624549616752501986257345746421638266910471133905"
+            "42782158099100098504982300296955774461924496146574578435474777531282410523505"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -71,7 +72,9 @@ suite_types!(ThisSuite);
 mod tests {
     use super::*;
 
-    impl crate::testing::SuiteExt for ThisSuite {}
+    impl crate::testing::SuiteExt for ThisSuite {
+        const SUITE_NAME: &str = "ed25519_sha-512_tai";
+    }
 
     ietf_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);

@@ -13,7 +13,7 @@ pub trait BenchInfo: Suite {
     fn print_info() {
         println!("\n---------------------------------------------------------------");
         println!("suite_name: {}", Self::SUITE_NAME,);
-        println!("suite_id: {}", String::from_utf8_lossy(Self::SUITE_ID));
+        println!("suite_id: 0x{:08x}", Self::SUITE_ID);
         println!("data_to_point (h2c): {}", Self::DATA_TO_POINT_TAG);
         println!("point_to_hash: {}", Self::POINT_TO_HASH_TAG);
         println!("challenge: {}", Self::CHALLENGE_TAG);

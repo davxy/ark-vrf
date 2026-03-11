@@ -349,7 +349,7 @@ pub mod testing {
         S: IetfSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::suite_name() + "_ietf"
+            S::SUITE_NAME.to_string() + "_ietf"
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

@@ -194,19 +194,12 @@ impl<S: Suite> core::fmt::Debug for TestVector<S> {
 }
 
 pub trait SuiteExt: Suite {
-    fn suite_name() -> String {
-        std::str::from_utf8(Self::SUITE_ID)
-            .ok()
-            .filter(|s| s.chars().all(|c| c.is_ascii_graphic()))
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| hex::encode(Self::SUITE_ID))
-            .to_lowercase()
-    }
+    const SUITE_NAME: &str;
 }
 
 impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     fn name() -> String {
-        S::suite_name() + "_base"
+        S::SUITE_NAME.to_string() + "_base"
     }
 
     fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], salt: &[u8], ad: &[u8]) -> Self {

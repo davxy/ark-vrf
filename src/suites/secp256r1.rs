@@ -42,6 +42,7 @@
 //! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
 //!    by Section 5.4.1.1 of RFC-9381.
 
+use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -51,7 +52,7 @@ pub struct Secp256r1Sha256Tai;
 type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Secp256r1_SHA-256_TAI";
+    const SUITE_ID: SuiteId = SuiteId::new(1, curve::SECP256R1, hash::SHA256, h2c::TAI);
     type Affine = ark_secp256r1::Affine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
@@ -59,10 +60,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "20633828894746099572132993288932170259529647682072106374004983328323360722642"
+            "19332285192927557680405700411206968974672873994469106027400248693763961695896"
         );
         const Y: BaseField = MontFp!(
-            "102542021958727477147331308784869343135326796691690241802700898910891870404591"
+            "78970180227973274407170824355915625461235681567349560981029425998910017832833"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -76,9 +77,7 @@ mod tests {
     use crate::testing::SuiteExt;
 
     impl SuiteExt for ThisSuite {
-        fn suite_name() -> String {
-            "secp256r1_sha-256_tai".to_owned()
-        }
+        const SUITE_NAME: &str = "secp256r1_sha-256_tai";
     }
 
     ietf_suite_tests!(ThisSuite);

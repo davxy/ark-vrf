@@ -141,8 +141,10 @@ impl From<ark_serialize::SerializationError> for Error {
 /// Can be easily customized to implement more exotic VRF types by overwriting
 /// the default methods implementations.
 pub trait Suite: Copy {
-    /// Suite identifier (analogous to `suite_string` in RFC-9381).
-    const SUITE_ID: &'static [u8];
+    /// Suite identifier.
+    ///
+    /// Constructed via [`suites::SuiteId::new`] from (curve, hash, h2c, version) bytes.
+    const SUITE_ID: suites::SuiteId;
 
     /// Curve point in affine representation.
     ///
@@ -454,7 +456,7 @@ mod tests {
         let input = Input::from_affine(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "2030569804c8fc95b89bdef2bd7dfb4a74adb2a8d7682bfc903523877aa2069d";
+        let expected = "63ffe0c88f515963d492ad7b72e7ba66e9a549390ec3e2f8b6bd873b10b868ef";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

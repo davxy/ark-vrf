@@ -12,8 +12,8 @@ use sha2::Sha512;
 /// Implements [`io::Write`] so that serializable types (points, scalars)
 /// can be written directly into the transcript without intermediate buffers.
 pub trait Transcript: Clone + io::Read + io::Write {
-    /// Create a new transcript with the given domain label.
-    fn new(label: &[u8]) -> Self;
+    /// Create a new transcript from the suite identifier.
+    fn new(id: crate::suites::SuiteId) -> Self;
 
     /// Absorb data into the transcript.
     ///
@@ -162,9 +162,9 @@ impl<H: digest::ExtendableOutput + Default + Clone> Transcript for XofTranscript
 where
     H::Reader: Clone,
 {
-    fn new(label: &[u8]) -> Self {
+    fn new(id: crate::suites::SuiteId) -> Self {
         let mut h = H::default();
-        h.update(label);
+        h.update(&id.to_bytes());
         Self {
             state: XofState::Absorbing(h),
         }
@@ -291,15 +291,19 @@ mod tests {
         ($T:ty, $mod:ident) => {
             mod $mod {
                 use super::super::*;
+                use crate::suites::SuiteId;
+
+                const ID_A: SuiteId = SuiteId::new(1, 2, 3, 4);
+                const ID_B: SuiteId = SuiteId::new(5, 6, 7, 8);
 
                 #[test]
                 fn deterministic_squeeze() {
-                    let mut t1 = <$T>::new(b"test");
+                    let mut t1 = <$T>::new(ID_A);
                     t1.absorb_raw(b"hello");
                     let mut out1 = [0u8; 64];
                     t1.squeeze_raw(&mut out1);
 
-                    let mut t2 = <$T>::new(b"test");
+                    let mut t2 = <$T>::new(ID_A);
                     t2.absorb_raw(b"hello");
                     let mut out2 = [0u8; 64];
                     t2.squeeze_raw(&mut out2);
@@ -308,7 +312,7 @@ mod tests {
 
                 #[test]
                 fn incremental_matches_bulk() {
-                    let mut t1 = <$T>::new(b"inc");
+                    let mut t1 = <$T>::new(ID_A);
                     t1.absorb_raw(b"data");
                     let mut t2 = t1.clone();
 
@@ -324,7 +328,7 @@ mod tests {
 
                 #[test]
                 fn clone_produces_independent_streams() {
-                    let mut t = <$T>::new(b"clone");
+                    let mut t = <$T>::new(ID_A);
                     t.absorb_raw(b"shared");
 
                     let mut fork = t.clone();
@@ -341,7 +345,7 @@ mod tests {
                 #[test]
                 #[should_panic(expected = "cannot absorb after squeeze")]
                 fn absorb_after_squeeze_panics() {
-                    let mut t = <$T>::new(b"panic");
+                    let mut t = <$T>::new(ID_A);
                     t.absorb_raw(b"x");
                     let mut out = [0u8; 1];
                     t.squeeze_raw(&mut out);
@@ -350,8 +354,8 @@ mod tests {
 
                 #[test]
                 fn different_labels_produce_different_output() {
-                    let mut t1 = <$T>::new(b"label_a");
-                    let mut t2 = <$T>::new(b"label_b");
+                    let mut t1 = <$T>::new(ID_A);
+                    let mut t2 = <$T>::new(ID_B);
                     t1.absorb_raw(b"same");
                     t2.absorb_raw(b"same");
                     let mut o1 = [0u8; 32];
