@@ -156,10 +156,9 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         t_kb.absorb_serialize(&self.scalar);
         let kb = S::nonce(&blinding, Some(t_kb));
 
-        // Yb = x*G + b*B
-        let xg = smul!(S::generator(), self.scalar);
+        // Yb = x*G + b*B = PK + b*B
         let bb = smul!(S::BLINDING_BASE, blinding);
-        let pk_com = xg + bb;
+        let pk_com = self.public.0.into_group() + bb;
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);

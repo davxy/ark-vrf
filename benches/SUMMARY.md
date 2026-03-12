@@ -43,15 +43,15 @@ Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scal
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| pedersen_prove         | 478.0 us |
-| pedersen_verify        | 377.9 us |
+| pedersen_prove         | 371.5 us |
+| pedersen_verify        | 362.0 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 0.99 us  | 1.94 us  | 3.91 us  | 7.80 us  | 15.5 us  | 30.9 us  | 61.8 us  | 123.7 us | 248.0 us |
-| batch_verify         | 507.3 us | 593.8 us | 773.3 us | 1.79 ms  | 2.13 ms  | 3.63 ms  | 6.21 ms  | 8.51 ms  | 15.4 ms  |
+| batch_prepare        | 1.24 us  | 2.46 us  | 4.95 us  | 9.79 us  | 19.8 us  | 38.9 us  | 83.1 us  | 156.0 us | 314.6 us |
+| batch_verify         | 517.3 us | 601.6 us | 783.9 us | 1.75 ms  | 2.16 ms  | 3.45 ms  | 6.26 ms  | 8.54 ms  | 15.5 ms  |
 
 ## Thin VRF Operations (`thin.rs`)
 
@@ -71,27 +71,27 @@ Small N avoids MSM's bucket-setup overhead; large N benefits from sublinear scal
 
 | Benchmark              | n=255     | n=1023    | n=2047    |
 |:-----------------------|----------:|----------:|----------:|
-| ring_params_setup      | 0.85 ms   | 3.94 ms   | 7.86 ms   |
-| ring_prover_key        | 44.3 ms   | 136.9 ms  | 251.8 ms  |
-| ring_verifier_key      | 44.1 ms   | 136.5 ms  | 228.9 ms  |
-| ring_prove             | 149.5 ms  | 462.1 ms  | 803.1 ms  |
-| ring_verify            | 3.42 ms   | 3.45 ms   | 3.51 ms   |
-| ring_verifier_from_key | 254.3 us  | 274.0 us  | 304.5 us  |
-| ring_vk_from_commitment| 75.3 ns   | 75.0 ns   | 75.0 ns   |
-| ring_vk_builder_create | 317.0 ms  | 1.381 s   | 3.066 s   |
-| ring_vk_builder_append | 16.4 ms   | 44.1 ms   | 80.0 ms   |
-| ring_vk_builder_finalize | 107.2 ns | 100.2 ns  | 98.6 ns   |
+| ring_params_setup      | 0.86 ms   | 3.92 ms   | 8.42 ms   |
+| ring_prover_key        | 44.6 ms   | 137.5 ms  | 249.6 ms  |
+| ring_verifier_key      | 44.9 ms   | 136.7 ms  | 250.1 ms  |
+| ring_prove             | 150.1 ms  | 451.5 ms  | 873.7 ms  |
+| ring_verify            | 3.45 ms   | 3.17 ms   | 3.54 ms   |
+| ring_verifier_from_key | 261.3 us  | 262.8 us  | 316.9 us  |
+| ring_vk_from_commitment| 74.7 ns   | 69.1 ns   | 69.5 ns   |
+| ring_vk_builder_create | 317.8 ms  | 1.403 s   | 3.200 s   |
+| ring_vk_builder_append | 16.4 ms   | 48.3 ms   | 81.4 ms   |
+| ring_vk_builder_finalize | 108.7 ns | 109.2 ns  | 106.2 ns  |
 
 ### Batch Verification (ring size = 1023)
 
 | Benchmark          | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:-------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_verifier_new | 269 us   | -        | -        | -        | -        | -        | -        | -        | -        |
-| batch_push         | 48.0 us  | 102.0 us | 201.1 us | 433.2 us | 876.9 us | 1.75 ms  | 3.25 ms  | 6.50 ms  | 13.2 ms  |
-| batch_prepare_seq  | 41.5 us  | 83.6 us  | 164.8 us | 384.2 us | 828.3 us | 1.61 ms  | 3.02 ms  | 6.02 ms  | 12.5 ms  |
-| batch_prepare_par  | 40.2 us  | 76.4 us  | 97.2 us  | 151.8 us | 210.6 us | 237.9 us | 246.1 us | 459.7 us | 790.7 us |
-| batch_push_prepared| 5.6 us   | 9.2 us   | 17.6 us  | 37.5 us  | 72.5 us  | 134.4 us | 264.9 us | 543.1 us | 1.05 ms  |
-| batch_verify       | 3.45 ms  | 4.43 ms  | 5.92 ms  | 8.58 ms  | 12.7 ms  | 19.4 ms  | 30.7 ms  | 57.7 ms  | 90.7 ms  |
+| batch_verifier_new | 267 us   | -        | -        | -        | -        | -        | -        | -        | -        |
+| batch_push         | 50.1 us  | 103.4 us | 214.4 us | 435.9 us | 826.4 us | 1.65 ms  | 3.53 ms  | 6.66 ms  | 14.4 ms  |
+| batch_prepare_seq  | 41.5 us  | 87.7 us  | 180.4 us | 366.3 us | 840.7 us | 1.51 ms  | 3.02 ms  | 6.14 ms  | 13.0 ms  |
+| batch_prepare_par  | 41.0 us  | 75.7 us  | 99.0 us  | 148.2 us | 219.5 us | 244.7 us | 232.0 us | 483.1 us | 765.1 us |
+| batch_push_prepared| 5.7 us   | 9.7 us   | 19.7 us  | 35.5 us  | 75.5 us  | 134.0 us | 266.3 us | 527.9 us | 1.12 ms  |
+| batch_verify       | 3.53 ms  | 4.49 ms  | 5.91 ms  | 8.19 ms  | 12.6 ms  | 20.7 ms  | 31.5 ms  | 60.1 ms  | 91.9 ms  |
 
 ## Notes
 
