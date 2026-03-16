@@ -63,6 +63,9 @@ pub trait PedersenSuite: IetfSuite {
 /// - `ok`: Nonce commitment for the input point (O_k = k·I)
 /// - `s`: Response scalar for the secret key
 /// - `sb`: Response scalar for the blinding factor
+///
+/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
+/// curve points, so deserialized proofs are guaranteed to contain valid points.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: PedersenSuite> {
     pk_com: AffinePoint<S>,
@@ -80,20 +83,10 @@ impl<S: PedersenSuite> Proof<S> {
 }
 
 /// Trait for types that can generate Pedersen VRF proofs.
-///
-/// Implementors can create zero-knowledge proofs that a VRF output
-/// is correctly derived from an input using their secret key,
-/// while hiding the specific public key used.
 pub trait Prover<S: PedersenSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Creates a zero-knowledge proof binding the input, output, and additional data
-    /// to a commitment of the prover's public key rather than the key itself.
-    ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `ad` - Additional data to bind to the proof
     ///
     /// Returns the proof together with the associated blinding factor.
     fn prove(
@@ -105,21 +98,24 @@ pub trait Prover<S: PedersenSuite> {
 
 /// Trait for entities that can verify Pedersen VRF proofs.
 ///
-/// Implementors can verify that a VRF output is correctly derived
-/// from an input using a committed public key.
+/// Verifies that a VRF output is correctly derived from an input using a
+/// committed public key, without revealing which specific public key was used.
+///
+/// All curve points involved in verification (I/O pairs and proof points)
+/// are assumed to be in the prime-order subgroup. This is guaranteed when
+/// points are constructed through checked constructors ([`Input::from_affine`],
+/// [`Output::from_affine`]) or through trusted operations like [`Input::new`]
+/// (hash-to-curve) and [`Secret::vrf_io`]. Proof points are guaranteed valid
+/// when deserialized via [`CanonicalDeserialize`] (which includes subgroup
+/// checks) or produced by [`Prover::prove`].
+///
+/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+/// the burden of subgroup validation on the caller. Passing points with
+/// cofactor components leads to undefined verification behavior.
 pub trait Verifier<S: PedersenSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Verifies the cryptographic relationship between input, output, and proof
-    /// without requiring knowledge of which specific public key was used.
-    /// Confirms that the secret key used to generate the output is the same as
-    /// the one committed to in the proof.
-    ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `ad` - Additional data bound to the proof
-    /// * `proof` - The proof to verify
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
@@ -248,6 +244,9 @@ pub struct BatchItem<S: PedersenSuite> {
 ///
 /// Collects multiple proofs and verifies them together via a single
 /// multi-scalar multiplication.
+///
+/// The same subgroup membership assumptions as [`Verifier`] apply to all
+/// points fed into the batch (I/O pairs and proof points).
 pub struct BatchVerifier<S: PedersenSuite> {
     items: Vec<BatchItem<S>>,
 }

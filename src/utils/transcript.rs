@@ -14,12 +14,10 @@ use sha2::Sha512;
 ///
 /// Implementations do **not** need to handle domain separation or
 /// length-prefixing of variable-length inputs. The protocol layer
-/// ([`vrf_transcript`](crate::utils::common::vrf_transcript),
-/// [`challenge`](crate::utils::common::challenge), etc.) takes care of
-/// this by absorbing [`DomSep`](crate::utils::common::DomSep) tags and
-/// explicit lengths before variable-length data. Since `absorb_raw` is a
-/// plain concatenation into a single hash stream (absorb then squeeze,
-/// no resets), the domain-separation bytes injected by the caller are
+/// takes care of this by absorbing domain-separation tags and explicit
+/// lengths before variable-length data. Since `absorb_raw` is a plain
+/// concatenation into a single hash stream (absorb then squeeze, no
+/// resets), the domain-separation bytes injected by the caller are
 /// sufficient to prevent ambiguous parses.
 pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript from the suite identifier.
@@ -101,8 +99,8 @@ impl<T: Transcript> ark_std::rand::CryptoRng for TranscriptRng<T> {}
 ///
 /// All provided transcript variants are built on this type:
 /// - [`HashTranscript`]: fixed-output hashes (SHA-512, SHA-256) via [`DigestXof`]
-/// - [`Blake3Transcript`]: BLAKE3 native XOF
-/// - [`Shake128Transcript`]: SHAKE128 native XOF
+/// - `Blake3Transcript`: BLAKE3 native XOF (requires `blake3` feature)
+/// - `Shake128Transcript`: SHAKE128 native XOF (requires `shake128` feature)
 pub struct XofTranscript<H: digest::ExtendableOutput + Clone> {
     state: XofState<H>,
 }
