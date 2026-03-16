@@ -196,7 +196,7 @@ _Prove_
 use ark_vrf::ring::Prover;
 
 // Create a prover key specific to this ring
-let prover_key = params.prover_key(&ring);
+let prover_key = params.prover_key(&ring).unwrap();
 
 // Create a prover instance for the specific position in the ring
 let prover = params.prover(prover_key, prover_key_index);
@@ -214,7 +214,7 @@ _Verify_
 use ark_vrf::ring::Verifier;
 
 // Create a verifier key for this ring
-let verifier_key = params.verifier_key(&ring);
+let verifier_key = params.verifier_key(&ring).unwrap();
 
 // Create a verifier instance
 let verifier = params.verifier(verifier_key);
@@ -229,7 +229,7 @@ let result = Public::verify(io, b"aux data", &proof, &verifier);
 _Verifier key from commitment_
 ```rust,ignore
 // For efficiency, a commitment to the ring can be shared
-let ring_commitment = params.verifier_key(&ring).commitment();
+let ring_commitment = params.verifier_key(&ring).unwrap().commitment();
 
 // A verifier can reconstruct the verifier key from just the commitment
 // without needing the full ring of public keys

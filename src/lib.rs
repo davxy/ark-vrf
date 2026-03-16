@@ -115,12 +115,13 @@ pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 /// Suite's curve configuration type.
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
-/// Overarching errors.
+/// Crate error type.
 #[derive(Debug)]
 pub enum Error {
-    /// Verification error
+    /// Proof verification failed.
     VerificationFailure,
-    /// Bad input data
+    /// Invalid input data (e.g. point not in the prime-order subgroup,
+    /// deserialization failure, ring size exceeding parameters).
     InvalidData,
 }
 
