@@ -269,11 +269,8 @@ impl<S: RingSuite> RingProofParams<S> {
 
     /// Construct ring proof params from existing KZG setup.
     ///
-    /// Creates parameters using an existing KZG setup, truncating if larger than needed
-    /// or returning an error if the setup is insufficient for the specified ring size.
-    ///
-    /// * `ring_size` - Maximum number of keys in the ring
-    /// * `pcs_params` - KZG setup parameters
+    /// Truncates the setup if larger than needed, or returns an error if it is
+    /// insufficient for the specified ring size.
     pub fn from_pcs_params(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
         let pcs_domain_size = pcs_domain_size::<S>(ring_size);
         if pcs_params.powers_in_g1.len() < pcs_domain_size || pcs_params.powers_in_g2.len() < 2 {
@@ -297,11 +294,7 @@ impl<S: RingSuite> RingProofParams<S> {
 
     /// Create a prover key for the given ring of public keys.
     ///
-    /// Indexes the ring and prepares the cryptographic material needed for proving.
-    ///
-    /// Returns `Error::InvalidData` if `pks` exceeds `max_ring_size()`.
-    ///
-    /// * `pks` - Array of public keys forming the ring
+    /// Returns `Error::InvalidData` if `pks` exceeds [`Self::max_ring_size`].
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
         if pks.len() > self.max_ring_size() {
             return Err(Error::InvalidData);
@@ -311,9 +304,6 @@ impl<S: RingSuite> RingProofParams<S> {
     }
 
     /// Create a prover instance for a specific position in the ring.
-    ///
-    /// * `prover_key` - Ring prover key created with `prover_key()`
-    /// * `key_index` - Position of the prover's public key in the original ring
     pub fn prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         RingProver::<S>::init(
             prover_key,
@@ -325,11 +315,7 @@ impl<S: RingSuite> RingProofParams<S> {
 
     /// Create a verifier key for the given ring of public keys.
     ///
-    /// Indexes the ring and prepares the cryptographic material needed for verification.
-    ///
-    /// Returns `Error::InvalidData` if `pks` exceeds `max_ring_size()`.
-    ///
-    /// * `pks` - Array of public keys forming the ring
+    /// Returns `Error::InvalidData` if `pks` exceeds [`Self::max_ring_size`].
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
         if pks.len() > self.max_ring_size() {
             return Err(Error::InvalidData);
@@ -340,10 +326,8 @@ impl<S: RingSuite> RingProofParams<S> {
 
     /// Create a verifier key from a precomputed ring commitment.
     ///
-    /// Allows efficient reconstruction of a verifier key without needing the full ring.
-    /// The commitment can be obtained from an existing verifier key via `commitment()`.
-    ///
-    /// * `commitment` - Precomputed commitment to the ring of public keys
+    /// The commitment can be obtained from an existing verifier key via
+    /// [`RingVerifierKey::commitment`].
     pub fn verifier_key_from_commitment(
         &self,
         commitment: RingCommitment<S>,
@@ -353,9 +337,6 @@ impl<S: RingSuite> RingProofParams<S> {
     }
 
     /// Create a builder for incremental construction of the verifier key.
-    ///
-    /// Returns a builder and associated PCS parameters that can be used to
-    /// construct a verifier key by adding public keys in batches.
     pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
@@ -367,8 +348,6 @@ impl<S: RingSuite> RingProofParams<S> {
     }
 
     /// Create a verifier instance from a verifier key.
-    ///
-    /// * `verifier_key` - Ring verifier key created with `verifier_key()`
     pub fn verifier(&self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
@@ -379,12 +358,8 @@ impl<S: RingSuite> RingProofParams<S> {
 
     /// Create a verifier instance without requiring the full parameters.
     ///
-    /// Creates a verifier using only the verifier key and ring size, computing
-    /// necessary parameters on-the-fly. This is more memory efficient but slightly
-    /// less computationally efficient than using the full parameters.
-    ///
-    /// * `verifier_key` - Ring verifier key
-    /// * `ring_size` - Size of the ring used to create the verifier key
+    /// Computes necessary PIOP parameters on-the-fly from the ring size rather
+    /// than reusing the ones stored in `self`.
     pub fn verifier_no_context(
         verifier_key: RingVerifierKey<S>,
         ring_size: usize,
@@ -501,9 +476,6 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
 
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
-    ///
-    /// * `params` - Ring proof parameters
-    /// * `lookup` - SRS lookup implementation for accessing precomputed values
     pub fn new(params: &RingProofParams<S>, lookup: impl SrsLookup<S>) -> Self {
         use ring_proof::pcs::PcsParams;
         let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
@@ -521,11 +493,8 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 
     /// Add public keys to the ring being built.
     ///
-    /// * `pks` - Public keys to add to the ring
-    /// * `lookup` - SRS lookup implementation for accessing precomputed values
-    ///
-    /// Returns `Ok(())` if keys were added successfully, or `Err(available_slots)`
-    /// if there's not enough space. Returns `Err(usize::MAX)` if SRS lookup fails.
+    /// Returns `Err(available_slots)` if there's not enough space, or
+    /// `Err(usize::MAX)` if the SRS lookup fails.
     pub fn append(
         &mut self,
         pks: &[AffinePoint<S>],

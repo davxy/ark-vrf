@@ -27,10 +27,7 @@ use ark_std::vec::Vec;
 /// 4. Repeats with an incremented counter (up to 256 attempts) if no valid
 ///    point is found.
 ///
-/// # Returns
-///
-/// * `Some(AffinePoint<S>)` - A valid curve point in the prime-order subgroup.
-/// * `None` - If no valid point could be found after 256 attempts.
+/// Returns `None` if no valid point is found after 256 attempts.
 pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     let base_len = BaseField::<S>::default().serialized_size(ark_serialize::Compress::Yes);
     let mut hash_buf = [0u8; 128];
@@ -84,12 +81,8 @@ where
 /// Elligator2 hash-to-curve using `expand_message_xmd` (RFC 9380 section 5.3.1).
 ///
 /// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point (any salting must be
-///   applied by the caller)
-/// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC 9380
+/// Any salting of `data` must be applied by the caller. The `h2c_suite_id`
+/// is the hash-to-curve suite identifier as defined in RFC 9380.
 pub fn hash_to_curve_ell2_xmd<S: Suite, H>(
     data: &[u8],
     h2c_suite_id: &[u8],
@@ -161,12 +154,8 @@ impl<F: ark_ff::Field, H: digest::ExtendableOutput + Default + Clone, const SEC_
 ///
 /// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
 /// This is the natural expansion mode for XOF hash functions like BLAKE3 and SHAKE128.
-///
-/// # Parameters
-///
-/// * `data` - The input data to hash to a curve point (any salting must be
-///   applied by the caller)
-/// * `h2c_suite_id` - The hash-to-curve suite identifier as defined in RFC 9380
+/// Any salting of `data` must be applied by the caller. The `h2c_suite_id`
+/// is the hash-to-curve suite identifier as defined in RFC 9380.
 pub fn hash_to_curve_ell2_xof<S: Suite, H>(
     data: &[u8],
     h2c_suite_id: &[u8],

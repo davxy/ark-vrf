@@ -136,10 +136,8 @@ impl From<ark_serialize::SerializationError> for Error {
 /// generation, challenge derivation, hash-to-curve) for a VRF-AD scheme.
 /// The default implementations are inspired by RFC-9381 and RFC-8032 but
 /// use a pluggable [`Transcript`]-based Fiat-Shamir transform rather than
-/// the specific hash constructions prescribed by the RFC.
-///
-/// Can be easily customized to implement more exotic VRF types by overwriting
-/// the default methods implementations.
+/// the specific hash constructions prescribed by the RFC. Default methods
+/// can be overridden to implement custom VRF variants.
 pub trait Suite: Copy {
     /// Suite identifier.
     ///
