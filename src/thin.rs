@@ -50,6 +50,9 @@ impl<T> ThinVrfSuite for T where T: Suite {}
 /// Schnorr-like proof over the delinearized merged DLEQ relation:
 /// - `r`: Nonce commitment R = k * I_m
 /// - `s`: Response scalar s = k + c * sk
+///
+/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
+/// curve points, so deserialized proofs are guaranteed to contain valid points.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: ThinVrfSuite> {
     /// Nonce commitment on the merged input.
@@ -99,12 +102,30 @@ fn vrf_transcript_scalars<S: ThinVrfSuite>(
 /// Trait for types that can generate Thin VRF proofs.
 pub trait Prover<S: ThinVrfSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
+    ///
+    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
 /// Trait for entities that can verify Thin VRF proofs.
+///
+/// All curve points involved in verification (public key, I/O pairs, and proof
+/// points) are assumed to be in the prime-order subgroup. This is guaranteed
+/// when points are constructed through checked constructors ([`Public::from_affine`],
+/// [`Input::from_affine`], [`Output::from_affine`]) or through trusted
+/// operations like [`Input::new`] (hash-to-curve) and [`Secret::vrf_io`].
+/// Proof points are guaranteed valid when deserialized via [`CanonicalDeserialize`]
+/// (which includes subgroup checks) or produced by [`Prover::prove`].
+///
+/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+/// the burden of subgroup validation on the caller. Passing points with
+/// cofactor components leads to undefined verification behavior.
 pub trait Verifier<S: ThinVrfSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
+    ///
+    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -175,6 +196,9 @@ pub struct BatchItem<S: ThinVrfSuite> {
 ///
 /// Collects multiple proofs and verifies them together via a single
 /// multi-scalar multiplication.
+///
+/// The same subgroup membership assumptions as [`Verifier`] apply to all
+/// points fed into the batch (public keys, I/O pairs, and proof points).
 pub struct BatchVerifier<S: ThinVrfSuite> {
     items: Vec<BatchItem<S>>,
 }

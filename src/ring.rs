@@ -136,6 +136,9 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// Two-part zero-knowledge proof with signer anonymity:
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
 /// - `ring_proof`: Membership proof binding the commitment to the ring
+///
+/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
+/// curve points, so deserialized proofs are guaranteed to contain valid points.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
@@ -145,19 +148,10 @@ pub struct Proof<S: RingSuite> {
 }
 
 /// Trait for types that can generate Ring VRF proofs.
-///
-/// Implementors can create anonymous proofs that a VRF output
-/// is correctly derived using a secret key from a ring of public keys.
 pub trait Prover<S: RingSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Creates a zero-knowledge proof that:
-    /// 1. The prover knows a secret key for one of the ring's public keys
-    /// 2. That secret key was used to compute the VRF output
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `ad` - Additional data to bind to the proof
-    /// * `prover` - Ring prover instance for the specific ring position
+    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
     fn prove(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -168,20 +162,24 @@ pub trait Prover<S: RingSuite> {
 
 /// Trait for entities that can verify Ring VRF proofs.
 ///
-/// Implementors can verify anonymous proofs that a VRF output
-/// was derived using a secret key from a ring of public keys.
+/// Verifies that a VRF output was correctly derived using a secret key
+/// belonging to one of the ring's public keys, without revealing which one.
+///
+/// All curve points involved in verification (I/O pairs and proof points)
+/// are assumed to be in the prime-order subgroup. This is guaranteed when
+/// points are constructed through checked constructors ([`Input::from_affine`],
+/// [`Output::from_affine`]) or through trusted operations like [`Input::new`]
+/// (hash-to-curve) and [`Secret::vrf_io`]. Proof points are guaranteed valid
+/// when deserialized via [`CanonicalDeserialize`] (which includes subgroup
+/// checks) or produced by [`Prover::prove`].
+///
+/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+/// the burden of subgroup validation on the caller. Passing points with
+/// cofactor components leads to undefined verification behavior.
 pub trait Verifier<S: RingSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Verifies that:
-    /// 1. The proof was created by a member of the ring
-    /// 2. The VRF output is correct for the given input
-    /// 3. The additional data matches what was used during proving
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `ad` - Additional data bound to the proof
-    /// * `sig` - The proof to verify
-    /// * `verifier` - Ring verifier instance for the specific ring
+    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
@@ -570,6 +568,9 @@ pub struct BatchItem<S: RingSuite> {
 ///
 /// Collects multiple ring proofs and verifies them together, amortizing the
 /// cost of pairing checks and multi-scalar multiplications.
+///
+/// The same subgroup membership assumptions as [`Verifier`] apply to all
+/// points fed into the batch (I/O pairs and proof points).
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
     pedersen_batch: pedersen::BatchVerifier<S>,

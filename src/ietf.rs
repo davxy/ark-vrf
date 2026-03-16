@@ -102,38 +102,29 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
     }
 }
 
-/// Trait for types that can generate VRF proofs.
-///
-/// Implementors can create cryptographic proofs that a VRF output
-/// is correctly derived from an input using their secret key.
+/// Trait for types that can generate IETF VRF proofs.
 pub trait Prover<S: IetfSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Creates a non-interactive zero-knowledge proof binding the input, output,
-    /// and additional data to the prover's public key.
-    ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `ad` - Additional data to bind to the proof
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify VRF proofs.
+/// Trait for entities that can verify IETF VRF proofs.
 ///
-/// Implementors can verify that a VRF output is correctly derived
-/// from an input using a specific public key.
+/// All curve points involved in verification (public key and I/O pairs)
+/// are assumed to be in the prime-order subgroup. This is guaranteed
+/// when points are constructed through checked constructors ([`Public::from_affine`],
+/// [`Input::from_affine`], [`Output::from_affine`]) or through trusted
+/// operations like [`Input::new`] (hash-to-curve) and [`Secret::vrf_io`].
+///
+/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+/// the burden of subgroup validation on the caller. Passing points with
+/// cofactor components leads to undefined verification behavior.
 pub trait Verifier<S: IetfSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
-    /// Verifies the cryptographic relationship between input, output, and proof
-    /// under the verifier's public key.
-    ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
-    ///
-    /// * `ios` - VRF input/output pairs
-    /// * `aux` - Additional data bound to the proof
-    /// * `proof` - The proof to verify
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
