@@ -186,8 +186,8 @@ pub trait Suite: Copy {
     ///
     /// This function panics if `Hasher` output is less than 64 bytes.
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>) -> ScalarField<Self> {
-        utils::nonce_rfc_8032::<Self>(sk, &pt.0)
+    fn nonce(sk: &ScalarField<Self>, pt: Input<Self>, ad: &[u8]) -> ScalarField<Self> {
+        utils::nonce_rfc_8032::<Self>(sk, &pt.0, ad)
     }
 
     /// Challenge generation as described by RCF-9381 section 5.4.3.

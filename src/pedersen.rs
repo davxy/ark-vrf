@@ -163,8 +163,11 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let blinding = S::blinding(&self.scalar, &input.0, ad.as_ref());
 
         // Construct the nonces
-        let k = S::nonce(&self.scalar, input);
-        let kb = S::nonce(&blinding, input);
+        let ad = ad.as_ref();
+        let k_ad = [&codec::scalar_encode::<S>(&blinding)[..], ad].concat();
+        let k = S::nonce(&self.scalar, input, &k_ad);
+        let kb_ad = [&codec::scalar_encode::<S>(&self.scalar)[..], ad].concat();
+        let kb = S::nonce(&blinding, input, &kb_ad);
 
         // Yb = x*G + b*B
         let xg = smul!(S::generator(), self.scalar);
@@ -183,7 +186,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
 
         // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad.as_ref());
+        let c = S::challenge(&[&pk_com, &input.0, &output.0, &r, &ok], ad);
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -422,7 +425,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, CheckPoint, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: PedersenSuite>() {
         use pedersen::{Prover, Verifier};

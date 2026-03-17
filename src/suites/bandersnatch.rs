@@ -73,8 +73,8 @@ impl Suite for ThisSuite {
         utils::hash_to_curve_ell2_rfc_9380::<Self>(data, h2c_suite_id)
     }
 
-    fn nonce(sk: &ScalarField, pt: Input) -> ScalarField {
-        utils::nonce_rfc_8032::<Self>(sk, &pt.0)
+    fn nonce(sk: &ScalarField, pt: Input, ad: &[u8]) -> ScalarField {
+        utils::nonce_rfc_8032::<Self>(sk, &pt.0, ad)
     }
 }
 

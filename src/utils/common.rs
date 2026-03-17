@@ -233,7 +233,7 @@ pub fn point_to_hash_rfc_9381<S: Suite>(
 /// # Panics
 ///
 /// This function panics if `Suite::Hasher` output is less than 64 bytes.
-pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S> {
+pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>, ad: &[u8]) -> ScalarField<S> {
     assert!(
         S::Hasher::output_size() >= 64,
         "Suite::Hasher output is required to be >= 64 bytes"
@@ -246,6 +246,7 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
     let h = S::Hasher::new()
         .chain_update(&sk_hash[32..])
         .chain_update(&pt_buf)
+        .chain_update(ad)
         .finalize();
 
     S::Codec::scalar_decode(&h)
@@ -276,12 +277,16 @@ pub fn nonce_rfc_8032<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> 
 ///
 /// A scalar field element to be used as a nonce
 #[cfg(feature = "rfc-6979")]
-pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>) -> ScalarField<S>
+pub fn nonce_rfc_6979<S: Suite>(sk: &ScalarField<S>, input: &AffinePoint<S>, ad: &[u8]) -> ScalarField<S>
 where
     S::Hasher: digest::core_api::BlockSizeUser,
 {
     let raw = codec::point_encode::<S>(input);
-    let h1 = hash::<S::Hasher>(&raw);
+    let h1 = S::Hasher::new()
+        .chain_update(&raw)
+        .chain_update(ad)
+        .finalize()
+        .to_vec();
 
     let v = [1; 32];
     let k = [0; 32];
