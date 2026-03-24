@@ -62,6 +62,10 @@ name = "ring"
 harness = false
 required-features = ["ring"]
 
+[[bench]]
+name = "straus"
+harness = false
+
 [features]
 default = [ "std" ]
 std = [
@@ -87,6 +91,7 @@ secp256r1 = [ "ark-secp256r1" ]
 # Miscellanea
 ring = [ "w3f-ring-proof" ]
 shake128 = [ "sha3" ]
+print-trace = [ "ark-std/print-trace" ]
 # Optimizations
 parallel = [
   "ark-ec/parallel",

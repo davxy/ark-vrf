@@ -5,6 +5,7 @@
 
 pub mod common;
 pub mod hash_to_curve;
+pub mod straus;
 pub mod te_sw_map;
 pub mod transcript;
 
