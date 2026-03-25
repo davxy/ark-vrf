@@ -63,8 +63,7 @@ fn to_msbf_bits_padded<F: PrimeField>(scalar: F, w: usize) -> Vec<bool> {
     let repr_bit_len = F::BigInt::NUM_LIMBS * 64;
     let extra_bits = repr_bit_len % w;
     let padding_len = if extra_bits == 0 { 0 } else { w - extra_bits };
-    iter::repeat(false)
-        .take(padding_len)
+    iter::repeat_n(false, padding_len)
         .chain(BitIteratorBE::new(scalar.into_bigint()))
         .collect()
 }
@@ -123,7 +122,7 @@ pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField], w: usi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_std::{test_rng, UniformRand};
+    use ark_std::{UniformRand, test_rng};
 
     type TestAffine = crate::AffinePoint<crate::suites::testing::TestSuite>;
     type TestScalar = crate::ScalarField<crate::suites::testing::TestSuite>;

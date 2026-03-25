@@ -5,7 +5,7 @@ use ark_std::UniformRand;
 use ark_vrf::utils::straus::short_msm;
 use ark_vrf::{AffinePoint, ScalarField};
 use bench_utils::BenchInfo;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 const POINT_COUNTS: &[usize] = &[2, 3, 4, 5];
 const WINDOW_SIZES: &[usize] = &[1, 2, 3, 4];
