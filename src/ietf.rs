@@ -27,6 +27,7 @@
 
 use super::*;
 use utils::common::DomSep;
+use utils::straus::short_msm;
 
 /// Marker trait for suites that support the IETF VRF scheme.
 ///
@@ -189,8 +190,9 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
 
         let Proof { c, s } = proof;
 
-        let u = S::generator() * s - self.0 * c;
-        let v = io.input.0 * s - io.output.0 * c;
+        let neg_c = -*c;
+        let u = short_msm(&[S::generator(), self.0], &[*s, neg_c], 2);
+        let v = short_msm(&[io.input.0, io.output.0], &[*s, neg_c], 2);
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 

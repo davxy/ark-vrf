@@ -102,21 +102,12 @@ fn indices<F: PrimeField>(scalars: &[F], w: usize) -> Vec<usize> {
         .collect()
 }
 
-/// Straus multi-scalar multiplication with window size 1.
-pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField]) -> C::Group {
-    short_msm_windowed(points, scalars, 1)
-}
-
 /// Straus multi-scalar multiplication with configurable window size `w`.
 ///
 /// Larger `w` reduces the number of doubling rounds (from `b` to `b/w` for
 /// `b`-bit scalars) at the cost of an exponentially larger table: `(2^w)^n`
 /// entries. In practice, `w=2` is optimal for n <= 3 and `w=1` for n >= 4.
-pub fn short_msm_windowed<C: AffineRepr>(
-    points: &[C],
-    scalars: &[C::ScalarField],
-    w: usize,
-) -> C::Group {
+pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField], w: usize) -> C::Group {
     let table = table(points, w as u32);
     let indices = indices(scalars, w);
     let mut acc = C::Group::zero();
@@ -149,7 +140,7 @@ mod tests {
                 points.iter().zip(scalars.iter()).map(|(&p, s)| p * s).sum();
 
             for w in 1..=3 {
-                let res_w = short_msm_windowed(&points, &scalars, w);
+                let res_w = short_msm(&points, &scalars, w);
                 assert_eq!(res_w, res, "mismatch for n={n}, w={w}");
             }
         }

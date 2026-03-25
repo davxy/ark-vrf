@@ -16,73 +16,73 @@ Criterion: `--quick` mode
 
 | Benchmark                    |     Time |
 |:-----------------------------|---------:|
-| vrf_output                   | 80.0 us  |
-| data_to_point_tai            | 20.6 us  |
-| data_to_point_ell2           | 67.3 us  |
-| point_to_hash                | 600 ns   |
-| challenge                    | 1.12 us  |
-| nonce_rfc_8032               | 2.07 us  |
+| vrf_output                   | 79.8 us  |
+| data_to_point_tai            | 19.9 us  |
+| data_to_point_ell2           | 67.0 us  |
+| point_to_hash                | 588 ns   |
+| challenge                    | 1.10 us  |
+| nonce_rfc_8032               | 2.04 us  |
 
 ## IETF VRF Operations (`ietf.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| ietf_prove             | 172.0 us |
-| ietf_verify            | 273.6 us |
+| ietf_prove             | 172.1 us |
+| ietf_verify            | 211.5 us |
 
 ## Pedersen VRF Operations (`pedersen.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| pedersen_prove         | 339.4 us |
-| pedersen_verify        | 352.0 us |
+| pedersen_prove         | 364.1 us |
+| pedersen_verify        | 238.2 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.11 us  | 2.22 us  | 5.12 us  | 9.05 us  | 17.8 us  | 41.8 us  | 76.5 us  | 153.6 us | 310.4 us |
-| batch_verify         | 474.8 us | 553.8 us | 860.6 us | 1.65 ms  | 2.06 ms  | 3.68 ms  | 6.23 ms  | 8.62 ms  | 15.4 ms  |
+| batch_prepare        | 1.21 us  | 2.49 us  | 4.84 us  | 9.03 us  | 18.0 us  | 40.0 us  | 77.7 us  | 155.2 us | 310.7 us |
+| batch_verify         | 473.1 us | 597.8 us | 775.8 us | 1.63 ms  | 2.00 ms  | 3.64 ms  | 6.25 ms  | 8.78 ms  | 15.5 ms  |
 
 ## Thin VRF Operations (`thin.rs`)
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| thin_prove             | 284.0 us |
-| thin_verify            | 309.1 us |
+| thin_prove             | 290.1 us |
+| thin_verify            | 277.6 us |
 
 ### Batch Verification
 
 | Benchmark            | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:---------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_prepare        | 1.81 us  | 3.73 us  | 7.33 us  | 14.6 us  | 33.2 us  | 58.6 us  | 121.7 us | 269.0 us | 513.8 us |
-| batch_verify         | 522.1 us | 526.6 us | 798.6 us | 1.61 ms  | 1.91 ms  | 3.69 ms  | 5.56 ms  | 8.08 ms  | 14.5 ms  |
+| batch_prepare        | 1.95 us  | 3.94 us  | 7.83 us  | 15.6 us  | 31.0 us  | 63.5 us  | 128.2 us | 256.5 us | 512.9 us |
+| batch_verify         | 477.3 us | 517.0 us | 657.0 us | 1.71 ms  | 2.03 ms  | 3.42 ms  | 5.89 ms  | 7.84 ms  | 14.2 ms  |
 
 ## Ring VRF Operations (`ring.rs`)
 
 | Benchmark              | n=255     | n=1023    | n=2047    |
 |:-----------------------|----------:|----------:|----------:|
-| ring_params_setup      | 0.79 ms   | 3.60 ms   | 8.31 ms   |
-| ring_prover_key        | 43.8 ms   | 136.6 ms  | 244.7 ms  |
-| ring_verifier_key      | 44.0 ms   | 134.2 ms  | 237.3 ms  |
-| ring_prove             | 149.7 ms  | 452.2 ms  | 799.3 ms  |
-| ring_verify            | 3.34 ms   | 3.38 ms   | 3.37 ms   |
-| ring_verifier_from_key | 273.6 us  | 293.5 us  | 328.8 us  |
-| ring_vk_from_commitment| 70.7 ns   | 71.4 ns   | 69.7 ns   |
-| ring_vk_builder_create | 309.6 ms  | 1.453 s   | 2.949 s   |
-| ring_vk_builder_append | 14.8 ms   | 47.8 ms   | 78.1 ms   |
-| ring_vk_builder_finalize | 96.9 ns | 105.7 ns  | 117.3 ns  |
+| ring_params_setup      | 0.78 ms   | 3.70 ms   | 8.35 ms   |
+| ring_prover_key        | 42.1 ms   | 125.2 ms  | 243.4 ms  |
+| ring_verifier_key      | 43.0 ms   | 124.8 ms  | 224.6 ms  |
+| ring_prove             | 145.3 ms  | 456.1 ms  | 794.2 ms  |
+| ring_verify            | 3.31 ms   | 3.32 ms   | 3.28 ms   |
+| ring_verifier_from_key | 259.5 us  | 276.2 us  | 310.1 us  |
+| ring_vk_from_commitment| 75.2 ns   | 74.7 ns   | 74.5 ns   |
+| ring_vk_builder_create | 307.5 ms  | 1.367 s   | 3.016 s   |
+| ring_vk_builder_append | 16.0 ms   | 47.0 ms   | 76.7 ms   |
+| ring_vk_builder_finalize | 106.2 ns | 105.6 ns  | 111.8 ns  |
 
 ### Batch Verification (ring size = 1023)
 
 | Benchmark          | n=1      | n=2      | n=4      | n=8      | n=16     | n=32     | n=64     | n=128    | n=256    |
 |:-------------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-| batch_verifier_new | 275 us   | -        | -        | -        | -        | -        | -        | -        | -        |
-| batch_push         | 48.3 us  | 95.5 us  | 196.1 us | 434.5 us | 889.1 us | 1.63 ms  | 3.60 ms  | 6.49 ms  | 13.1 ms  |
-| batch_prepare_seq  | 40.4 us  | 81.4 us  | 166.0 us | 356.3 us | 800.7 us | 1.50 ms  | 3.28 ms  | 6.80 ms  | 12.0 ms  |
-| batch_prepare_par  | 40.6 us  | 81.0 us  | 105.8 us | 145.0 us | 214.4 us | 244.6 us | 236.9 us | 467.4 us | 811.4 us |
-| batch_push_prepared| 5.0 us   | 9.1 us   | 20.0 us  | 34.8 us  | 67.4 us  | 132.9 us | 269.3 us | 529.3 us | 1.04 ms  |
-| batch_verify       | 3.19 ms  | 3.94 ms  | 6.05 ms  | 8.55 ms  | 11.6 ms  | 20.3 ms  | 30.6 ms  | 50.8 ms  | 88.7 ms  |
+| batch_verifier_new | 261 us   | -        | -        | -        | -        | -        | -        | -        | -        |
+| batch_push         | 48.2 us  | 95.7 us  | 214.1 us | 428.8 us | 851.3 us | 1.67 ms  | 3.27 ms  | 7.06 ms  | 15.0 ms  |
+| batch_prepare_seq  | 44.9 us  | 89.3 us  | 179.7 us | 389.1 us | 783.3 us | 1.53 ms  | 3.00 ms  | 6.03 ms  | 12.1 ms  |
+| batch_prepare_par  | 43.4 us  | 74.2 us  | 105.6 us | 138.7 us | 216.4 us | 232.4 us | 216.0 us | 423.6 us | 771.7 us |
+| batch_push_prepared| 5.4 us   | 9.9 us   | 18.9 us  | 37.5 us  | 74.7 us  | 132.4 us | 265.1 us | 520.6 us | 1.06 ms  |
+| batch_verify       | 3.41 ms  | 4.25 ms  | 5.71 ms  | 8.48 ms  | 12.5 ms  | 19.3 ms  | 30.6 ms  | 56.3 ms  | 96.9 ms  |
 
 ## Straus MSM (`straus.rs`)
 
@@ -91,10 +91,10 @@ The table shows times for the bandersnatch suite.
 
 | n\w | w=1       | w=2       | w=3       | w=4       |
 |----:|----------:|----------:|----------:|----------:|
-|   2 | 120.9 us  | 91.5 us   | 96.7 us   | 164.8 us  |
-|   3 | 119.7 us  | 122.9 us  | 285.4 us  | 1.68 ms   |
-|   4 | 131.2 us  | 194.9 us  | 1.68 ms   | 33.4 ms   |
-|   5 | 138.9 us  | 498.2 us  | 13.0 ms   | 577.3 ms  |
+|   2 | 123.1 us  | 97.7 us   | 107.0 us  | 179.3 us  |
+|   3 | 128.3 us  | 117.4 us  | 286.1 us  | 1.70 ms   |
+|   4 | 132.3 us  | 196.5 us  | 1.72 ms   | 33.5 ms   |
+|   5 | 142.3 us  | 507.8 us  | 13.3 ms   | 579.1 ms  |
 
 Table size is (2^w - 1)^n, so the cost grows combinatorially in w for a given n.
 Optimal window size is w=2 for n=2 and w=1 for n>=3.
@@ -103,52 +103,52 @@ Optimal window size is w=2 for n=2 and w=1 for n>=3.
 
 ### Ring Operations
 
-- `ring_verify` is roughly constant across ring sizes (~3.4 ms) since verification
+- `ring_verify` is roughly constant across ring sizes (~3.3 ms) since verification
   cost depends on the PIOP domain size, which stays the same for all three sizes tested
   (they all round up to the same power-of-two domain).
-- `ring_prove` scales linearly with ring size: 150 ms at n=255, 452 ms at n=1023,
-  799 ms at n=2047.
-- `ring_vk_builder_create` is the most expensive operation (up to 2.9 s at n=2047).
+- `ring_prove` scales linearly with ring size: 145 ms at n=255, 456 ms at n=1023,
+  794 ms at n=2047.
+- `ring_vk_builder_create` is the most expensive operation (up to 3.0 s at n=2047).
   This is the Lagrangian SRS computation.
 - `ring_vk_builder_finalize` and `ring_vk_from_commitment` are essentially free
-  (sub-120 ns).
+  (sub-112 ns).
 
 ### Batch Verification vs Simple Verification
 
 Simple verification cost for n proofs (ring size 1023):
-`ring_verifier_from_key` (294 us) + n * `ring_verify` (3.38 ms).
+`ring_verifier_from_key` (276 us) + n * `ring_verify` (3.32 ms).
 
 Batch verification combines multiple pairing checks into a single multi-pairing
 (ring proof) and multiple Pedersen verifications into a single (5N+2)-point MSM.
 
-The `prepare` step (~48 us/proof) computes only the Pedersen challenge hash and
+The `prepare` step (~45 us/proof) computes only the Pedersen challenge hash and
 packages data for deferred verification -- no scalar multiplications. The Pedersen
 verification is deferred to `verify`, where it runs as a single batched MSM using
 random linear combination with independent random scalars per equation.
 
 The `verify` step includes both the ring batch multi-pairing and the Pedersen
-batch MSM. A linear fit gives ~2.9 ms base + ~0.34 ms per additional proof.
-The ring multi-pairing marginal cost is ~0.31 ms/proof; the Pedersen MSM adds
+batch MSM. A linear fit gives ~2.9 ms base + ~0.37 ms per additional proof.
+The ring multi-pairing marginal cost is ~0.34 ms/proof; the Pedersen MSM adds
 ~0.03 ms/proof amortized.
 
-Sequential marginal cost per proof: ~0.05 ms (prepare) + ~0.34 ms (verify) = ~0.39 ms,
-or ~8.7x cheaper than simple verification (3.38 ms). With parallel prepare, the
-per-proof prepare cost drops to ~3 us at n=256, giving ~0.34 ms marginal, or ~9.9x
+Sequential marginal cost per proof: ~0.05 ms (prepare) + ~0.37 ms (verify) = ~0.42 ms,
+or ~7.9x cheaper than simple verification (3.32 ms). With parallel prepare, the
+per-proof prepare cost drops to ~3 us at n=256, giving ~0.37 ms marginal, or ~9.0x
 cheaper.
 
 Estimated total wall times and speedups:
 
 | n   | Simple      | Batch seq   | Batch par   | Speedup (seq) | Speedup (par) |
 |----:|------------:|------------:|------------:|--------------:|--------------:|
-|   1 |    3.67 ms  |    3.23 ms  |    3.23 ms  |         1.14x |         1.14x |
-|   2 |    7.05 ms  |    4.02 ms  |    4.01 ms  |         1.75x |         1.76x |
-|   4 |   13.81 ms  |    6.22 ms  |    6.15 ms  |         2.22x |         2.25x |
-|   8 |   27.33 ms  |    8.91 ms  |    8.70 ms  |         3.07x |         3.14x |
-|  16 |   54.37 ms  |   12.42 ms  |   11.83 ms  |         4.38x |         4.59x |
-|  32 |  108.45 ms  |   21.80 ms  |   20.54 ms  |         4.97x |         5.28x |
-|  64 |  216.61 ms  |   33.86 ms  |   30.82 ms  |         6.40x |         7.03x |
-| 128 |  432.93 ms  |   57.60 ms  |   51.27 ms  |         7.52x |         8.44x |
-| 256 |  865.57 ms  |  100.75 ms  |   89.51 ms  |         8.59x |         9.67x |
+|   1 |    3.60 ms  |    3.46 ms  |    3.45 ms  |         1.04x |         1.04x |
+|   2 |    6.92 ms  |    4.34 ms  |    4.32 ms  |         1.59x |         1.60x |
+|   4 |   13.56 ms  |    5.89 ms  |    5.82 ms  |         2.30x |         2.33x |
+|   8 |   26.84 ms  |    8.87 ms  |    8.62 ms  |         3.03x |         3.11x |
+|  16 |   53.40 ms  |   13.28 ms  |   12.72 ms  |         4.02x |         4.20x |
+|  32 |  106.52 ms  |   20.83 ms  |   19.53 ms  |         5.11x |         5.45x |
+|  64 |  212.76 ms  |   33.60 ms  |   30.82 ms  |         6.33x |         6.90x |
+| 128 |  425.24 ms  |   62.33 ms  |   56.72 ms  |         6.82x |         7.50x |
+| 256 |  850.20 ms  |  109.00 ms  |   97.67 ms  |         7.80x |         8.70x |
 
 ### Batch Verify Scaling
 
@@ -156,17 +156,17 @@ The `batch_verify` step scales sublinearly in the number of proofs:
 
 | n   | batch_verify | per-proof |
 |----:|-----------:|----------:|
-|   1 |    3.19 ms |  3.19 ms  |
-|   2 |    3.94 ms |  1.97 ms  |
-|   4 |    6.05 ms |  1.51 ms  |
-|   8 |    8.55 ms |  1.07 ms  |
-|  16 |   11.6 ms  |  0.73 ms  |
-|  32 |   20.3 ms  |  0.63 ms  |
+|   1 |    3.41 ms |  3.41 ms  |
+|   2 |    4.25 ms |  2.13 ms  |
+|   4 |    5.71 ms |  1.43 ms  |
+|   8 |    8.48 ms |  1.06 ms  |
+|  16 |   12.5 ms  |  0.78 ms  |
+|  32 |   19.3 ms  |  0.60 ms  |
 |  64 |   30.6 ms  |  0.48 ms  |
-| 128 |   50.8 ms  |  0.40 ms  |
-| 256 |   88.7 ms  |  0.35 ms  |
+| 128 |   56.3 ms  |  0.44 ms  |
+| 256 |   96.9 ms  |  0.38 ms  |
 
-Amortized cost per proof drops from 3.19 ms (n=1) to 0.35 ms (n=256), roughly 9x.
+Amortized cost per proof drops from 3.41 ms (n=1) to 0.38 ms (n=256), roughly 9x.
 Two factors contribute: the fixed-cost ring multi-pairing base (~3.2 ms) amortized
 across all proofs, and the MSM itself which scales as O(n / log n) via
 Pippenger/bucket methods rather than O(n).

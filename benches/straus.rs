@@ -2,10 +2,10 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
+use ark_vrf::utils::straus::short_msm;
 use ark_vrf::{AffinePoint, ScalarField};
-use ark_vrf::utils::straus::short_msm_windowed;
 use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 const POINT_COUNTS: &[usize] = &[2, 3, 4, 5];
 const WINDOW_SIZES: &[usize] = &[1, 2, 3, 4];
@@ -20,7 +20,7 @@ fn bench_straus_suite<S: BenchInfo>(c: &mut Criterion) {
         for &w in WINDOW_SIZES {
             c.benchmark_group(format!("{}/straus_msm/n={n}", S::SUITE_NAME))
                 .bench_function(BenchmarkId::from_parameter(format!("w={w}")), |b| {
-                    b.iter(|| short_msm_windowed(black_box(&points), black_box(&scalars), w));
+                    b.iter(|| short_msm(black_box(&points), black_box(&scalars), w));
                 });
         }
     }
