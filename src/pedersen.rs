@@ -33,6 +33,7 @@
 use crate::ietf::IetfSuite;
 use crate::utils;
 use crate::utils::common::DomSep;
+use crate::utils::straus::short_msm;
 use crate::*;
 use ark_ec::VariableBaseMSM;
 
@@ -205,19 +206,27 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         // c = Hash(Yb, I, O, R, Ok, ad)
         let c = S::challenge(&[pk_com, r, ok], Some(t));
 
-        // Eq1: Ok + c*O = s*I
+        let neg_c = -c;
+
+        // Eq1: s*I - c*O == Ok
         // Verifies that the VRF output O is correctly derived from the input I
         // using the same secret scalar x committed in the proof. Expanding the
         // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
-        if io.output.0 * c + ok != io.input.0 * s {
+        let lhs1 = short_msm(&[io.input.0, io.output.0], &[*s, neg_c], 2);
+        if lhs1 != ok.into_group() {
             return Err(Error::VerificationFailure);
         }
 
-        // Eq2: R + c*Yb = s*G + sb*B
+        // Eq2: s*G + sb*B - c*Yb == R
         // Verifies knowledge of both the secret key x and blinding factor b
         // committed in the public key commitment Yb = x*G + b*B. Expanding
         // s = k + c*x and sb = kb + c*b gives s*G + sb*B = R + c*Yb.
-        if *pk_com * c + r != S::generator() * s + S::BLINDING_BASE * sb {
+        let lhs2 = short_msm(
+            &[S::generator(), S::BLINDING_BASE, *pk_com],
+            &[*s, *sb, neg_c],
+            1,
+        );
+        if lhs2 != r.into_group() {
             return Err(Error::VerificationFailure);
         }
 

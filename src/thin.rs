@@ -36,7 +36,7 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::{utils::challenge_scalar, utils::common::DomSep, *};
+use crate::{utils::challenge_scalar, utils::common::DomSep, utils::straus::short_msm, *};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -167,10 +167,9 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         // Challenge
         let c = S::challenge(&[r], Some(t));
 
-        // Verification: s * I_m == R + c * O_m
-        let lhs = smul!(merged.input.0, *s);
-        let rhs = r.into_group() + smul!(merged.output.0, c);
-        if lhs != rhs {
+        // Verification: s * I_m - c * O_m == R
+        let lhs = short_msm(&[merged.input.0, merged.output.0], &[*s, -c], 2);
+        if lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }
 

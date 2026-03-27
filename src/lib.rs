@@ -543,8 +543,10 @@ mod tests {
 
             let c = S::challenge(&[&public.0, &k_b, &k_h], Some(t.clone()));
 
-            // We need c to be even so that c * L = identity (since L has order 2)
-            if c.into_bigint().is_even() {
+            // We need -c (i.e. q-c in the scalar field) to be even so that
+            // (-c) * L = identity (since L has order 2). Because q is odd,
+            // q-c is even iff c is odd.
+            if !c.into_bigint().is_even() {
                 let s = k + c * secret.scalar;
                 break (crate::ietf::Proof { c, s }, c);
             }

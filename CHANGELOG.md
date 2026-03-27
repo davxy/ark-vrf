@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-input IETF VRF using delinearized DLEQ. Proves multiple input-output
   pairs with a single proof via `delinearize` folding. N=1 is byte-identical
   to single-pair proving. N=0 reduces to a Schnorr signature over additional data.
+- Straus multi-scalar multiplication (`utils::straus::short_msm`) for small
+  point counts (n=2..5), with configurable window size. Used in IETF, Pedersen,
+  and Thin VRF verification to replace independent scalar multiplications.
 
 ### Fixed
 
