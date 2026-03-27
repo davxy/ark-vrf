@@ -62,9 +62,8 @@ impl Suite for ThisSuite {
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "2671563590660729217877867502637159080924340550540298316336804174287037983535"
-        );
+        const X: BaseField =
+            MontFp!("2671563590660729217877867502637159080924340550540298316336804174287037983535");
         const Y: BaseField = MontFp!(
             "27990482544029132573047185251102012550987670910599975985529822463373166358391"
         );
@@ -87,8 +86,9 @@ impl crate::ring::RingSuite for ThisSuite {
     };
 
     const PADDING: AffinePoint = {
-        const X: BaseField =
-            MontFp!("38956341538508863744993405884988306267554601876436576952130150310707616181394");
+        const X: BaseField = MontFp!(
+            "38956341538508863744993405884988306267554601876436576952130150310707616181394"
+        );
         const Y: BaseField = MontFp!(
             "20837124983713908503950353873416686644548370407048794182669789602967149453355"
         );

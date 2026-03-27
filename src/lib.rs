@@ -586,7 +586,11 @@ mod tests {
             output: honest_output,
         };
         let honest_proof = secret.prove(honest_io, ad.as_bytes());
-        assert!(public.verify(honest_io, ad.as_bytes(), &honest_proof).is_ok());
+        assert!(
+            public
+                .verify(honest_io, ad.as_bytes(), &honest_proof)
+                .is_ok()
+        );
 
         // Two different outputs for the same input and public key.
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
