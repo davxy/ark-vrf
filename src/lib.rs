@@ -509,7 +509,6 @@ mod tests {
         let public = secret.public();
         let input = Input::new(b"uniqueness attack").unwrap();
         let honest_output = secret.output(input);
-        let ad = b"aux data";
 
         // 1. Find a low-order point L (order 2 for Ed25519)
         // For Ed25519, (0, -1) is order 2.
@@ -525,25 +524,42 @@ mod tests {
         assert_ne!(honest_output, malicious_output);
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
 
-        // 3. Forge a proof by grinding k until c is a multiple of 2 (so c*L = 0)
+        // 3. Forge a proof by grinding k until c*z_1 is even (so c*z_1*L = 0)
         //
-        // Build the transcript exactly as verify does: vrf_transcript absorbs
-        // the delinearized io and ad, then the challenge absorbs only the
-        // public key and nonce commitments.
+        // The verify equation for the VRF I/O part is s*I_m - c*O_m = k*I_m,
+        // where O_m includes z_1*(O_honest + L). For this to hold we need
+        // c*z_1*L = 0, i.e. c*z_1 must be even (since L has order 2).
+        // Since c is odd (ground below) we also need z_1 to be even.
+        // z_1 is the delinearization scalar determined by (pk, ios, ad), so
+        // we iterate over ad values to find one where z_1 is even.
         let malicious_io = VrfIo {
             input,
             output: malicious_output,
         };
-        let schnorr = core::iter::once(VrfIo {
-            input: Input(S::generator()),
-            output: Output(public.0),
-        });
         let mal_ios = [malicious_io];
-        let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
-        let (t, _) = utils::vrf_transcript_from_iter(DomSep::IetfVrf, chain, ad);
 
+        // Search for an ad that produces an even delinearization scalar z_1.
+        let mut ad_ctr = 0u32;
+        let (ad, t) = loop {
+            let ad = format!("ad-{ad_ctr}");
+            let schnorr = core::iter::once(VrfIo {
+                input: Input(S::generator()),
+                output: Output(public.0),
+            });
+            let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
+            let (t, zs) =
+                utils::vrf_transcript_scalars_from_iter(DomSep::IetfVrf, chain, ad.as_bytes());
+            // z_1 is the delinearization scalar for the VRF pair
+            if zs[1].into_bigint().is_even() {
+                break (ad, t);
+            }
+            ad_ctr += 1;
+            assert!(ad_ctr < 100, "Failed to find suitable ad");
+        };
+
+        // Now grind k to get an odd challenge c (so that q-c is even, i.e. (-c)*L = 0).
         let mut ctr = 0u64;
-        let (proof, _) = loop {
+        let proof = loop {
             let mut k_seed = [0u8; 8];
             k_seed.copy_from_slice(&ctr.to_le_bytes());
             let k = Sc::from_le_bytes_mod_order(&k_seed);
@@ -553,39 +569,26 @@ mod tests {
 
             let c = S::challenge(&[&k_b, &k_h], Some(t.clone()));
 
-            // We need -c (i.e. q-c in the scalar field) to be even so that
-            // (-c) * L = identity (since L has order 2). Because q is odd,
-            // q-c is even iff c is odd.
             if !c.into_bigint().is_even() {
                 let s = k + c * secret.scalar;
-                break (crate::ietf::Proof { c, s }, c);
+                break crate::ietf::Proof { c, s };
             }
             ctr += 1;
-            if ctr > 1000 {
-                panic!("Grinding failed");
-            }
+            assert!(ctr <= 1000, "Grinding failed");
         };
 
         // 4. Verify the malicious proof
-        assert!(public.verify(malicious_io, ad, &proof).is_ok());
+        assert!(public.verify(malicious_io, ad.as_bytes(), &proof).is_ok());
 
         // 5. Verify the honest proof still works
         let honest_io = VrfIo {
             input,
             output: honest_output,
         };
-        let honest_proof = secret.prove(honest_io, ad);
-        assert!(public.verify(honest_io, ad, &honest_proof).is_ok());
+        let honest_proof = secret.prove(honest_io, ad.as_bytes());
+        assert!(public.verify(honest_io, ad.as_bytes(), &honest_proof).is_ok());
 
-        // SUCCESS! Two different outputs for the same input and public key!
-        println!("Uniqueness BROKEN!");
-        println!(
-            "Honest output hash: {}",
-            hex::encode(honest_output.hash::<32>())
-        );
-        println!(
-            "Malicious output hash: {}",
-            hex::encode(malicious_output.hash::<32>())
-        );
+        // Two different outputs for the same input and public key.
+        assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
     }
 }
