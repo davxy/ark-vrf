@@ -132,30 +132,21 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
-        // Build blinding factor
+        // Build blinding factor from T.fork()
         let blinding = S::blinding(&self.scalar, t.clone());
-
-        // k nonce: bind blinding factor so that two proofs with the
-        // same (secret, io, ad) but different blinding factors produce
-        // distinct nonces, preventing secret key recovery via
-        // x = (s1 - s2) / (c1 - c2).
-        let mut t_k = t.clone();
-        t_k.absorb_serialize(&blinding);
-        let k = S::nonce(&self.scalar, Some(t_k));
-
-        // kb nonce: bind secret key so that two proofs with the
-        // same (blinding, input, ad) but different secret keys produce
-        // distinct nonces, preventing blinding factor recovery via
-        // b = (sb1 - sb2) / (c1 - c2).
-        let mut t_kb = t.clone();
-        t_kb.absorb_serialize(&self.scalar);
-        let kb = S::nonce(&blinding, Some(t_kb));
 
         // Yb = x*G + b*B = PK + b*B
         let bb = smul!(S::BLINDING_BASE, blinding);
-        let pk_com = self.public.0.into_group() + bb;
+        let pk_com = (self.public.0.into_group() + bb).into_affine();
+
+        // Absorb Yb into the transcript
+        t.absorb_serialize(&pk_com);
+
+        // Nonces from T.fork()
+        let k = S::nonce(&self.scalar, Some(t.clone()));
+        let kb = S::nonce(&blinding, Some(t.clone()));
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
@@ -165,11 +156,11 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         // Ok = k*I
         let ok = smul!(io.input.0, k);
 
-        let norms = CurveGroup::normalize_batch(&[pk_com, r, ok]);
-        let (pk_com, r, ok) = (norms[0], norms[1], norms[2]);
+        let norms = CurveGroup::normalize_batch(&[r, ok]);
+        let (r, ok) = (norms[0], norms[1]);
 
-        // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[&pk_com, &r, &ok], Some(t));
+        // c = challenge([R, Ok], T)
+        let c = S::challenge(&[&r, &ok], Some(t));
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -201,10 +192,13 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
-        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
-        // c = Hash(Yb, I, O, R, Ok, ad)
-        let c = S::challenge(&[pk_com, r, ok], Some(t));
+        // Absorb Yb into the transcript
+        t.absorb_serialize(pk_com);
+
+        // c = challenge([R, Ok], T)
+        let c = S::challenge(&[r, ok], Some(t));
 
         let neg_c = -c;
 
@@ -282,8 +276,9 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> BatchItem<S> {
-        let (t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
-        let c = S::challenge(&[&proof.pk_com, &proof.r, &proof.ok], Some(t));
+        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        t.absorb_serialize(&proof.pk_com);
+        let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
         BatchItem {
             c,
             input: io.input.0,
@@ -330,7 +325,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
         // response scalars s and sb need to be included separately.
         let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(b"pedersen-batch");
+        t.absorb_raw(&[DomSep::PedersenBatch as u8]);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);

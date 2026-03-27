@@ -123,16 +123,18 @@ where
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
-    Challenge = 0x01,
-    NonceExpand = 0x02,
-    Nonce = 0x03,
-    PointToHash = 0x04,
-    Delinearize = 0x05,
-    IetfVrf = 0x10,
-    ThinVrf = 0x11,
-    PedersenVrf = 0x12,
-    PedersenBlinding = 0x80,
-    HashToCurveTai = 0x81,
+    IetfVrf = 0x00,
+    ThinVrf = 0x01,
+    PedersenVrf = 0x02,
+    NonceExpand = 0x10,
+    Nonce = 0x11,
+    PedersenBlinding = 0x12,
+    PointToHash = 0x20,
+    Delinearize = 0x30,
+    Challenge = 0x40,
+    ThinBatch = 0x50,
+    PedersenBatch = 0x51,
+    HashToCurveTai = 0xFE,
 }
 
 /// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
@@ -149,10 +151,10 @@ fn vrf_transcript_base<S: Suite>(
     let mut t = S::Transcript::new(S::SUITE_ID);
     t.absorb_raw(&[scheme as u8]);
     absorb_ios::<S>(&mut t, ios);
-    let scalars = delinearize_scalars::<S>(t.clone());
     let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
     t.absorb_raw(&ad_len.to_le_bytes());
     t.absorb_raw(ad.as_ref());
+    let scalars = DelinearizeScalars::new(t.clone());
     (t, scalars, n)
 }
 
@@ -206,6 +208,39 @@ pub(crate) fn vrf_transcript<S: Suite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     vrf_transcript_from_iter(scheme, ios.as_ref().iter().copied(), ad)
+}
+
+/// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF transcript.
+///
+/// Used by IETF and Thin VRF where the public key DLEQ relation is folded
+/// into the delinearized I/O pairs.
+fn chain_ios<'a, S: Suite>(
+    public: AffinePoint<S>,
+    ios: &'a [VrfIo<S>],
+) -> impl ExactSizeIterator<Item = VrfIo<S>> + Clone + 'a {
+    let schnorr = core::iter::once(VrfIo {
+        input: Input(S::generator()),
+        output: Output(public),
+    });
+    ExactChain::new(schnorr, ios.iter().copied())
+}
+
+pub(crate) fn vrf_transcript_with_schnorr<S: Suite>(
+    scheme: DomSep,
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    vrf_transcript_from_iter(scheme, chain_ios(public, ios.as_ref()), ad)
+}
+
+pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
+    scheme: DomSep,
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    vrf_transcript_scalars_from_iter(scheme, chain_ios(public, ios.as_ref()), ad)
 }
 
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
@@ -278,34 +313,45 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -
     nonce_scalar::<S>(&mut t)
 }
 
-/// Stateful stream of 128-bit delinearization scalars backed by a transcript's
-/// squeeze stream. Created by [`delinearize_scalars`].
+/// Stateful stream of delinearization scalars backed by a transcript's
+/// squeeze stream.
+///
+/// The first scalar is always `1` (z_0 = 1); subsequent scalars are
+/// 128-bit values squeezed from the transcript.
 pub(crate) struct DelinearizeScalars<S: Suite> {
     transcript: S::Transcript,
+    first: bool,
 }
 
 impl<S: Suite> DelinearizeScalars<S> {
-    /// Draw the next 128-bit scalar.
-    pub fn next(&mut self) -> ScalarField<S> {
-        challenge_scalar::<S>(&mut self.transcript)
+    /// Create a [`DelinearizeScalars`] stream from a transcript that has already
+    /// absorbed the I/O pairs. Adds domain separation and starts the squeeze.
+    ///
+    /// The caller must have absorbed the I/O pairs into `transcript` before
+    /// calling this function (e.g. via [`absorb_ios`]).
+    pub fn new(mut transcript: S::Transcript) -> DelinearizeScalars<S> {
+        transcript.absorb_raw(&[DomSep::Delinearize as u8]);
+        DelinearizeScalars {
+            transcript,
+            first: true,
+        }
     }
 
-    /// Collect `n` scalars into a `Vec`.
+    /// Draw the next delinearization scalar.
+    pub fn next(&mut self) -> ScalarField<S> {
+        use ark_ff::One;
+        if self.first {
+            self.first = false;
+            ScalarField::<S>::one()
+        } else {
+            challenge_scalar::<S>(&mut self.transcript)
+        }
+    }
+
+    /// Draw `n` delinearization scalars.
     pub fn take(&mut self, n: usize) -> Vec<ScalarField<S>> {
         (0..n).map(|_| self.next()).collect()
     }
-}
-
-/// Create a [`DelinearizeScalars`] stream from a transcript that has already
-/// absorbed the I/O pairs. Adds domain separation and starts the squeeze.
-///
-/// The caller must have absorbed the I/O pairs into `transcript` before
-/// calling this function (e.g. via [`absorb_ios`]).
-pub(crate) fn delinearize_scalars<S: Suite>(
-    mut transcript: S::Transcript,
-) -> DelinearizeScalars<S> {
-    transcript.absorb_raw(&[DomSep::Delinearize as u8]);
-    DelinearizeScalars { transcript }
 }
 
 /// Absorb I/O pairs into a transcript.
@@ -325,7 +371,7 @@ fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item 
 /// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
 /// Caller must ensure `iter.len() >= 2` and that `scalars` yields at least
-/// that many values.
+/// `n` values.
 fn merge_ios<S: Suite>(
     iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
     mut scalars: DelinearizeScalars<S>,
@@ -343,12 +389,12 @@ fn merge_ios<S: Suite>(
             (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
         })
     } else {
-        let scalars = scalars.take(n);
+        let zs = scalars.take(n);
         let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
-        let input = Group::<S>::msm_unchecked(&inputs, &scalars);
-        let output = Group::<S>::msm_unchecked(&outputs, &scalars);
+        let input = Group::<S>::msm_unchecked(&inputs, &zs);
+        let output = Group::<S>::msm_unchecked(&outputs, &zs);
         (input, output)
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);

@@ -61,42 +61,22 @@ pub struct Proof<S: ThinVrfSuite> {
     pub s: ScalarField<S>,
 }
 
-fn chain_ios<'a, S: ThinVrfSuite>(
-    public: AffinePoint<S>,
-    ios: &'a [VrfIo<S>],
-) -> impl ExactSizeIterator<Item = VrfIo<S>> + Clone + 'a {
-    let schnorr = core::iter::once(VrfIo {
-        input: Input(S::generator()),
-        output: Output(public),
-    });
-    utils::common::ExactChain::new(schnorr, ios.iter().copied())
-}
-
-/// Build a Thin-VRF transcript from public key, VRF I/O pairs, and additional data.
-///
-/// Absorbs the raw I/O pairs (Schnorr pair + VRF pairs) into the transcript,
-/// delinearizes them into a single merged pair via [`merge_ios`], then absorbs
-/// additional data. Returns the transcript and the merged `VrfIo`.
 #[inline(always)]
 fn vrf_transcript<S: ThinVrfSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
+    utils::vrf_transcript_with_schnorr(DomSep::ThinVrf, public, ios, ad)
 }
 
-/// Build a Thin-VRF transcript returning raw delinearization scalars.
-///
-/// Used by batch verification, which needs the individual points and z scalars
-/// to build an expanded MSM without computing the merged pair.
 #[inline(always)]
 fn vrf_transcript_scalars<S: ThinVrfSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    utils::vrf_transcript_scalars_from_iter(DomSep::ThinVrf, chain_ios(public, ios.as_ref()), ad)
+    utils::vrf_transcript_scalars_with_schnorr(DomSep::ThinVrf, public, ios, ad)
 }
 
 /// Trait for types that can generate Thin VRF proofs.
@@ -276,7 +256,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 
         // Deterministic random scalars derived from all (c, s) pairs.
         let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(b"thin-batch");
+        t.absorb_raw(&[DomSep::ThinBatch as u8]);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);

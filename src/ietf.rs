@@ -36,6 +36,15 @@ pub trait IetfSuite: Suite {}
 
 impl<T> IetfSuite for T where T: Suite {}
 
+#[inline(always)]
+fn vrf_transcript<S: IetfSuite>(
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, VrfIo<S>) {
+    utils::vrf_transcript_with_schnorr(DomSep::IetfVrf, public, ios, ad)
+}
+
 /// IETF VRF proof.
 ///
 /// Schnorr-based proof of correctness for a VRF evaluation:
@@ -154,16 +163,16 @@ impl<S: IetfSuite> Prover<S> for Secret<S> {
     /// different outputs are ever provided for the same `(secret, input, ad)` tuple
     /// — which would otherwise enable secret key recovery.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (t, io) = utils::vrf_transcript(DomSep::IetfVrf, ios, ad);
+        let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         let k = S::nonce(&self.scalar, Some(t.clone()));
 
-        let k_b = smul!(S::generator(), k);
-        let k_h = smul!(io.input.0, k);
-        let norms = CurveGroup::normalize_batch(&[k_b, k_h]);
-        let (k_b, k_h) = (norms[0], norms[1]);
+        let u = smul!(S::generator(), k);
+        let v = smul!(io.input.0, k);
+        let norms = CurveGroup::normalize_batch(&[u, v]);
+        let (u, v) = (norms[0], norms[1]);
 
-        let c = S::challenge(&[&self.public.0, &k_b, &k_h], Some(t));
+        let c = S::challenge(&[&u, &v], Some(t));
         let s = k + c * self.scalar;
         Proof { c, s }
     }
@@ -186,7 +195,7 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let (t, io) = utils::vrf_transcript(DomSep::IetfVrf, ios, ad);
+        let (t, io) = vrf_transcript::<S>(self.0, ios, ad);
 
         let Proof { c, s } = proof;
 
@@ -196,7 +205,7 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
         let norms = CurveGroup::normalize_batch(&[u, v]);
         let (u, v) = (norms[0], norms[1]);
 
-        let c_exp = S::challenge(&[&self.0, &u, &v], Some(t));
+        let c_exp = S::challenge(&[&u, &v], Some(t));
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
