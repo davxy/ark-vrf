@@ -26,12 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Security**: Bind additional data (`ad`) to nonce derivation. Previously, nonces
-  depended only on the secret key and input point, allowing secret key recovery from
-  two proofs over the same input with different additional data. Affects all schemes.
-- **Security**: Pedersen VRF nonce derivation now cross-binds the blinding factor
-  into the `k` nonce and the secret key into the `kb` nonce, preventing recovery
-  of either scalar when the other varies across proofs.
 - Challenge serialization now validates that the value fits in `CHALLENGE_LEN`,
   rejecting proofs with oversized challenge values.
 
@@ -44,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`utils::common::CHALLENGE_LEN`) fixed at 16 bytes (128-bit security).
 - Challenge and blinding factor decoding now use suite codec (`scalar_decode`)
   instead of `from_be_bytes_mod_order`, so endianness follows the suite configuration.
+
+## [0.2.2] - 2026-03-17
+
+### Changed
+
+- Nonce derivation now binds additional data (`ad`), preventing secret key
+  recovery from two proofs over the same input with different `ad`. In the
+  IETF scheme `ad` is included directly; in the Pedersen scheme the two secrets
+  are cross-bound: `k` nonce includes `blinding || ad`, `kb` nonce includes
+  `secret || ad`.
 
 ## [0.2.1] - 2026-02-19
 
