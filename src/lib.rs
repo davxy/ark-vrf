@@ -165,19 +165,23 @@ pub trait Suite: Copy {
         Self::Affine::generator()
     }
 
-    /// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
+    /// Generate a nonce scalar from the secret key and transcript state.
     ///
     /// The transcript typically carries shared state from `vrf_transcript`,
     /// binding the nonce to the I/O pairs and additional data.
+    ///
+    /// Defaults to [`utils::nonce`] (deterministic, inspired by RFC-8032 section 5.1.6).
     #[inline(always)]
     fn nonce(sk: &ScalarField<Self>, transcript: Option<Self::Transcript>) -> ScalarField<Self> {
         utils::nonce::<Self>(sk, transcript)
     }
 
-    /// Challenge generation inspired by RFC-9381 section 5.4.3.
+    /// Derive a challenge scalar from curve points and transcript state.
     ///
     /// Absorbs curve points into the transcript and squeezes a scalar.
     /// The transcript typically carries shared state from `vrf_transcript`.
+    ///
+    /// Defaults to [`utils::challenge`] (inspired by RFC-9381 section 5.4.3).
     #[inline(always)]
     fn challenge(
         pts: &[&AffinePoint<Self>],
@@ -478,7 +482,7 @@ mod tests {
     use crate::ietf::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {
@@ -496,6 +500,7 @@ mod tests {
     fn prove_uniqueness_vulnerability() {
         use ark_ff::BigInteger;
         use ark_std::{One, Zero};
+        use utils::common::{DomSep, ExactChain};
 
         type S = TestSuite;
         type Sc = ScalarField<S>;
@@ -529,8 +534,13 @@ mod tests {
             input,
             output: malicious_output,
         };
-        use utils::common::DomSep;
-        let (t, _) = utils::vrf_transcript(DomSep::IetfVrf, malicious_io, ad);
+        let schnorr = core::iter::once(VrfIo {
+            input: Input(S::generator()),
+            output: Output(public.0),
+        });
+        let mal_ios = [malicious_io];
+        let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
+        let (t, _) = utils::vrf_transcript_from_iter(DomSep::IetfVrf, chain, ad);
 
         let mut ctr = 0u64;
         let (proof, _) = loop {
@@ -541,7 +551,7 @@ mod tests {
             let k_b = (S::generator() * k).into_affine();
             let k_h = (input.0 * k).into_affine();
 
-            let c = S::challenge(&[&public.0, &k_b, &k_h], Some(t.clone()));
+            let c = S::challenge(&[&k_b, &k_h], Some(t.clone()));
 
             // We need -c (i.e. q-c in the scalar field) to be even so that
             // (-c) * L = identity (since L has order 2). Because q is odd,
