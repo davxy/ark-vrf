@@ -12,8 +12,8 @@
 //! [Algorithm 9.23](https://hyperelliptic.org/HEHCC/chapters/chap09.pdf).
 
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{AdditiveGroup, BigInteger, BitIteratorBE, PrimeField, Zero};
-use ark_std::{iter, vec, vec::Vec};
+use ark_ff::{AdditiveGroup, BigInteger, PrimeField, Zero};
+use ark_std::{iter, vec::Vec};
 
 /// Builds the precomputation table for `n` points with window size `w`.
 ///
@@ -21,82 +21,62 @@ use ark_std::{iter, vec, vec::Vec};
 /// then forms all cross-products with the previously accumulated rows.
 /// The resulting table has `(2^w)^n` entries (including the identity at index 0),
 /// stored in affine coordinates for cheaper mixed additions in the main loop.
-fn table<C: AffineRepr>(points: &[C], w: u32) -> Vec<C> {
-    let c = 2usize.pow(w);
-    let mut table = vec![C::Group::zero()];
+fn table<C: AffineRepr>(points: &[C], w: usize) -> Vec<C> {
+    let c = 2usize.pow(w as u32);
+    let total = c.pow(points.len() as u32);
+    let mut table = Vec::with_capacity(total);
+    table.push(C::Group::zero());
     for p in points {
-        // P, 2P, ..., (c-1)P, where c = 2^w
-        let multiples_of_p: Vec<C::Group> =
-            iter::successors(Some(p.into_group()), move |prev| Some(*p + *prev))
-                .take(c - 1)
-                .collect();
-        let new_rows: Vec<C::Group> = multiples_of_p
-            .iter()
-            .flat_map(|&kp| table.iter().map(move |&prev_row| prev_row + kp))
-            .collect();
-        table.extend(new_rows)
+        let prev_len = table.len();
+        // k=1: P_i + table[j] for j in 0..prev_len
+        for j in 0..prev_len {
+            table.push(table[j] + p);
+        }
+        // k=2..c-1: reuse previous row, since k*P_i + table[j] = P_i + (k-1)*P_i + table[j]
+        for k in 2..c {
+            for j in 0..prev_len {
+                table.push(table[(k - 1) * prev_len + j] + p);
+            }
+        }
     }
     C::Group::normalize_batch(&table)
 }
 
-/// Converts a window of `w` bits (LSB-first) into an unsigned digit in `0..2^w`.
-fn bits_to_digit<I: Iterator<Item = bool>>(bits: I, powers_of_2: &[u32]) -> u32 {
-    bits.zip(powers_of_2.iter())
-        .filter_map(|(bit, power)| bit.then_some(power))
-        .sum::<u32>()
-}
-
-/// Combines per-scalar digits into a single table index using mixed-radix encoding.
-///
-/// Each scalar contributes a digit in `0..2^w`; the combined index is
-/// `d_0 + d_1*(2^w) + d_2*(2^w)^2 + ...`, matching the table layout.
-fn digits_to_index<I: Iterator<Item = u32>>(digits: I, powers_of_c: &[u32]) -> usize {
-    digits
-        .zip(powers_of_c.iter())
-        .map(|(digit, power)| digit * power)
-        .sum::<u32>() as usize
-}
-
-/// Pads the big-endian bit decomposition of `scalar` with leading zeros
-/// so that the total length is a multiple of the window size `w`.
-fn to_msbf_bits_padded<F: PrimeField>(scalar: F, w: usize) -> Vec<bool> {
-    let repr_bit_len = F::BigInt::NUM_LIMBS * 64;
-    let extra_bits = repr_bit_len % w;
-    let padding_len = if extra_bits == 0 { 0 } else { w - extra_bits };
-    iter::repeat_n(false, padding_len)
-        .chain(BitIteratorBE::new(scalar.into_bigint()))
-        .collect()
-}
-
-/// Decomposes each scalar into a sequence of base-`2^w` digits (MSB-first).
-fn to_base_c_digits<F: PrimeField>(scalars: &[F], w: usize) -> Vec<Vec<u32>> {
-    let powers_of_2 = iter::successors(Some(1u32), move |prev| Some(prev << 1))
-        .take(w)
-        .collect::<Vec<_>>();
-
-    scalars
-        .iter()
-        .map(|&s| {
-            to_msbf_bits_padded(s, w)
-                .chunks(w)
-                .map(|w_bit_chunk| bits_to_digit(w_bit_chunk.iter().rev().cloned(), &powers_of_2))
-                .collect()
-        })
-        .collect()
+/// Extracts a `w`-bit digit from position `bit_pos` (LSB-indexed) of the BigInt.
+fn extract_digit<B: BigInteger>(repr: &B, bit_pos: usize, w: usize, mask: u32) -> u32 {
+    let limbs = repr.as_ref();
+    let limb_idx = bit_pos / 64;
+    let bit_idx = bit_pos % 64;
+    let mut digit = (limbs[limb_idx] >> bit_idx) as u32;
+    if bit_idx + w > 64 && limb_idx + 1 < limbs.len() {
+        digit |= (limbs[limb_idx + 1] << (64 - bit_idx)) as u32;
+    }
+    digit & mask
 }
 
 /// Converts per-window scalar digits into table lookup indices.
 ///
-/// Returns one index per window position, scanning from MSB to LSB.
+/// For each window position (MSB to LSB), combines per-scalar digits into a
+/// single table index using mixed-radix encoding: `d_0 + d_1*(2^w) + d_2*(2^w)^2 + ...`.
 fn indices<F: PrimeField>(scalars: &[F], w: usize) -> Vec<usize> {
-    let scalars_base_c = to_base_c_digits(scalars, w);
-    let powers_of_c = iter::successors(Some(1u32), move |prev| Some(prev << w))
+    let repr_bit_len = F::BigInt::NUM_LIMBS * 64;
+    let num_digits = (repr_bit_len + w - 1) / w;
+    let mask = (1u32 << w) - 1;
+
+    let reprs: Vec<_> = scalars.iter().map(|s| s.into_bigint()).collect();
+
+    let powers_of_c: Vec<u32> = iter::successors(Some(1u32), |prev| Some(prev << w))
         .take(scalars.len())
-        .collect::<Vec<_>>();
-    (0..scalars_base_c[0].len())
+        .collect();
+
+    (0..num_digits)
         .map(|i| {
-            let slice = scalars_base_c.iter().map(|s| s[i]);
-            digits_to_index(slice, &powers_of_c)
+            let bit_pos = (num_digits - 1 - i) * w;
+            reprs
+                .iter()
+                .zip(powers_of_c.iter())
+                .map(|(r, &pc)| extract_digit(r, bit_pos, w, mask) * pc)
+                .sum::<u32>() as usize
         })
         .collect()
 }
@@ -107,7 +87,7 @@ fn indices<F: PrimeField>(scalars: &[F], w: usize) -> Vec<usize> {
 /// `b`-bit scalars) at the cost of an exponentially larger table: `(2^w)^n`
 /// entries. In practice, `w=2` is optimal for n <= 3 and `w=1` for n >= 4.
 pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField], w: usize) -> C::Group {
-    let table = table(points, w as u32);
+    let table = table(points, w);
     let indices = indices(scalars, w);
     let mut acc = C::Group::zero();
     for idx in indices.into_iter().skip_while(|&idx| idx == 0) {
@@ -122,7 +102,7 @@ pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField], w: usi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_std::{UniformRand, test_rng};
+    use ark_std::{test_rng, UniformRand};
 
     type TestAffine = crate::AffinePoint<crate::suites::testing::TestSuite>;
     type TestScalar = crate::ScalarField<crate::suites::testing::TestSuite>;

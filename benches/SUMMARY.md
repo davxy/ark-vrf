@@ -91,12 +91,12 @@ The table shows times for the bandersnatch suite.
 
 | n\w | w=1       | w=2       | w=3       | w=4       |
 |----:|----------:|----------:|----------:|----------:|
-|   2 | 123.1 us  | 97.7 us   | 107.0 us  | 179.3 us  |
-|   3 | 128.3 us  | 117.4 us  | 286.1 us  | 1.70 ms   |
-|   4 | 132.3 us  | 196.5 us  | 1.72 ms   | 33.5 ms   |
-|   5 | 142.3 us  | 507.8 us  | 13.3 ms   | 579.1 ms  |
+|   2 | 114.8 us  | 87.1 us   | 101.0 us  | 158.1 us  |
+|   3 | 117.0 us  | 105.7 us  | 268.0 us  | 1.61 ms   |
+|   4 | 119.6 us  | 163.6 us  | 1.50 ms   | 23.0 ms   |
+|   5 | 122.9 us  | 437.5 us  | 12.6 ms   | 488.9 ms  |
 
-Table size is (2^w - 1)^n, so the cost grows combinatorially in w for a given n.
+Table size is (2^w)^n, so the cost grows combinatorially in w for a given n.
 Optimal window size is w=2 for n=2 and w=1 for n>=3.
 
 ## Notes
