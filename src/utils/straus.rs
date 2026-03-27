@@ -60,7 +60,7 @@ fn extract_digit<B: BigInteger>(repr: &B, bit_pos: usize, w: usize, mask: u32) -
 /// single table index using mixed-radix encoding: `d_0 + d_1*(2^w) + d_2*(2^w)^2 + ...`.
 fn indices<F: PrimeField>(scalars: &[F], w: usize) -> Vec<usize> {
     let repr_bit_len = F::BigInt::NUM_LIMBS * 64;
-    let num_digits = (repr_bit_len + w - 1) / w;
+    let num_digits = repr_bit_len.div_ceil(w);
     let mask = (1u32 << w) - 1;
 
     let reprs: Vec<_> = scalars.iter().map(|s| s.into_bigint()).collect();
@@ -102,7 +102,7 @@ pub fn short_msm<C: AffineRepr>(points: &[C], scalars: &[C::ScalarField], w: usi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_std::{test_rng, UniformRand};
+    use ark_std::{UniformRand, test_rng};
 
     type TestAffine = crate::AffinePoint<crate::suites::testing::TestSuite>;
     type TestScalar = crate::ScalarField<crate::suites::testing::TestSuite>;
