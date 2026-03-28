@@ -30,8 +30,8 @@
 //!
 //! The library conditionally includes the following pre-configured suites (see features section):
 //!
-//! - **Ed25519-SHA-512-TAI**: Supports IETF, Thin, and Pedersen VRF.
-//! - **Secp256r1-SHA-256-TAI**: Supports IETF, Thin, and Pedersen VRF.
+//! - **Ed25519**: Supports IETF, Thin, and Pedersen VRF.
+//! - **Secp256r1**: Supports IETF, Thin, and Pedersen VRF.
 //! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
 //! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
 //! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.

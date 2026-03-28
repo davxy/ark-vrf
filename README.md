@@ -8,15 +8,7 @@ into its signature.
 It leverages the [Arkworks](https://github.com/arkworks-rs) framework and
 supports customization of scheme parameters.
 
-## What is a VRF?
-
- A Verifiable Random Function (VRF) is a cryptographic primitive that maps inputs
- to verifiable pseudorandom outputs. Key properties include:
-
- - **Uniqueness**: For a given input and private key, there is exactly one valid output
- - **Verifiability**: Anyone with the public key can verify that an output is correct
- - **Pseudorandomness**: Without the private key, outputs appear random and unpredictable
- - **Collision resistance**: Finding inputs that map to the same output is computationally infeasible
+The library is `no_std` compatible.
 
 ## Supported Schemes
 
@@ -43,8 +35,8 @@ supports customization of scheme parameters.
 
 The library conditionally includes the following pre-configured suites (see features section):
 
-- **Ed25519-SHA-512-TAI**: Supports IETF, Thin, and Pedersen VRF.
-- **Secp256r1-SHA-256-TAI**: Supports IETF, Thin, and Pedersen VRF.
+- **Ed25519**: Supports IETF, Thin, and Pedersen VRF.
+- **Secp256r1**: Supports IETF, Thin, and Pedersen VRF.
 - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
 - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
 - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.
