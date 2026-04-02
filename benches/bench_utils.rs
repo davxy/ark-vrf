@@ -58,7 +58,6 @@ impl BenchInfo for ark_vrf::suites::ed25519::Ed25519Sha512Tai {
     const NONCE_TAG: &'static str = "rfc_8032";
 }
 
-
 #[cfg(all(feature = "bandersnatch", feature = "shake128"))]
 impl BenchInfo for ark_vrf::suites::bandersnatch_shake128::BandersnatchShake128Ell2 {
     const SUITE_NAME: &'static str = "bandersnatch-shake128";
