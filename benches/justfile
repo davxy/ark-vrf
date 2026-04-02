@@ -21,10 +21,12 @@ _bench name:
 
 common: (_bench "common")
 
-ietf: (_bench "ietf")
+tiny: (_bench "tiny")
+
+thin: (_bench "thin")
 
 pedersen: (_bench "pedersen")
 
 ring: (_bench "ring")
 
-all: common ietf pedersen ring
+all: common tiny thin pedersen ring
