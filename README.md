@@ -1,30 +1,29 @@
 # Elliptic Curve VRF
 
-This library provides flexible and efficient implementations of Verifiable
-Random Functions with Additional Data (VRF-AD), a cryptographic construct
-that augments a standard VRF scheme by incorporating auxiliary information
-into its signature.
+Implementations of Verifiable Random Function with Additional Data (VRF-AD)
+schemes built on a transcript-based Fiat-Shamir transform with support for
+multiple input/output pairs via delinearization.
 
-It leverages the [Arkworks](https://github.com/arkworks-rs) framework and
-supports customization of scheme parameters.
-
-The library is `no_std` compatible.
+Built on the [Arkworks](https://github.com/arkworks-rs) framework with
+configurable cryptographic parameters and `no_std` support.
 
 ## Supported Schemes
 
-- **IETF VRF**: Based on ECVRF described in [RFC9381](https://datatracker.ietf.org/doc/rfc9381),
-  adapted to use a pluggable transcript-based Fiat-Shamir transform and support for
-  binding additional data to the proof.
+- **Tiny VRF**: Compact proof. Loosely inspired by [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
+  adapted with a transcript-based Fiat-Shamir transform, support for additional
+  data, and multiple I/O pairs via delinearization.
 
-- **Thin VRF**: Merges the Schnorr public-key and VRF I/O DLEQ relations into a single
-  delinearized proof. Produces compact proofs (R, s) that support batch verification.
+- **Thin VRF**: Same structure as Tiny VRF but stores the nonce commitment instead
+  of the challenge, enabling batch verification at the cost of a slightly larger proof.
 
-- **Pedersen VRF**: Described in [BCHSV23](https://eprint.iacr.org/2023/002).
-  Extends the basic VRF with key-hiding properties using Pedersen commitments.
+- **Pedersen VRF**: Key-hiding VRF based on the construction introduced by
+  [BCHSV23](https://eprint.iacr.org/2023/002). Replaces the public key with a
+  Pedersen commitment to the secret key, serving as a building block for anonymized
+  ring signatures.
 
-- **Ring VRF**: A zero-knowledge-based scheme inspired by [BCHSV23](https://eprint.iacr.org/2023/002).
-  Provides signer anonymity within a set of public keys (a "ring"), allowing
-  verification that a ring member created the proof without revealing which specific member.
+- **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof scheme
+  derived from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that a single
+  blinded key is a member of a committed ring without revealing which one.
 
 ### Specifications
 
@@ -35,11 +34,11 @@ The library is `no_std` compatible.
 
 The library conditionally includes the following pre-configured suites (see features section):
 
-- **Ed25519**: Supports IETF, Thin, and Pedersen VRF.
-- **Secp256r1**: Supports IETF, Thin, and Pedersen VRF.
-- **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
-- **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
-- **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.
+- **Ed25519**: Supports Tiny, Thin, and Pedersen VRF.
+- **Secp256r1**: Supports Tiny, Thin, and Pedersen VRF.
+- **Bandersnatch** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
+- **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
+- **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 
 ## Basic Usage
 
@@ -62,14 +61,13 @@ let output = secret.output(input);
 let hash_bytes = output.hash();
 ```
 
-### IETF-VRF
+### Tiny VRF
 
-The IETF VRF scheme is based on [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-adapted to use a pluggable transcript-based Fiat-Shamir transform.
+Compact VRF-AD producing a short `(c, s)` proof.
 
 _Prove_
 ```rust,ignore
-use ark_vrf::ietf::Prover;
+use ark_vrf::tiny::Prover;
 
 let io = secret.vrf_io(input);
 
@@ -79,7 +77,7 @@ let proof = secret.prove(io, b"aux data");
 
 _Verify_
 ```rust,ignore
-use ark_vrf::ietf::Verifier;
+use ark_vrf::tiny::Verifier;
 
 // Verify the proof against the public key
 let result = public.verify(io, b"aux data", &proof);
@@ -123,7 +121,7 @@ assert!(batch.verify().is_ok());
 
 ### Pedersen-VRF
 
-The Pedersen VRF extends the IETF scheme with key-hiding properties using Pedersen commitments.
+Key-hiding VRF that replaces the public key with a Pedersen commitment to the secret key.
 
 _Prove_
 ```rust,ignore

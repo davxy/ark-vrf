@@ -1,17 +1,16 @@
-//! # Pedersen-VRF
+//! # Pedersen VRF
 //!
-//! Implementation of a key-hiding VRF scheme using Pedersen commitments, based on
-//! the PedVRF construction from Section 4 of
-//! [BCHSV23](https://eprint.iacr.org/2023/002).
+//! Key-hiding VRF based on the PedVRF construction from Section 4 of
+//! [BCHSV23](https://eprint.iacr.org/2023/002). Replaces the public key with a
+//! Pedersen commitment to the secret key, allowing verification without revealing
+//! which specific public key was used. Serves as a building block for anonymized
+//! ring signatures.
 //!
-//! This scheme extends the IETF VRF by adding key privacy through blinding factors,
-//! allowing verification without revealing which specific public key was used.
-//!
-//! ## Usage Example
+//! ## Usage
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::pedersen::{Prover, Verifier, PedersenSuite};
+//! use ark_vrf::pedersen::{Prover, Verifier};
 //!
 //! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
@@ -24,13 +23,12 @@
 //! // Verification
 //! let result = Public::verify(io, b"aux data", &proof);
 //!
-//! // Verify the proof was created using a specific public key.
-//! // This requires knowledge of the blinding factor.
+//! // Unblinding: verify the proof was created using a specific public key
 //! let expected = (public.0 + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
-use crate::ietf::IetfSuite;
+use crate::Suite;
 use crate::utils;
 use crate::utils::common::DomSep;
 use crate::utils::straus::short_msm;
@@ -43,7 +41,7 @@ pub const PEDERSEN_BLINDING_BASE_SEED: &[u8] = b"pedersen-blinding";
 /// Suite extension for Pedersen VRF support.
 ///
 /// Provides the additional cryptographic parameters required by the Pedersen VRF scheme.
-pub trait PedersenSuite: IetfSuite {
+pub trait PedersenSuite: Suite {
     /// Blinding base.
     const BLINDING_BASE: AffinePoint<Self>;
 

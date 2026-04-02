@@ -1,64 +1,62 @@
-//! # IETF-VRF
+//! # Tiny VRF
 //!
-//! ECVRF implementation based on [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//! with a pluggable transcript-based Fiat-Shamir transform and support for
-//! binding additional data to the proof.
+//! Compact VRF-AD scheme producing a short `(c, s)` proof. Prepends the Schnorr
+//! pair `(G, Y)` to the I/O list and proves a single DLEQ on the delinearized
+//! merged pair. The challenge scalar `c` is stored instead of the nonce commitment,
+//! yielding a smaller proof at the cost of not supporting batch verification.
 //!
-//! The specification is available at:
-//! <https://github.com/davxy/bandersnatch-vrf-spec>
-//!
-//! ## Usage Example
+//! ## Usage
 //!
 //! ```rust,ignore
-//! // Key generation
-//! let secret = Secret::<MySuite>::from_seed([0; 32]);
+//! use ark_vrf::suites::bandersnatch::*;
+//! use ark_vrf::tiny::{Prover, Verifier};
+//!
+//! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
+//! let input = Input::new(b"example input").unwrap();
+//! let io = secret.vrf_io(input);
 //!
 //! // Proving
-//! use ark_vrf::ietf::Prover;
-//! let input = Input::from_affine_unchecked(my_data);
-//! let io = secret.vrf_io(input);
-//! let proof = secret.prove(io, aux_data);
+//! let proof = secret.prove(io, b"aux data");
 //!
 //! // Verification
-//! use ark_vrf::ietf::Verifier;
-//! let result = public.verify(io, aux_data, &proof);
+//! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
 use super::*;
 use utils::common::DomSep;
 use utils::straus::short_msm;
 
-/// Marker trait for suites that support the IETF VRF scheme.
+/// Marker trait for suites that support the Tiny VRF scheme.
 ///
 /// Blanket-implemented for all types implementing [`Suite`].
-pub trait IetfSuite: Suite {}
+pub trait TinySuite: Suite {}
 
-impl<T> IetfSuite for T where T: Suite {}
+impl<T> TinySuite for T where T: Suite {}
 
 #[inline(always)]
-fn vrf_transcript<S: IetfSuite>(
+fn vrf_transcript<S: TinySuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_with_schnorr(DomSep::IetfVrf, public, ios, ad)
+    utils::vrf_transcript_with_schnorr(DomSep::TinyVrf, public, ios, ad)
 }
 
-/// IETF VRF proof.
+/// Tiny VRF proof.
 ///
 /// Schnorr-based proof of correctness for a VRF evaluation:
 /// - `c`: Challenge scalar derived from public parameters
 /// - `s`: Response scalar satisfying the verification equation
 #[derive(Debug, Clone)]
-pub struct Proof<S: IetfSuite> {
+pub struct Proof<S: TinySuite> {
     /// Challenge scalar derived from public parameters.
     pub c: ScalarField<S>,
     /// Response scalar satisfying the verification equation.
     pub s: ScalarField<S>,
 }
 
-impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
+impl<S: TinySuite> CanonicalSerialize for Proof<S> {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         mut writer: W,
@@ -84,7 +82,7 @@ impl<S: IetfSuite> CanonicalSerialize for Proof<S> {
     }
 }
 
-impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
+impl<S: TinySuite> CanonicalDeserialize for Proof<S> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
         compress: ark_serialize::Compress,
@@ -104,7 +102,7 @@ impl<S: IetfSuite> CanonicalDeserialize for Proof<S> {
     }
 }
 
-impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
+impl<S: TinySuite> ark_serialize::Valid for Proof<S> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
         self.c.check()?;
         self.s.check()?;
@@ -112,15 +110,15 @@ impl<S: IetfSuite> ark_serialize::Valid for Proof<S> {
     }
 }
 
-/// Trait for types that can generate IETF VRF proofs.
-pub trait Prover<S: IetfSuite> {
+/// Trait for types that can generate Tiny VRF proofs.
+pub trait Prover<S: TinySuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify IETF VRF proofs.
+/// Trait for entities that can verify Tiny VRF proofs.
 ///
 /// All curve points involved in verification (public key and I/O pairs)
 /// are assumed to be in the prime-order subgroup. This is guaranteed
@@ -131,7 +129,7 @@ pub trait Prover<S: IetfSuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
-pub trait Verifier<S: IetfSuite> {
+pub trait Verifier<S: TinySuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
@@ -145,50 +143,36 @@ pub trait Verifier<S: IetfSuite> {
     ) -> Result<(), Error>;
 }
 
-impl<S: IetfSuite> Prover<S> for Secret<S> {
-    /// Implements the IETF VRF proving algorithm.
+impl<S: TinySuite> Prover<S> for Secret<S> {
+    /// Tiny VRF proving algorithm.
     ///
-    /// Based on the procedure in RFC-9381 section 5.1, adapted to use a
-    /// transcript-based Fiat-Shamir transform and support for additional data:
+    /// Prepends the Schnorr pair (G, Y) to the I/O list and proves a single
+    /// DLEQ on the delinearized merged pair:
     ///
-    /// 1. Generate a deterministic nonce `k` based on the secret key and input
-    /// 2. Compute nonce commitments `k_b` and `k_h`
-    /// 3. Compute the challenge `c` using all public values, nonce commitments and the
-    ///    additional data
-    /// 4. Compute the response `s = k + c * secret`
-    ///
-    /// The nonce derivation includes the output point alongside the input. Since
-    /// `prove` receives pre-computed outputs rather than recomputing them internally,
-    /// this binds the nonce to the specific output, preventing nonce reuse if
-    /// different outputs are ever provided for the same `(secret, input, ad)` tuple
-    /// — which would otherwise enable secret key recovery.
+    /// 1. Generate a deterministic nonce `k`
+    /// 2. Compute nonce commitment `R = k * I_m`
+    /// 3. Compute the challenge `c`
+    /// 4. Compute the response `s = k + c * x`
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         let k = S::nonce(&self.scalar, Some(t.clone()));
 
-        let u = smul!(S::generator(), k);
-        let v = smul!(io.input.0, k);
-        let norms = CurveGroup::normalize_batch(&[u, v]);
-        let (u, v) = (norms[0], norms[1]);
+        // R = k * I_m
+        let r = smul!(io.input.0, k).into_affine();
 
-        let c = S::challenge(&[&u, &v], Some(t));
+        let c = S::challenge(&[&r], Some(t));
         let s = k + c * self.scalar;
         Proof { c, s }
     }
 }
 
-impl<S: IetfSuite> Verifier<S> for Public<S> {
-    /// Implements the IETF VRF verification algorithm.
+impl<S: TinySuite> Verifier<S> for Public<S> {
+    /// Tiny VRF verification algorithm.
     ///
-    /// Based on the procedure in RFC-9381 section 5.3, adapted to use a
-    /// transcript-based Fiat-Shamir transform and support for additional data:
-    ///
-    /// 1. Compute `u = s*G - c*Y` where G is the generator and Y is the public key
-    /// 2. Compute `v = s*H - c*O` where H is the input point and O is the output point
-    /// 3. Recompute the expected challenge `c_exp` using all public values, `u`, `v` and
-    ///    the additional data
-    /// 4. Verify that `c_exp == c` from the proof
+    /// 1. Compute `R = s * I_m - c * O_m`
+    /// 2. Recompute the expected challenge `c_exp`
+    /// 3. Verify that `c_exp == c`
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -199,13 +183,10 @@ impl<S: IetfSuite> Verifier<S> for Public<S> {
 
         let Proof { c, s } = proof;
 
-        let neg_c = -*c;
-        let u = short_msm(&[S::generator(), self.0], &[*s, neg_c], 2);
-        let v = short_msm(&[io.input.0, io.output.0], &[*s, neg_c], 2);
-        let norms = CurveGroup::normalize_batch(&[u, v]);
-        let (u, v) = (norms[0], norms[1]);
+        // R = s * I_m - c * O_m
+        let r = short_msm(&[io.input.0, io.output.0], &[*s, -*c], 2).into_affine();
 
-        let c_exp = S::challenge(&[&u, &v], Some(t));
+        let c_exp = S::challenge(&[&r], Some(t));
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
@@ -217,7 +198,7 @@ pub mod testing {
     use super::*;
     use crate::testing::{self as common, SuiteExt};
 
-    pub fn prove_verify<S: IetfSuite>() {
+    pub fn prove_verify<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(common::random_val(None));
@@ -228,7 +209,7 @@ pub mod testing {
         assert!(result.is_ok());
     }
 
-    pub fn prove_verify_multi_empty<S: IetfSuite>() {
+    pub fn prove_verify_multi_empty<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
 
@@ -242,7 +223,7 @@ pub mod testing {
     }
 
     /// N=1 slice produces same proof as passing a single `VrfIo`.
-    pub fn prove_verify_multi_single<S: IetfSuite>() {
+    pub fn prove_verify_multi_single<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(common::random_val(None));
@@ -252,7 +233,7 @@ pub mod testing {
         let proof_slice = secret.prove([io], b"foo");
 
         // Byte-identical proofs
-        let encode = |p: &ietf::Proof<S>| {
+        let encode = |p: &tiny::Proof<S>| {
             let mut buf = Vec::new();
             p.serialize_compressed(&mut buf).unwrap();
             buf
@@ -265,7 +246,7 @@ pub mod testing {
     }
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
-    pub fn prove_verify_multi<S: IetfSuite>() {
+    pub fn prove_verify_multi<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
 
@@ -298,43 +279,43 @@ pub mod testing {
     }
 
     #[macro_export]
-    macro_rules! ietf_suite_tests {
+    macro_rules! tiny_suite_tests {
         ($suite:ty) => {
-            mod ietf {
+            mod tiny {
                 use super::*;
 
                 #[test]
                 fn prove_verify() {
-                    $crate::ietf::testing::prove_verify::<$suite>();
+                    $crate::tiny::testing::prove_verify::<$suite>();
                 }
 
                 #[test]
                 fn prove_verify_multi_single() {
-                    $crate::ietf::testing::prove_verify_multi_single::<$suite>();
+                    $crate::tiny::testing::prove_verify_multi_single::<$suite>();
                 }
 
                 #[test]
                 fn prove_verify_multi() {
-                    $crate::ietf::testing::prove_verify_multi::<$suite>();
+                    $crate::tiny::testing::prove_verify_multi::<$suite>();
                 }
 
                 #[test]
                 fn prove_verify_multi_empty() {
-                    $crate::ietf::testing::prove_verify_multi_empty::<$suite>();
+                    $crate::tiny::testing::prove_verify_multi_empty::<$suite>();
                 }
 
-                $crate::test_vectors!($crate::ietf::testing::TestVector<$suite>);
+                $crate::test_vectors!($crate::tiny::testing::TestVector<$suite>);
             }
         };
     }
 
-    pub struct TestVector<S: IetfSuite> {
+    pub struct TestVector<S: TinySuite> {
         pub base: common::TestVector<S>,
         pub c: ScalarField<S>,
         pub s: ScalarField<S>,
     }
 
-    impl<S: IetfSuite> core::fmt::Debug for TestVector<S> {
+    impl<S: TinySuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let c = hex::encode(common::scalar_encode::<S>(&self.c));
             let s = hex::encode(common::scalar_encode::<S>(&self.s));
@@ -348,10 +329,10 @@ pub mod testing {
 
     impl<S> common::TestVectorTrait for TestVector<S>
     where
-        S: IetfSuite + SuiteExt + std::fmt::Debug,
+        S: TinySuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
-            S::SUITE_NAME.to_string() + "_ietf"
+            S::SUITE_NAME.to_string() + "_tiny"
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {

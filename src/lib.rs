@@ -1,25 +1,39 @@
-//! # Elliptic Curve VRF-AD
+//! # Elliptic Curve VRF
 //!
-//! Implementations of Verifiable Random Functions with Additional Data (VRF-AD)
-//! based on elliptic curve cryptography. Built on the [Arkworks](https://github.com/arkworks-rs)
-//! framework with configurable cryptographic parameters.
+//! Implementations of Verifiable Random Function with Additional Data (VRF-AD)
+//! schemes built on a transcript-based Fiat-Shamir transform with support for
+//! multiple input/output pairs via delinearization.
 //!
-//! VRF-AD extends standard VRF constructions by binding auxiliary data to the proof,
-//! providing stronger contextual security guarantees.
+//! Built on the [Arkworks](https://github.com/arkworks-rs) framework with
+//! configurable cryptographic parameters and `no_std` support.
+//!
+//! ## Security
+//!
+//! VRF input points **must** be constructed via hash-to-curve (e.g.
+//! [`Input::new`]) so that nobody knows their discrete-log relation to the
+//! generator `G`. If the prover knew such a relation, they could forge
+//! outputs. This is critical because the delinearization merges the Schnorr
+//! and VRF pairs into a single check.
 //!
 //! ## Schemes
 //!
-//! - **IETF VRF**: ECVRF implementation based on [RFC9381](https://datatracker.ietf.org/doc/rfc9381)
+//! - **Tiny VRF**: Compact proof. Loosely inspired by
+//!   [RFC-9381](https://datatracker.ietf.org/doc/rfc9381), adapted with a
+//!   transcript-based Fiat-Shamir transform, support for additional data, and
+//!   multiple I/O pairs via delinearization.
 //!
-//! - **Thin VRF**: Compact VRF using a delinearized DLEQ proof, derived from the PedVRF
-//!   construction in Section 4 of [BCHSV23](https://eprint.iacr.org/2023/002) with
-//!   `b = 0` and `pk = sk*G` (see page 13)
+//! - **Thin VRF**: Same structure as Tiny VRF but stores the nonce commitment
+//!   instead of the challenge, enabling batch verification at the cost of a
+//!   slightly larger proof.
 //!
-//! - **Pedersen VRF**: Key-hiding VRF using Pedersen commitments, based on the PedVRF
-//!   construction from Section 4 of [BCHSV23](https://eprint.iacr.org/2023/002)
+//! - **Pedersen VRF**: Key-hiding VRF based on the construction introduced by
+//!   [BCHSV23](https://eprint.iacr.org/2023/002). Replaces the public key with a
+//!   Pedersen commitment to the secret key, serving as a building block for
+//!   anonymized ring signatures.
 //!
-//! - **Ring VRF**: Zero-knowledge VRF with signer anonymity within a key set, based on
-//!   Sections 4 and 6 of [BCHSV23](https://eprint.iacr.org/2023/002)
+//! - **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof
+//!   scheme derived from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that
+//!   a single blinded key is a member of a committed ring without revealing which one.
 //!
 //! ### Specifications
 //!
@@ -30,11 +44,11 @@
 //!
 //! The library conditionally includes the following pre-configured suites (see features section):
 //!
-//! - **Ed25519**: Supports IETF, Thin, and Pedersen VRF.
-//! - **Secp256r1**: Supports IETF, Thin, and Pedersen VRF.
-//! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
-//! - **JubJub** (_Edwards curve on BLS12-381_): Supports IETF, Thin, Pedersen, and Ring VRF.
-//! - **Baby-JubJub** (_Edwards curve on BN254_): Supports IETF, Thin, Pedersen, and Ring VRF.
+//! - **Ed25519**: Supports Tiny, Thin, and Pedersen VRF.
+//! - **Secp256r1**: Supports Tiny, Thin, and Pedersen VRF.
+//! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
+//! - **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
+//! - **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 //!
 //! ## Usage
 //!
@@ -86,10 +100,10 @@ use ark_std::vec::Vec;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
-pub mod ietf;
 pub mod pedersen;
 pub mod suites;
 pub mod thin;
+pub mod tiny;
 pub mod utils;
 
 #[cfg(feature = "ring")]
@@ -458,7 +472,7 @@ macro_rules! suite_types {
         #[allow(dead_code)]
         pub type BaseField = $crate::BaseField<$suite>;
         #[allow(dead_code)]
-        pub type IetfProof = $crate::ietf::Proof<$suite>;
+        pub type TinyProof = $crate::tiny::Proof<$suite>;
         #[allow(dead_code)]
         pub type PedersenProof = $crate::pedersen::Proof<$suite>;
         #[allow(dead_code)]
@@ -479,7 +493,7 @@ macro_rules! suite_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ietf::{Prover, Verifier};
+    use crate::tiny::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
     use testing::{TEST_SEED, random_val};
@@ -540,7 +554,7 @@ mod tests {
 
         // Search for an ad that produces an even delinearization scalar z_1.
         let mut ad_ctr = 0u32;
-        let (ad, t) = loop {
+        let (ad, t, merged_input) = loop {
             let ad = format!("ad-{ad_ctr}");
             let schnorr = core::iter::once(VrfIo {
                 input: Input(S::generator()),
@@ -548,10 +562,12 @@ mod tests {
             });
             let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
             let (t, zs) =
-                utils::vrf_transcript_scalars_from_iter(DomSep::IetfVrf, chain, ad.as_bytes());
+                utils::vrf_transcript_scalars_from_iter(DomSep::TinyVrf, chain, ad.as_bytes());
             // z_1 is the delinearization scalar for the VRF pair
             if zs[1].into_bigint().is_even() {
-                break (ad, t);
+                // Compute merged input: I_m = z_0*G + z_1*I
+                let i_m = (S::generator() * zs[0] + input.0 * zs[1]).into_affine();
+                break (ad, t, i_m);
             }
             ad_ctr += 1;
             assert!(ad_ctr < 100, "Failed to find suitable ad");
@@ -564,14 +580,14 @@ mod tests {
             k_seed.copy_from_slice(&ctr.to_le_bytes());
             let k = Sc::from_le_bytes_mod_order(&k_seed);
 
-            let k_b = (S::generator() * k).into_affine();
-            let k_h = (input.0 * k).into_affine();
+            // R = k * I_m (merged input including Schnorr pair)
+            let r = (merged_input * k).into_affine();
 
-            let c = S::challenge(&[&k_b, &k_h], Some(t.clone()));
+            let c = S::challenge(&[&r], Some(t.clone()));
 
             if !c.into_bigint().is_even() {
                 let s = k + c * secret.scalar;
-                break crate::ietf::Proof { c, s };
+                break crate::tiny::Proof { c, s };
             }
             ctr += 1;
             assert!(ctr <= 1000, "Grinding failed");

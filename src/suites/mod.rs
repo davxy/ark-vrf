@@ -6,20 +6,20 @@
 //! ## Available Suites
 //!
 //! - **Ed25519**: Edwards curve with SHA-512 hash function and Try-And-Increment (TAI)
-//!   hash-to-curve method. Supports IETF, Thin, and Pedersen VRF schemes.
+//!   hash-to-curve method. Supports Tiny, Thin, and Pedersen VRF schemes.
 //!
 //! - **Secp256r1**: NIST P-256 curve with SHA-256 hash function and TAI hash-to-curve
-//!   method. Supports IETF, Thin, and Pedersen VRF schemes. Uses SEC1 point encoding.
+//!   method. Supports Tiny, Thin, and Pedersen VRF schemes.
 //!
 //! - **Bandersnatch**: Edwards curve defined over the BLS12-381 scalar field with
-//!   SHA-512 hash function. Supports IETF, Thin, Pedersen, and Ring VRF schemes.
+//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
 //!   Available in both Edwards and Short Weierstrass forms.
 //!
 //! - **JubJub**: Edwards curve defined over the BLS12-381 scalar field with
-//!   SHA-512 hash function. Supports IETF, Thin, Pedersen, and Ring VRF schemes.
+//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
 //!
 //! - **Baby-JubJub**: Edwards curve defined over the BN254 scalar field with
-//!   SHA-512 hash function. Supports IETF, Thin, Pedersen, and Ring VRF schemes.
+//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
 //!   Optimized for Ethereum compatibility.
 
 /// Suite identifier.
@@ -95,8 +95,6 @@ pub mod secp256r1;
 
 #[cfg(feature = "bandersnatch")]
 pub mod bandersnatch;
-#[cfg(all(feature = "bandersnatch", feature = "blake3"))]
-pub mod bandersnatch_blake3;
 #[cfg(all(feature = "bandersnatch", feature = "shake128"))]
 pub mod bandersnatch_shake128;
 #[cfg(feature = "bandersnatch")]
