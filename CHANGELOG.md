@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-02
+
+This release follows
+[draft-33](https://github.com/davxy/bandersnatch-vrf-spec) of the Bandersnatch VRF specification.
+
+### Changed
+
+- Renamed IETF VRF to **Tiny VRF**. The scheme now uses a single nonce commitment
+  `R = k * I_m` on the delinearized merged input rather than separate commitments
+  for the generator and each VRF input.
+- Thin VRF is now described as a variant of Tiny VRF that stores the nonce
+  commitment `R` instead of the challenge `c`, enabling batch verification at the
+  cost of a slightly larger proof.
+- Updated all test vectors to reflect the new Tiny VRF proof structure.
+
+### Removed
+
+- `Blake3Transcript` and the `blake3` feature/dependency.
+- `bandersnatch_blake3` suite (including its test vectors).
+
 ## [0.3.0] - 2026-03-28
 
 This release breaks compatibility with 0.2 and follows
@@ -113,7 +133,9 @@ This release breaks compatibility with 0.2 and follows
 - `no_std` support.
 - `parallel` and `asm` optimization features.
 
-[0.3.0]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.3.0
+[0.4.0]: https://github.com/davxy/ark-vrf/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/davxy/ark-vrf/compare/v0.2.2...v0.3.0
+[0.2.1]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/davxy/ark-vrf/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/davxy/ark-vrf/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/davxy/ark-vrf/compare/v0.1.0...v0.1.1
