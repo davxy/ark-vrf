@@ -58,14 +58,6 @@ impl BenchInfo for ark_vrf::suites::ed25519::Ed25519Sha512Tai {
     const NONCE_TAG: &'static str = "rfc_8032";
 }
 
-#[cfg(all(feature = "bandersnatch", feature = "blake3"))]
-impl BenchInfo for ark_vrf::suites::bandersnatch_blake3::BandersnatchBlake3Ell2 {
-    const SUITE_NAME: &'static str = "bandersnatch-blake3";
-    const DATA_TO_POINT_TAG: &'static str = "ell2_rfc_9380";
-    const CHALLENGE_TAG: &'static str = "rfc_9381";
-    const POINT_TO_HASH_TAG: &'static str = "rfc_9381";
-    const NONCE_TAG: &'static str = "rfc_8032";
-}
 
 #[cfg(all(feature = "bandersnatch", feature = "shake128"))]
 impl BenchInfo for ark_vrf::suites::bandersnatch_shake128::BandersnatchShake128Ell2 {
