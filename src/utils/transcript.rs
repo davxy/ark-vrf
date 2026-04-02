@@ -99,7 +99,6 @@ impl<T: Transcript> ark_std::rand::CryptoRng for TranscriptRng<T> {}
 ///
 /// All provided transcript variants are built on this type:
 /// - [`HashTranscript`]: fixed-output hashes (SHA-512, SHA-256) via [`DigestXof`]
-/// - `Blake3Transcript`: BLAKE3 native XOF (requires `blake3` feature)
 /// - `Shake128Transcript`: SHAKE128 native XOF (requires `shake128` feature)
 pub struct XofTranscript<H: digest::ExtendableOutput + Clone> {
     state: XofState<H>,
@@ -289,10 +288,6 @@ impl<H: Digest> digest::XofReader for DigestXofReader<H> {
 /// ```
 pub type HashTranscript<H = Sha512> = XofTranscript<DigestXof<H>>;
 
-/// BLAKE3 native XOF transcript.
-#[cfg(feature = "blake3")]
-pub type Blake3Transcript = XofTranscript<blake3::Hasher>;
-
 /// SHAKE128 native XOF transcript.
 #[cfg(feature = "shake128")]
 pub type Shake128Transcript = XofTranscript<sha3::Shake128>;
@@ -382,9 +377,6 @@ mod tests {
 
     transcript_tests!(HashTranscript<sha2::Sha512>, hash_sha512);
     transcript_tests!(HashTranscript<sha2::Sha256>, hash_sha256);
-
-    #[cfg(feature = "blake3")]
-    transcript_tests!(Blake3Transcript, blake3_xof);
 
     #[cfg(feature = "shake128")]
     transcript_tests!(Shake128Transcript, shake128_xof);
