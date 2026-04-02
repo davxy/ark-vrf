@@ -1,12 +1,12 @@
 //! # Ring VRF
 //!
-//! Implementation of a zero-knowledge VRF scheme providing signer anonymity within a set of
-//! public keys, based on Sections 4 and 6 of
-//! [BCHSV23](https://eprint.iacr.org/2023/002).
+//! Anonymized ring VRF combining Pedersen VRF with the ring proof scheme derived
+//! from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that a single blinded
+//! key is a member of a committed ring without revealing which one.
 //!
 //! This module is gated by the `ring` feature.
 //!
-//! ## Usage Example
+//! ## Usage
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;

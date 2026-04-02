@@ -1,24 +1,10 @@
-//! # Thin-VRF
+//! # Thin VRF
 //!
-//! Based on the PedVRF construction from Section 4 of
-//! [BCHSV23](https://eprint.iacr.org/2023/002), reduced to EC-VRF form
-//! by setting the blinding factor `b = 0` and using `pk = sk*G` directly
-//! (see remark on page 13 of the paper).
+//! Same structure as Tiny VRF but produces an `(R, s)` proof storing the nonce
+//! commitment rather than the challenge. This enables batch verification at the
+//! cost of a slightly larger proof.
 //!
-//! ThinVrf merges the public-key Schnorr pair `(G, P)` and the VRF I/O pair
-//! `(I, O)` into a single DLEQ relation via delinearization, then proves it
-//! with a Schnorr-like proof `(R, s)`. The `(R, s)` format (storing nonce
-//! commitment rather than challenge) enables batch verification.
-//!
-//! # Security
-//!
-//! The input point `I` **must** be constructed via hash-to-curve (e.g.
-//! [`Input::new`]) so that nobody knows its discrete-log relation to the
-//! generator `G`. If the prover knew such a relation, they could forge
-//! outputs. This is critical because the delinearization merges the Schnorr
-//! and VRF pairs into a single check.
-//!
-//! ## Usage Example
+//! ## Usage
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
@@ -312,7 +298,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
+    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};

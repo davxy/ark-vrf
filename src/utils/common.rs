@@ -123,7 +123,7 @@ where
 /// Internal domain separation tags for protocol hashing.
 #[repr(u8)]
 pub(crate) enum DomSep {
-    IetfVrf = 0x00,
+    TinyVrf = 0x00,
     ThinVrf = 0x01,
     PedersenVrf = 0x02,
     NonceExpand = 0x10,
@@ -212,7 +212,7 @@ pub(crate) fn vrf_transcript<S: Suite>(
 
 /// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF transcript.
 ///
-/// Used by IETF and Thin VRF where the public key DLEQ relation is folded
+/// Used by Tiny and Thin VRF where the public key DLEQ relation is folded
 /// into the delinearized I/O pairs.
 fn chain_ios<'a, S: Suite>(
     public: AffinePoint<S>,
@@ -426,13 +426,13 @@ mod tests {
             })
             .collect();
 
-        let (_, io_ietf) = vrf_transcript::<TestSuite>(DomSep::IetfVrf, &ios, b"foo");
+        let (_, io_tiny) = vrf_transcript::<TestSuite>(DomSep::TinyVrf, &ios, b"foo");
         let (_, io_thin) = vrf_transcript::<TestSuite>(DomSep::ThinVrf, &ios, b"foo");
         let (_, io_ped) = vrf_transcript::<TestSuite>(DomSep::PedersenVrf, &ios, b"foo");
 
         // Different scheme tags must produce different merged pairs (for n >= 2).
-        assert_ne!(io_ietf, io_thin);
-        assert_ne!(io_ietf, io_ped);
+        assert_ne!(io_tiny, io_thin);
+        assert_ne!(io_tiny, io_ped);
         assert_ne!(io_thin, io_ped);
     }
 }

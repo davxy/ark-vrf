@@ -118,14 +118,14 @@ impl MapConfig for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ietf_suite_tests, testing};
+    use crate::{tiny_suite_tests, testing};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
     impl crate::testing::SuiteExt for ThisSuite {
         const SUITE_NAME: &str = "bandersnatch_sw_sha-512_tai";
     }
 
-    ietf_suite_tests!(ThisSuite);
+    tiny_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);
 

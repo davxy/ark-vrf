@@ -83,7 +83,7 @@ pub(crate) mod tests {
         const SUITE_NAME: &str = "bandersnatch_blake3_ell2";
     }
 
-    ietf_suite_tests!(ThisSuite);
+    tiny_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);
 

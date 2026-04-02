@@ -46,7 +46,7 @@ name = "common"
 harness = false
 
 [[bench]]
-name = "ietf"
+name = "tiny"
 harness = false
 
 [[bench]]
