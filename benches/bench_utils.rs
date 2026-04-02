@@ -90,8 +90,6 @@ macro_rules! for_each_suite {
     ($c:expr, $fn:ident) => {
         #[cfg(feature = "bandersnatch")]
         $fn::<ark_vrf::suites::bandersnatch::BandersnatchSha512Ell2>($c);
-        #[cfg(all(feature = "bandersnatch", feature = "blake3"))]
-        $fn::<ark_vrf::suites::bandersnatch_blake3::BandersnatchBlake3Ell2>($c);
         #[cfg(all(feature = "bandersnatch", feature = "shake128"))]
         $fn::<ark_vrf::suites::bandersnatch_shake128::BandersnatchShake128Ell2>($c);
         #[cfg(feature = "jubjub")]
