@@ -118,7 +118,7 @@ impl MapConfig for ark_ed_on_bls12_381_bandersnatch::BandersnatchConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{tiny_suite_tests, testing};
+    use crate::{testing, tiny_suite_tests};
     use ark_ed_on_bls12_381_bandersnatch::{BandersnatchConfig, SWAffine};
 
     impl crate::testing::SuiteExt for ThisSuite {

@@ -298,7 +298,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use crate::testing::{self as common, random_val, SuiteExt, TEST_SEED};
+    use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};

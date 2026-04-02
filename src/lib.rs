@@ -100,10 +100,10 @@ use ark_std::vec::Vec;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
-pub mod tiny;
 pub mod pedersen;
 pub mod suites;
 pub mod thin;
+pub mod tiny;
 pub mod utils;
 
 #[cfg(feature = "ring")]
