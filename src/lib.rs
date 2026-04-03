@@ -223,7 +223,6 @@ pub trait Suite: Copy {
     fn point_to_hash<const N: usize>(pt: &AffinePoint<Self>) -> [u8; N] {
         utils::point_to_hash::<Self, N>(pt, false)
     }
-
 }
 
 /// Secret key for VRF operations.
