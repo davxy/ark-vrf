@@ -34,7 +34,7 @@ pub fn sw_to_te<C: MapConfig>(point: &SWAffine<C>) -> Option<TEAffine<C>> {
     let mx = <C as MontCurveConfig>::COEFF_B * point.x - C::MONT_A_OVER_THREE;
     let my = <C as MontCurveConfig>::COEFF_B * point.y;
 
-    // Then we map the TE point to Montgamory
+    // Then we map the Montgomery point to TE
     // (x,y) -> (x/y,(x−1)/(x+1))
     let v_denom = my.inverse()?;
     let x_p_1 = mx + <<C as CurveConfig>::BaseField as One>::one();
@@ -59,7 +59,7 @@ pub fn te_to_sw<C: MapConfig>(point: &TEAffine<C>) -> Option<SWAffine<C>> {
     let v = v_w_num * v_denom_inv;
     let w = v_w_num * w_denom_inv;
 
-    // Map Montgamory to SW: ((x+A/3)/B,y/B)
+    // Map Montgomery to SW: ((x+A/3)/B,y/B)
     let x = C::MONT_B_INV * (v + C::MONT_A_OVER_THREE);
     let y = C::MONT_B_INV * w;
 

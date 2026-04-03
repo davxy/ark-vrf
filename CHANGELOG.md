@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-04-02
 
 This release follows
-[draft-33](https://github.com/davxy/bandersnatch-vrf-spec) of the Bandersnatch VRF specification.
+[draft-33](https://github.com/davxy/bandersnatch-vrf-spec/releases/tag/draft-33)
+of the Bandersnatch VRF specification.
 
 ### Changed
 
@@ -27,8 +28,9 @@ This release follows
 
 ## [0.3.0] - 2026-03-28
 
-This release breaks compatibility with 0.2 and follows
-[draft-32](https://github.com/davxy/bandersnatch-vrf-spec) of the Bandersnatch VRF specification.
+This release follows
+[draft-32](https://github.com/davxy/bandersnatch-vrf-spec/releases/tag/draft-32)
+of the Bandersnatch VRF specification.
 
 ### Added
 
@@ -135,7 +137,7 @@ This release breaks compatibility with 0.2 and follows
 
 [0.4.0]: https://github.com/davxy/ark-vrf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/davxy/ark-vrf/compare/v0.2.2...v0.3.0
-[0.2.1]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.2.2
+[0.2.2]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/davxy/ark-vrf/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/davxy/ark-vrf/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/davxy/ark-vrf/compare/v0.1.0...v0.1.1

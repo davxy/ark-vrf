@@ -5,8 +5,9 @@ edition = "2024"
 authors = [ "Davide Galassi <davxy@datawok.net>" ]
 license = "MIT"
 description = "Elliptic curve VRF with additional data"
-keywords = [ "cryptography", "vrf", "ec-vrf", "ring-vrf", "zk-snark" ]
 repository = "https://github.com/davxy/ark-vrf"
+keywords = [ "cryptography", "vrf", "ec-vrf", "ring-vrf", "zk" ]
+categories = ["cryptography", "no-std"]
 autobenches = false
 
 [dependencies]

@@ -66,7 +66,7 @@
 //!
 //! - `default`: `std`
 //! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `test-vectors`.
-//! - `secret-split`: Point scalar multiplication with secret split. Secret scalar is split into the sum
+//! - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
 //!   sensible scalar multiplications, but provides side channel defenses.
 //! - `ring`: Ring-VRF for the curves supporting it.
@@ -224,7 +224,6 @@ pub trait Suite: Copy {
         utils::point_to_hash::<Self, N>(pt, false)
     }
 
-    // TODO: add `sample()` to pick scalar with the given security bits .
 }
 
 /// Secret key for VRF operations.
