@@ -6,7 +6,7 @@ mkdir -p vectors
 cargo test \
   --lib \
   --release \
-  --features full,test-vectors,blake3,shake128 \
+  --features full,test-vectors \
   -- \
   --nocapture \
   --ignored
