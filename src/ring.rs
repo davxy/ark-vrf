@@ -224,6 +224,41 @@ impl<S: RingSuite> Verifier<S> for Public<S> {
     }
 }
 
+/// Lightweight verifier-side ring proof parameters.
+///
+/// Contains only the PIOP parameters needed for verification, without the KZG
+/// SRS required by provers. Construct once via [`RingVerifierParams::from_ring_size`]
+/// and reuse across verifications.
+#[derive(Clone)]
+pub struct RingVerifierParams<S: RingSuite> {
+    /// PIOP parameters.
+    pub piop: PiopParams<S>,
+}
+
+impl<S: RingSuite> RingVerifierParams<S> {
+    /// Construct verifier parameters for the given ring size.
+    pub fn from_ring_size(ring_size: usize) -> Self {
+        Self {
+            piop: piop_params::<S>(piop_domain_size::<S>(ring_size)),
+        }
+    }
+
+    /// The max ring size these parameters are able to handle.
+    #[inline(always)]
+    pub fn max_ring_size(&self) -> usize {
+        self.piop.keyset_part_size
+    }
+
+    /// Create a verifier instance from a verifier key.
+    pub fn verifier(&self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
+        RingVerifier::<S>::init(
+            verifier_key,
+            self.piop.clone(),
+            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+        )
+    }
+}
+
 /// Ring proof parameters.
 ///
 /// Contains the cryptographic parameters needed for ring proof generation and verification:
@@ -347,29 +382,21 @@ impl<S: RingSuite> RingProofParams<S> {
         (builder, builder_pcs_params)
     }
 
-    /// Create a verifier instance from a verifier key.
-    pub fn verifier(&self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
-        RingVerifier::<S>::init(
-            verifier_key,
-            self.piop.clone(),
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
-        )
+    /// Extract lightweight verifier parameters.
+    ///
+    /// Returns a [`RingVerifierParams`] that can be stored and reused without
+    /// carrying the KZG SRS.
+    pub fn verifier_params(&self) -> RingVerifierParams<S> {
+        RingVerifierParams {
+            piop: self.piop.clone(),
+        }
     }
 
-    /// Create a verifier instance without requiring the full parameters.
-    ///
-    /// Computes necessary PIOP parameters on-the-fly from the ring size rather
-    /// than reusing the ones stored in `self`.
-    pub fn verifier_no_context(
-        verifier_key: RingVerifierKey<S>,
-        ring_size: usize,
-    ) -> RingVerifier<S> {
-        RingVerifier::<S>::init(
-            verifier_key,
-            piop_params::<S>(piop_domain_size::<S>(ring_size)),
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
-        )
+    /// Create a verifier instance from a verifier key.
+    pub fn verifier(&self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
+        self.verifier_params().verifier(verifier_key)
     }
+
 
     /// Get the padding point.
     ///
@@ -605,6 +632,8 @@ macro_rules! ring_suite_types {
         pub type PcsParams = $crate::ring::PcsParams<$suite>;
         #[allow(dead_code)]
         pub type PiopParams = $crate::ring::PiopParams<$suite>;
+        #[allow(dead_code)]
+        pub type RingVerifierParams = $crate::ring::RingVerifierParams<$suite>;
         #[allow(dead_code)]
         pub type RingProofParams = $crate::ring::RingProofParams<$suite>;
         #[allow(dead_code)]
