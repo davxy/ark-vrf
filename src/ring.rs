@@ -397,7 +397,6 @@ impl<S: RingSuite> RingProofParams<S> {
         self.verifier_params().verifier(verifier_key)
     }
 
-
     /// Get the padding point.
     ///
     /// This is a point of unknown dlog that can be used in place of any key during
