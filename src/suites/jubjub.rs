@@ -118,10 +118,10 @@ pub(crate) mod tests {
     impl crate::ring::testing::RingSuiteExt for ThisSuite {
         const SRS_FILE: &str = crate::testing::BLS12_381_PCS_SRS_FILE;
 
-        fn params() -> &'static RingProofParams {
+        fn ring_setup() -> &'static RingSetup {
             use std::sync::OnceLock;
-            static PARAMS: OnceLock<RingProofParams> = OnceLock::new();
-            PARAMS.get_or_init(Self::load_context)
+            static RING_SETUP: OnceLock<RingSetup> = OnceLock::new();
+            RING_SETUP.get_or_init(Self::load_ring_setup)
         }
     }
 }

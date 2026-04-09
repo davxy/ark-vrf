@@ -12,15 +12,15 @@ use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
 
-struct RingSetup<S: RingSuite> {
+struct BenchSetup<S: RingSuite> {
     secret: Secret<S>,
     io: VrfIo<S>,
     ring: Vec<AffinePoint<S>>,
     prover_idx: usize,
-    params: ring::RingProofParams<S>,
+    ring_setup: ring::RingSetup<S>,
 }
 
-fn make_ring_setup<S: RingSuite>(ring_size: usize) -> RingSetup<S> {
+fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let mut rng = ark_std::test_rng();
     let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
@@ -33,14 +33,14 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> RingSetup<S> {
         .collect();
     ring[prover_idx] = public.0;
 
-    let params = ring::RingProofParams::<S>::from_rand(ring_size, &mut rng);
+    let ring_setup = ring::RingSetup::<S>::from_rand(ring_size, &mut rng);
 
-    RingSetup {
+    BenchSetup {
         secret,
         io,
         ring,
         prover_idx,
-        params,
+        ring_setup,
     }
 }
 
@@ -53,28 +53,40 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
-                    ring::RingProofParams::<S>::from_pcs_params(
+                    ring::RingSetup::<S>::from_pcs_params(
                         black_box(n),
-                        setup.params.pcs.clone(),
+                        setup.ring_setup.pcs_params.clone(),
                     )
                     .unwrap()
                 });
             });
 
+        c.benchmark_group(format!("{}/ring_context_setup", S::SUITE_NAME))
+            .sample_size(10)
+            .bench_function(id.clone(), |b| {
+                b.iter(|| ring::RingContext::<S>::new(black_box(n)));
+            });
+
         c.benchmark_group(format!("{}/ring_prover_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.prover_key(black_box(&setup.ring)).unwrap());
+                b.iter(|| setup.ring_setup.prover_key(black_box(&setup.ring)).unwrap());
             });
 
         c.benchmark_group(format!("{}/ring_verifier_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.verifier_key(black_box(&setup.ring)).unwrap());
+                b.iter(|| {
+                    setup
+                        .ring_setup
+                        .verifier_key(black_box(&setup.ring))
+                        .unwrap()
+                });
             });
 
-        let prover_key = setup.params.prover_key(&setup.ring).unwrap();
-        let prover = setup.params.prover(prover_key, setup.prover_idx);
+        let ring_ctx = setup.ring_setup.ring_context();
+        let prover_key = setup.ring_setup.prover_key(&setup.ring).unwrap();
+        let prover = ring_ctx.ring_prover(prover_key, setup.prover_idx);
 
         c.benchmark_group(format!("{}/ring_prove", S::SUITE_NAME))
             .sample_size(10)
@@ -83,9 +95,9 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             });
 
         let proof = setup.secret.prove(setup.io, b"ad", &prover);
-        let verifier_key = setup.params.verifier_key(&setup.ring).unwrap();
+        let verifier_key = setup.ring_setup.verifier_key(&setup.ring).unwrap();
         let commitment = verifier_key.commitment();
-        let verifier = setup.params.verifier(verifier_key.clone());
+        let verifier = ring_ctx.ring_verifier(verifier_key.clone());
 
         c.benchmark_group(format!("{}/ring_verify", S::SUITE_NAME))
             .sample_size(10)
@@ -104,7 +116,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_verifier_from_key", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.verifier(black_box(verifier_key.clone())));
+                b.iter(|| ring_ctx.ring_verifier(black_box(verifier_key.clone())));
             });
 
         c.benchmark_group(format!("{}/ring_vk_from_commitment", S::SUITE_NAME))
@@ -112,7 +124,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
                     setup
-                        .params
+                        .ring_setup
                         .verifier_key_from_commitment(black_box(commitment.clone()))
                 });
             });
@@ -120,10 +132,10 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_vk_builder_create", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| setup.params.verifier_key_builder());
+                b.iter(|| setup.ring_setup.verifier_key_builder());
             });
 
-        let (mut builder, builder_pcs_params) = setup.params.verifier_key_builder();
+        let (mut builder, builder_pcs_params) = setup.ring_setup.verifier_key_builder();
 
         c.benchmark_group(format!("{}/ring_vk_builder_append", S::SUITE_NAME))
             .sample_size(10)
@@ -157,8 +169,9 @@ struct BatchItem<S: RingSuite> {
 fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let setup = make_ring_setup::<S>(1023);
 
-    let prover_key = setup.params.prover_key(&setup.ring).unwrap();
-    let prover = setup.params.prover(prover_key, setup.prover_idx);
+    let ring_ctx = setup.ring_setup.ring_context();
+    let prover_key = setup.ring_setup.prover_key(&setup.ring).unwrap();
+    let prover = ring_ctx.ring_prover(prover_key, setup.prover_idx);
 
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
@@ -181,7 +194,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         })
         .collect();
 
-    let verifier_key = setup.params.verifier_key(&setup.ring).unwrap();
+    let verifier_key = setup.ring_setup.verifier_key(&setup.ring).unwrap();
 
     // batch_verifier_new: cost is independent of batch size, bench once.
     c.benchmark_group(format!("{}/batch_verifier_new", S::SUITE_NAME))
@@ -189,14 +202,14 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         .bench_function("batch_verifier_new", |b| {
             b.iter(|| {
                 let vk = verifier_key.clone();
-                let verifier = setup.params.verifier(vk);
+                let verifier = ring_ctx.ring_verifier(vk);
                 BatchVerifier::<S>::new(black_box(verifier))
             });
         });
 
     // A single BatchVerifier for prepare benchmarks (prepare takes &self).
     let vk = verifier_key.clone();
-    let verifier = setup.params.verifier(vk);
+    let verifier = ring_ctx.ring_verifier(vk);
     let batch_verifier = BatchVerifier::<S>::new(verifier);
 
     for &batch_size in BATCH_SIZES {
@@ -209,7 +222,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 b.iter_batched(
                     || {
                         let vk = verifier_key.clone();
-                        let verifier = setup.params.verifier(vk);
+                        let verifier = ring_ctx.ring_verifier(vk);
                         BatchVerifier::<S>::new(verifier)
                     },
                     |mut bv| {
@@ -256,7 +269,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                             .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
                             .collect::<Vec<_>>();
                         let vk = verifier_key.clone();
-                        let verifier = setup.params.verifier(vk);
+                        let verifier = ring_ctx.ring_verifier(vk);
                         let bv = BatchVerifier::<S>::new(verifier);
                         (bv, prepared)
                     },
@@ -272,7 +285,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         // batch_verify: verify a fully-populated batch.
         {
             let vk = verifier_key.clone();
-            let verifier = setup.params.verifier(vk);
+            let verifier = ring_ctx.ring_verifier(vk);
             let mut bv = BatchVerifier::<S>::new(verifier);
             for item in &batch_items[..batch_size] {
                 bv.push(item.io, &item.ad, &item.proof);

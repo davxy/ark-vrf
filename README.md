@@ -174,11 +174,11 @@ let mut ring = (0..RING_SIZE)
 ring[prover_key_index] = public.0;
 
 // Any key can be replaced with the padding point
-ring[0] = RingProofParams::padding_point();
+ring[0] = RingSetup::padding_point();
 
 // Create parameters for the ring proof system.
 // These parameters are reusable across multiple proofs.
-let params = RingProofParams::from_seed(RING_SIZE, [0x42; 32]);
+let ring_setup = RingSetup::from_seed(RING_SIZE, [0x42; 32]);
 ```
 
 _Prove_
@@ -186,10 +186,13 @@ _Prove_
 use ark_vrf::ring::Prover;
 
 // Create a prover key specific to this ring
-let prover_key = params.prover_key(&ring).unwrap();
+let prover_key = ring_setup.prover_key(&ring).unwrap();
+
+// Create a lightweight ring context for prover/verifier construction
+let ring_ctx = ring_setup.ring_context();
 
 // Create a prover instance for the specific position in the ring
-let prover = params.prover(prover_key, prover_key_index);
+let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
 
 let io = secret.vrf_io(input);
 
@@ -204,10 +207,11 @@ _Verify_
 use ark_vrf::ring::Verifier;
 
 // Create a verifier key for this ring
-let verifier_key = params.verifier_key(&ring).unwrap();
+let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 
 // Create a verifier instance
-let verifier = params.verifier(verifier_key);
+let ring_ctx = ring_setup.ring_context();
+let verifier = ring_ctx.ring_verifier(verifier_key);
 
 // Verify the proof - this confirms that:
 // 1. The proof was created by someone who knows a secret key in the ring
@@ -219,11 +223,11 @@ let result = Public::verify(io, b"aux data", &proof, &verifier);
 _Verifier key from commitment_
 ```rust,ignore
 // For efficiency, a commitment to the ring can be shared
-let ring_commitment = params.verifier_key(&ring).unwrap().commitment();
+let ring_commitment = ring_setup.verifier_key(&ring).unwrap().commitment();
 
 // A verifier can reconstruct the verifier key from just the commitment
 // without needing the full ring of public keys
-let verifier_key = params.verifier_key_from_commitment(ring_commitment);
+let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 ```
 
 ## Features
