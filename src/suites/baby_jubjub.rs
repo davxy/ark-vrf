@@ -120,7 +120,7 @@ pub(crate) mod tests {
         fn ring_setup() -> &'static RingSetup {
             use std::sync::OnceLock;
             static RING_SETUP: OnceLock<RingSetup> = OnceLock::new();
-            RING_SETUP.get_or_init(Self::load_context)
+            RING_SETUP.get_or_init(Self::load_ring_setup)
         }
     }
 }

@@ -210,7 +210,7 @@ use ark_vrf::ring::Verifier;
 let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 
 // Create a verifier instance
-let ring_ctx = RingContext::new(RING_SIZE);
+let ring_ctx = ring_setup.ring_context();
 let verifier = ring_ctx.ring_verifier(verifier_key);
 
 // Verify the proof - this confirms that:

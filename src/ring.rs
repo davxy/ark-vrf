@@ -292,7 +292,7 @@ impl<S: RingSuite> RingContext<S> {
 /// Contains the cryptographic parameters needed for ring proof key construction,
 /// proving and verification:
 /// - `pcs_params`: Polynomial Commitment Scheme parameters (KZG setup)
-/// - `piop_params`: Polynomial Interactive Oracle Proof parameters
+/// - `ring_ctx`: Ring context containing the PIOP parameters
 #[derive(Clone)]
 pub struct RingSetup<S: RingSuite> {
     /// PCS parameters.
@@ -1175,7 +1175,7 @@ pub(crate) mod testing {
         fn ring_setup() -> &'static RingSetup<Self>;
 
         #[allow(unused)]
-        fn load_context() -> RingSetup<Self> {
+        fn load_ring_setup() -> RingSetup<Self> {
             use ark_serialize::CanonicalDeserialize;
             use std::{fs::File, io::Read};
             let mut file = File::open(Self::SRS_FILE).unwrap();
@@ -1187,7 +1187,7 @@ pub(crate) mod testing {
         }
 
         #[allow(unused)]
-        fn write_context(ring_setup: &RingSetup<Self>) {
+        fn write_ring_setup(ring_setup: &RingSetup<Self>) {
             use ark_serialize::CanonicalSerialize;
             use std::{fs::File, io::Write};
             let mut file = File::create(Self::SRS_FILE).unwrap();
