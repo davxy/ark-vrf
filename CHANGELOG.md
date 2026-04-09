@@ -9,14 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `RingVerifierParams` struct for lightweight verifier-side ring proof parameter
-  caching. Contains only the PIOP parameters needed for verification, without
-  the KZG SRS required by provers.
+- `RingContext` struct for lightweight ring proof parameter caching.
+  Contains only the PIOP parameters needed for prover/verifier instance
+  construction, without the KZG SRS required for key construction.
+
+### Changed
+
+- `RingProofParams` renamed to `RingSetup`.
 
 ### Removed
 
 - `RingProofParams::verifier_no_context` method, superseded by
-  `RingVerifierParams::from_ring_size`.
+  `RingContext::new`.
 
 ## [0.4.0] - 2026-04-02
 
