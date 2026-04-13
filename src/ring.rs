@@ -557,15 +557,32 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     }
 }
 
-type RingPreparedBatchItem<S> = ring_proof::multi_ring_batch_verifier::BatchItem<
-    <S as RingSuite>::Pairing,
-    CurveConfig<S>,
->;
+type RingProofBatchItem<S> =
+    ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
 /// Pre-processed data for a single ring proof awaiting batch verification.
 pub struct BatchItem<S: RingSuite> {
-    ring: RingPreparedBatchItem<S>,
+    ring: RingProofBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
+}
+
+impl<S: RingSuite> BatchItem<S> {
+    /// Prepare a proof for deferred batch verification.
+    ///
+    /// Performs the cheap per-proof work (hashing, transcript setup) without
+    /// the expensive pairing and MSM checks. `verifier` must be the ring
+    /// verifier the proof was produced against.
+    pub fn new(
+        verifier: &RingVerifier<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Self {
+        let pedersen = pedersen::BatchItem::new(ios, ad, &proof.pedersen_proof);
+        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
+        Self { ring, pedersen }
+    }
 }
 
 /// Batch verifier for ring VRF proofs.
@@ -597,29 +614,10 @@ impl<S: RingSuite> BatchVerifier<S> {
         }
     }
 
-    /// Prepare a proof for deferred batch verification.
-    ///
-    /// Performs the cheap per-proof work (hashing, transcript setup) without
-    /// the expensive pairing and MSM checks. `verifier` must be the ring
-    /// verifier the proof was produced against.
-    pub fn prepare(
-        &self,
-        verifier: &RingVerifier<S>,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> BatchItem<S> {
-        let pedersen = pedersen::BatchVerifier::prepare(ios, ad, &proof.pedersen_proof);
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
-        let ring =
-            RingPreparedBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
-        BatchItem { ring, pedersen }
-    }
-
     /// Push a previously prepared item into the batch.
     pub fn push_prepared(&mut self, item: BatchItem<S>) {
         self.pedersen_batch.push_prepared(item.pedersen);
-        self.ring_batch.push(item.ring);
+        self.ring_batch.push_prepared(item.ring);
     }
 
     /// Prepare and push a proof in one step.
@@ -630,8 +628,7 @@ impl<S: RingSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) {
-        let prepared = self.prepare(verifier, ios, ad, proof);
-        self.push_prepared(prepared);
+        self.push_prepared(BatchItem::new(verifier, ios, ad, proof));
     }
 
     /// Verify all collected proofs in a single batch.
@@ -987,7 +984,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof))
+                .map(|item| super::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {

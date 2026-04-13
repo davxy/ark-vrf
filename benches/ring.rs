@@ -204,9 +204,6 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             b.iter(|| BatchVerifier::<S>::new(black_box(&verifier)));
         });
 
-    // A single BatchVerifier for prepare benchmarks (prepare takes &self).
-    let batch_verifier = BatchVerifier::<S>::new(&verifier);
-
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);
 
@@ -233,7 +230,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
                         .map(|item| {
-                            batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                            ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
                         })
                         .collect();
                 });
@@ -247,7 +244,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                     let _: Vec<_> = batch_items[..batch_size]
                         .par_iter()
                         .map(|item| {
-                            batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                            ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
                         })
                         .collect();
                 });
@@ -262,7 +259,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                         let prepared = batch_items[..batch_size]
                             .iter()
                             .map(|item| {
-                                batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                                ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
                             })
                             .collect::<Vec<_>>();
                         let bv = BatchVerifier::<S>::new(&verifier);
