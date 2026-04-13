@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RingContext` struct for lightweight ring proof parameter caching.
   Contains only the PIOP parameters needed for prover/verifier instance
   construction, without the KZG SRS required for key construction.
+- Multi-ring batch verification: a single `ring::BatchVerifier` can now
+  aggregate proofs from multiple rings sharing the same KZG SRS into one
+  batched pairing check.
+- `ring::BatchItem::new(verifier, ios, ad, proof)` and
+  `pedersen::BatchItem::new(ios, ad, proof)` constructors for preparing
+  batch items independently of any verifier instance.
 
 ### Changed
 
@@ -21,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `RingProofParams::verifier_no_context` method, superseded by
   `RingContext::new`.
+- `ring::BatchVerifier::prepare` and `pedersen::BatchVerifier::prepare`,
+  superseded by `BatchItem::new` constructors.
 
 ## [0.4.0] - 2026-04-02
 
