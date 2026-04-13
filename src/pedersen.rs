@@ -247,11 +247,7 @@ impl<S: PedersenSuite> BatchItem<S> {
     /// Computes the challenge and packages all data needed for deferred
     /// verification. This is cheap (one hash, no scalar multiplications)
     /// and can be done in parallel.
-    pub fn new(
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> Self {
+    pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
         t.absorb_serialize(&proof.pk_com);
         let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
