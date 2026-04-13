@@ -36,7 +36,7 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
-    use ark_vrf::pedersen::{BatchVerifier, Prover};
+    use ark_vrf::pedersen::{BatchItem, BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
@@ -64,7 +64,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(*io, ad, proof))
+                        .map(|(io, ad, proof)| BatchItem::<S>::new(*io, ad, proof))
                         .collect();
                 });
             });
