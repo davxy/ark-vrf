@@ -195,22 +195,17 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         .collect();
 
     let verifier_key = setup.ring_setup.verifier_key(&setup.ring).unwrap();
+    let verifier = ring_ctx.ring_verifier(verifier_key);
 
     // batch_verifier_new: cost is independent of batch size, bench once.
     c.benchmark_group(format!("{}/batch_verifier_new", S::SUITE_NAME))
         .sample_size(10)
         .bench_function("batch_verifier_new", |b| {
-            b.iter(|| {
-                let vk = verifier_key.clone();
-                let verifier = ring_ctx.ring_verifier(vk);
-                BatchVerifier::<S>::new(black_box(verifier))
-            });
+            b.iter(|| BatchVerifier::<S>::new(black_box(&verifier)));
         });
 
     // A single BatchVerifier for prepare benchmarks (prepare takes &self).
-    let vk = verifier_key.clone();
-    let verifier = ring_ctx.ring_verifier(vk);
-    let batch_verifier = BatchVerifier::<S>::new(verifier);
+    let batch_verifier = BatchVerifier::<S>::new(&verifier);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);
@@ -220,14 +215,10 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter_batched(
-                    || {
-                        let vk = verifier_key.clone();
-                        let verifier = ring_ctx.ring_verifier(vk);
-                        BatchVerifier::<S>::new(verifier)
-                    },
+                    || BatchVerifier::<S>::new(&verifier),
                     |mut bv| {
                         for item in &batch_items[..batch_size] {
-                            bv.push(item.io, &item.ad, &item.proof);
+                            bv.push(&verifier, item.io, &item.ad, &item.proof);
                         }
                     },
                     BatchSize::LargeInput,
@@ -241,7 +232,9 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
+                        .map(|item| {
+                            batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                        })
                         .collect();
                 });
             });
@@ -253,7 +246,9 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .par_iter()
-                        .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
+                        .map(|item| {
+                            batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                        })
                         .collect();
                 });
             });
@@ -266,11 +261,11 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                     || {
                         let prepared = batch_items[..batch_size]
                             .iter()
-                            .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
+                            .map(|item| {
+                                batch_verifier.prepare(&verifier, item.io, &item.ad, &item.proof)
+                            })
                             .collect::<Vec<_>>();
-                        let vk = verifier_key.clone();
-                        let verifier = ring_ctx.ring_verifier(vk);
-                        let bv = BatchVerifier::<S>::new(verifier);
+                        let bv = BatchVerifier::<S>::new(&verifier);
                         (bv, prepared)
                     },
                     |(mut bv, prepared)| {
@@ -284,11 +279,9 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
 
         // batch_verify: verify a fully-populated batch.
         {
-            let vk = verifier_key.clone();
-            let verifier = ring_ctx.ring_verifier(vk);
-            let mut bv = BatchVerifier::<S>::new(verifier);
+            let mut bv = BatchVerifier::<S>::new(&verifier);
             for item in &batch_items[..batch_size] {
-                bv.push(item.io, &item.ad, &item.proof);
+                bv.push(&verifier, item.io, &item.ad, &item.proof);
             }
 
             c.benchmark_group(format!("{}/batch_verify", S::SUITE_NAME))
