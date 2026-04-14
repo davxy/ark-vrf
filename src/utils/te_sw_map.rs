@@ -10,6 +10,7 @@ use ark_ec::{
 };
 use ark_ff::{Field, One};
 use ark_std::borrow::Cow;
+use ark_std::vec::Vec;
 
 /// Constants used in mapping TE form to SW form and vice versa.
 /// Configuration trait for curves that support mapping between representations.
