@@ -70,63 +70,72 @@ pub fn te_to_sw<C: MapConfig>(point: &TEAffine<C>) -> Option<SWAffine<C>> {
 ///
 /// This trait provides methods to convert between a type and its Short Weierstrass representation,
 /// both for individual points and slices of points.
-pub trait SWMapping<C: SWCurveConfig> {
+pub trait SWMapping<C: SWCurveConfig>: Sized {
     /// Convert a Short Weierstrass point to this type.
-    fn from_sw(sw: SWAffine<C>) -> Self;
+    ///
+    /// Returns `None` for identity or degenerate points.
+    fn from_sw(sw: SWAffine<C>) -> Option<Self>;
 
     /// Convert this type to a Short Weierstrass point.
-    fn into_sw(self) -> SWAffine<C>;
+    ///
+    /// Returns `None` for identity or degenerate points.
+    fn into_sw(self) -> Option<SWAffine<C>>;
 
     /// Convert a slice of this type to a slice of Short Weierstrass points.
     ///
-    /// Returns a borrowed slice if no conversion is needed, or an owned
-    /// vector if conversion is required.
-    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]>
-    where
-        Self: Sized;
+    /// Returns `None` if any element fails conversion. Returns a borrowed
+    /// slice if no conversion is needed, or an owned vector if conversion
+    /// is required.
+    fn to_sw_slice(slice: &[Self]) -> Option<Cow<'_, [SWAffine<C>]>>;
 }
 
 impl<C: SWCurveConfig> SWMapping<C> for SWAffine<C> {
     #[inline(always)]
-    fn from_sw(sw: SWAffine<C>) -> Self {
-        sw
+    fn from_sw(sw: SWAffine<C>) -> Option<Self> {
+        Some(sw)
     }
 
     #[inline(always)]
-    fn into_sw(self) -> SWAffine<C> {
-        self
+    fn into_sw(self) -> Option<SWAffine<C>> {
+        Some(self)
     }
 
     #[inline(always)]
-    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]> {
-        Cow::Borrowed(slice)
+    fn to_sw_slice(slice: &[Self]) -> Option<Cow<'_, [SWAffine<C>]>> {
+        Some(Cow::Borrowed(slice))
     }
 }
 
 impl<C: MapConfig> SWMapping<C> for TEAffine<C> {
     #[inline(always)]
-    fn from_sw(sw: SWAffine<C>) -> Self {
-        sw_to_te(&sw).expect("SW to TE mapping failed (identity or degenerate point)")
+    fn from_sw(sw: SWAffine<C>) -> Option<Self> {
+        sw_to_te(&sw)
     }
 
     #[inline(always)]
-    fn into_sw(self) -> SWAffine<C> {
-        te_to_sw(&self).expect("TE to SW mapping failed (identity or degenerate point)")
+    fn into_sw(self) -> Option<SWAffine<C>> {
+        te_to_sw(&self)
     }
 
     #[inline(always)]
-    fn to_sw_slice(slice: &[Self]) -> Cow<'_, [SWAffine<C>]> {
+    fn to_sw_slice(slice: &[Self]) -> Option<Cow<'_, [SWAffine<C>]>> {
         let pks;
         #[cfg(feature = "parallel")]
         {
             use rayon::prelude::*;
-            pks = slice.par_iter().map(|p| p.into_sw()).collect();
+            pks = slice
+                .par_iter()
+                .map(|p| te_to_sw(p))
+                .collect::<Option<Vec<_>>>()?;
         }
         #[cfg(not(feature = "parallel"))]
         {
-            pks = slice.iter().map(|p| p.into_sw()).collect();
+            pks = slice
+                .iter()
+                .map(|p| te_to_sw(p))
+                .collect::<Option<Vec<_>>>()?;
         }
-        Cow::Owned(pks)
+        Some(Cow::Owned(pks))
     }
 }
 
@@ -134,62 +143,71 @@ impl<C: MapConfig> SWMapping<C> for TEAffine<C> {
 ///
 /// This trait provides methods to convert between a type and its Twisted Edwards representation,
 /// both for individual points and slices of points.
-pub trait TEMapping<C: TECurveConfig> {
+pub trait TEMapping<C: TECurveConfig>: Sized {
     /// Convert a Twisted Edwards point to this type.
-    fn from_te(te: TEAffine<C>) -> Self;
+    ///
+    /// Returns `None` for identity or degenerate points.
+    fn from_te(te: TEAffine<C>) -> Option<Self>;
 
     /// Convert this type to a Twisted Edwards point.
-    fn into_te(self) -> TEAffine<C>;
+    ///
+    /// Returns `None` for identity or degenerate points.
+    fn into_te(self) -> Option<TEAffine<C>>;
 
     /// Convert a slice of this type to a slice of Twisted Edwards points.
     ///
-    /// Returns a borrowed slice if no conversion is needed, or an owned
-    /// vector if conversion is required.
-    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]>
-    where
-        Self: Sized;
+    /// Returns `None` if any element fails conversion. Returns a borrowed
+    /// slice if no conversion is needed, or an owned vector if conversion
+    /// is required.
+    fn to_te_slice(slice: &[Self]) -> Option<Cow<'_, [TEAffine<C>]>>;
 }
 
 impl<C: TECurveConfig> TEMapping<C> for TEAffine<C> {
     #[inline(always)]
-    fn from_te(te: TEAffine<C>) -> Self {
-        te
+    fn from_te(te: TEAffine<C>) -> Option<Self> {
+        Some(te)
     }
 
     #[inline(always)]
-    fn into_te(self) -> TEAffine<C> {
-        self
+    fn into_te(self) -> Option<TEAffine<C>> {
+        Some(self)
     }
 
     #[inline(always)]
-    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]> {
-        Cow::Borrowed(slice)
+    fn to_te_slice(slice: &[Self]) -> Option<Cow<'_, [TEAffine<C>]>> {
+        Some(Cow::Borrowed(slice))
     }
 }
 
 impl<C: MapConfig> TEMapping<C> for SWAffine<C> {
     #[inline(always)]
-    fn from_te(te: TEAffine<C>) -> Self {
-        te_to_sw(&te).expect("TE to SW mapping failed (identity or degenerate point)")
+    fn from_te(te: TEAffine<C>) -> Option<Self> {
+        te_to_sw(&te)
     }
 
     #[inline(always)]
-    fn into_te(self) -> TEAffine<C> {
-        sw_to_te(&self).expect("SW to TE mapping failed (identity or degenerate point)")
+    fn into_te(self) -> Option<TEAffine<C>> {
+        sw_to_te(&self)
     }
 
     #[inline(always)]
-    fn to_te_slice(slice: &[Self]) -> Cow<'_, [TEAffine<C>]> {
+    fn to_te_slice(slice: &[Self]) -> Option<Cow<'_, [TEAffine<C>]>> {
         let pks;
         #[cfg(feature = "parallel")]
         {
             use rayon::prelude::*;
-            pks = slice.par_iter().map(|p| p.into_te()).collect();
+            pks = slice
+                .par_iter()
+                .map(|p| sw_to_te(p))
+                .collect::<Option<Vec<_>>>()?;
         }
         #[cfg(not(feature = "parallel"))]
         {
-            pks = slice.iter().map(|p| p.into_te()).collect();
+            pks = slice
+                .iter()
+                .map(|p| sw_to_te(p))
+                .collect::<Option<Vec<_>>>()?;
         }
-        Cow::Owned(pks)
+        Some(Cow::Owned(pks))
     }
 }
