@@ -155,4 +155,34 @@ mod tests {
         roundtrip(testing::random_val::<SWAffine>(None));
         roundtrip(AffinePoint::generator());
     }
+
+    #[test]
+    fn identity_point_rejected() {
+        use ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
+
+        // SW identity -> TE must fail
+        let sw_identity = SWAffine::zero();
+        assert!(sw_to_te::<BandersnatchConfig>(&sw_identity).is_none());
+        assert!(<SWAffine as TEMapping<BandersnatchConfig>>::into_te(sw_identity).is_none());
+
+        // TE identity -> SW must fail
+        let te_identity = EdwardsAffine::zero();
+        assert!(te_to_sw::<BandersnatchConfig>(&te_identity).is_none());
+        assert!(<EdwardsAffine as SWMapping<BandersnatchConfig>>::into_sw(te_identity).is_none());
+    }
+
+    #[cfg(feature = "ring")]
+    #[test]
+    fn identity_in_ring_rejected() {
+        use crate::ring::{RingSetup, testing::TEST_RING_SIZE};
+
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<ThisSuite>::from_rand(TEST_RING_SIZE, rng);
+
+        let mut pks = testing::random_vec::<AffinePoint>(TEST_RING_SIZE, Some(rng));
+        pks[0] = AffinePoint::zero();
+
+        assert!(ring_setup.prover_key(&pks).is_err());
+        assert!(ring_setup.verifier_key(&pks).is_err());
+    }
 }

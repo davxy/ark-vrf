@@ -217,7 +217,11 @@ impl<S: RingSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(ios, ad, &proof.pedersen_proof)?;
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let key_commitment = proof
+            .pedersen_proof
+            .key_commitment()
+            .into_te()
+            .ok_or(Error::InvalidData)?;
         if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -244,9 +248,13 @@ impl<S: RingSuite> RingContext<S> {
         let domain_size = piop_domain_size::<S>(ring_size);
         let piop_params = PiopParams::<S>::setup(
             ring_proof::Domain::new(domain_size, true),
-            S::BLINDING_BASE.into_te(),
-            S::ACCUMULATOR_BASE.into_te(),
-            S::PADDING.into_te(),
+            S::BLINDING_BASE
+                .into_te()
+                .expect("BLINDING_BASE must not be identity"),
+            S::ACCUMULATOR_BASE
+                .into_te()
+                .expect("ACCUMULATOR_BASE must not be identity"),
+            S::PADDING.into_te().expect("PADDING must not be identity"),
         );
         Self { piop_params }
     }
@@ -356,7 +364,7 @@ impl<S: RingSuite> RingSetup<S> {
         if pks.len() > self.piop_params.keyset_part_size {
             return Err(Error::InvalidData);
         }
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0)
     }
 
@@ -367,7 +375,7 @@ impl<S: RingSuite> RingSetup<S> {
         if pks.len() > self.piop_params.keyset_part_size {
             return Err(Error::InvalidData);
         }
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1)
     }
 
@@ -544,7 +552,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
             debug_assert_eq!(segment.len(), range.len());
             Ok(segment.clone())
         };
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(usize::MAX)?;
         self.partial.append(&pks, lookup);
         Ok(())
     }
@@ -589,18 +597,25 @@ impl<S: RingSuite> BatchVerifier<S> {
     ///
     /// Performs the cheap per-proof work (hashing, transcript setup) without
     /// the expensive pairing and MSM checks.
+    ///
+    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
+    /// converted (e.g. identity point on SW-form suites).
     pub fn prepare(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) -> BatchItem<S> {
+    ) -> Result<BatchItem<S>, Error> {
         let pedersen = pedersen::BatchVerifier::prepare(ios, ad, &proof.pedersen_proof);
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let key_commitment = proof
+            .pedersen_proof
+            .key_commitment()
+            .into_te()
+            .ok_or(Error::InvalidData)?;
         let ring = self
             .ring_batch
             .prepare(proof.ring_proof.clone(), key_commitment);
-        BatchItem { ring, pedersen }
+        Ok(BatchItem { ring, pedersen })
     }
 
     /// Push a previously prepared item into the batch.
@@ -610,9 +625,18 @@ impl<S: RingSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
-        let prepared = self.prepare(ios, ad, proof);
+    ///
+    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
+    /// converted (e.g. identity point on SW-form suites).
+    pub fn push(
+        &mut self,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<(), Error> {
+        let prepared = self.prepare(ios, ad, proof)?;
         self.push_prepared(prepared);
+        Ok(())
     }
 
     /// Verify all collected proofs in a single batch.
@@ -957,7 +981,7 @@ pub(crate) mod testing {
         let start = std::time::Instant::now();
         common::timed("Proofs push", || {
             for item in batch.iter() {
-                batch_verifier.push(item.io, &item.ad, &item.proof);
+                batch_verifier.push(item.io, &item.ad, &item.proof).unwrap();
             }
         });
         common::timed("Unprepared batch verification", || batch_verifier.verify());
@@ -972,7 +996,11 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| batch_verifier.prepare(item.io, &item.ad, &item.proof))
+                .map(|item| {
+                    batch_verifier
+                        .prepare(item.io, &item.ad, &item.proof)
+                        .unwrap()
+                })
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
