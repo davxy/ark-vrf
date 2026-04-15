@@ -306,7 +306,12 @@ impl<S: Suite> Secret<S> {
             if !scalar.is_zero() {
                 break scalar;
             }
-            cnt += 1;
+            // Reaching 256 consecutive zero scalars is unreachable under
+            // standard assumptions on the transcript hash (probability
+            // ≈ 2^(-65000)); hitting it implies a broken primitive.
+            cnt = cnt
+                .checked_add(1)
+                .expect("unreachable: transcript hash produced 256 consecutive zero scalars");
         };
         Self::from_scalar(scalar)
     }
