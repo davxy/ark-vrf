@@ -21,7 +21,7 @@ use sha2::Sha512;
 /// sufficient to prevent ambiguous parses.
 pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript from the suite identifier.
-    fn new(id: crate::suites::SuiteId) -> Self;
+    fn new(id: &[u8]) -> Self;
 
     /// Absorb raw bytes into the transcript.
     ///
@@ -173,9 +173,9 @@ impl<H: digest::ExtendableOutput + Default + Clone> Transcript for XofTranscript
 where
     H::Reader: Clone,
 {
-    fn new(id: crate::suites::SuiteId) -> Self {
+    fn new(id: &[u8]) -> Self {
         let mut h = H::default();
-        h.update(&id.to_bytes());
+        h.update(id);
         Self {
             state: XofState::Absorbing(h),
         }
@@ -298,10 +298,9 @@ mod tests {
         ($T:ty, $mod:ident) => {
             mod $mod {
                 use super::super::*;
-                use crate::suites::SuiteId;
 
-                const ID_A: SuiteId = SuiteId::new(1, 2, 3, 4);
-                const ID_B: SuiteId = SuiteId::new(5, 6, 7, 8);
+                const ID_A: &[u8] = b"foo";
+                const ID_B: &[u8] = b"bar";
 
                 #[test]
                 fn deterministic_squeeze() {

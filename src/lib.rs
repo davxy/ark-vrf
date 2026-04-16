@@ -155,9 +155,7 @@ impl From<ark_serialize::SerializationError> for Error {
 /// can be overridden to implement custom VRF variants.
 pub trait Suite: Copy {
     /// Suite identifier.
-    ///
-    /// Constructed via [`suites::SuiteId::new`] from (curve, hash, h2c, version) bytes.
-    const SUITE_ID: suites::SuiteId;
+    const SUITE_ID: &'static [u8];
 
     /// Curve point in affine representation.
     ///
@@ -509,7 +507,7 @@ mod tests {
         let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "7a3623079db0d1dbd9e9f02fc02365c875a6ec5c93fb9d915a79c38cdcc42e80";
+        let expected = "b2b8e59070a8ddc277c0b7e07e704dd1a08e48faeaf65ed5681f9b376831b5e4";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

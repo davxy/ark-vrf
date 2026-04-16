@@ -43,7 +43,6 @@
 //! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
 //!   by Section 5.4.1.1 of RFC-9381.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -55,7 +54,7 @@ type ThisSuite = BabyJubJubSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BABY_JUBJUB, hash::SHA512, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"BabyJubJub-SHA512-TAI";
     type Affine = ark_ed_on_bn254::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
@@ -63,9 +62,9 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField =
-            MontFp!("3852734544355356063317634488002685979020112825255449618227510301364760062073");
-        const Y: BaseField = MontFp!(
-            "17088278391043382496921486048141624342867409190109151642986824185616238928969"
+            MontFp!("14339741583817767181711578911854042636584133679024356089447945268132607921331");
+        const Y: BaseField =
+            MontFp!("2966169119978826668007902333214441947780974804460011743087612161599180841420"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -77,19 +76,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "11664680487321917236097530868803259071263990200760487324140232667602003433219"
+            "10427661720643337457907999739953505779897454990866891389392002958129993271396"
         );
-        const Y: BaseField =
-            MontFp!("113063537817015047906997614658008886559348806974485740897143643717788516825");
+        const Y: BaseField = MontFp!(
+            "15053459503402739629926900659304235250512731901156328650559480646710790788440"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "15741539849944168260188760383525647014748560733999604648188402080866721960158"
+            "13020053437181995440894661779843071409757408622052009632275554630902465152753"
         );
-        const Y: BaseField = MontFp!(
-            "15704905423721781544793327059143155781918240455118260763073886055868852392633"
+        const Y: BaseField =
+            MontFp!("8276021409339021189863786214146197126715718562738983645371118459542046912199"
         );
         AffinePoint::new_unchecked(X, Y)
     };

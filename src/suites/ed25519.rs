@@ -38,7 +38,6 @@
 //! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
 //!    by Section 5.4.1.1 of RFC-9381.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -49,7 +48,7 @@ pub struct Ed25519Sha512Tai;
 type ThisSuite = Ed25519Sha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::ED25519, hash::SHA512, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"Ed25519-SHA512-TAI";
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }
@@ -57,10 +56,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "42736010832028619070350171194191223268611377066786943783445021265032342342218"
+            "35814186295712067471284724515157107779336896183331699074972454971290998099813"
         );
         const Y: BaseField =
-            MontFp!("8628250443818480863934028036369439777606731830107058507107120454741634818992");
+            MontFp!("9152064941952059779591743327572812171923298862713874211431660723632678360374");
         AffinePoint::new_unchecked(X, Y)
     };
 }

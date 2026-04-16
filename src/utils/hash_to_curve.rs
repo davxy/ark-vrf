@@ -67,7 +67,7 @@ where
     use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
 
     // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
-    let dst: Vec<_> = [b"ECVRF_".as_slice(), h2c_suite_id, &S::SUITE_ID.to_bytes()].concat();
+    let dst: Vec<_> = [b"ECVRF_".as_slice(), h2c_suite_id, S::SUITE_ID].concat();
 
     MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,

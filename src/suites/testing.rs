@@ -1,6 +1,5 @@
 //! Suite for testing
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -8,7 +7,7 @@ use ark_ff::MontFp;
 pub struct TestSuite;
 
 impl Suite for TestSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::TESTING, hash::SHA256, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"Testing";
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
@@ -16,10 +15,11 @@ impl Suite for TestSuite {
 impl PedersenSuite for TestSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "28989852392235333684343789118686874414471151767173635463899201194238255365299"
+            "18833680001824674662201026324029976137367497643975810583767055687048337151575"
         );
-        const Y: BaseField =
-            MontFp!("2426300771129523663036212467424815004619017977680480195630888849825854203381");
+        const Y: BaseField = MontFp!(
+            "34053275651372601053506300210486741809849153616463022435695691168212505481116"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 }
