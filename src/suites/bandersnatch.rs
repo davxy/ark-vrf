@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"Bandersnatch_SHA-512_ELL2" for Twisted Edwards form.
+//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2" for Twisted Edwards form.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Twisted Edwards form, with finite field and curve parameters as specified in
@@ -42,10 +42,10 @@
 //!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
 //!
 //! * The `ECVRF_encode_to_curve` function uses *Elligator2* method described in
-//!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380) and is
-//!   described in section 5.4.1.2 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_ELL2_RO_"`
-//!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
+//!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380).
+//!   Field element expansion uses `expand_message_xmd` (RFC 9380 §5.3.1) with
+//!   SHA-512 as the fixed-output hash.
+//!   The domain separation tag is the suite identifier `SUITE_ID`.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
@@ -63,19 +63,17 @@ impl Suite for ThisSuite {
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
-        // "XMD" for expand_message_xmd (Section 5.3.1).
-        // "RO" for random oracle (Section 3 - hash_to_curve method)
-        let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
-        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data, h2c_suite_id)
+        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("14935657959727434559768356727232315160608337623966453528900235725067554360258");
+        const X: BaseField = MontFp!(
+            "30462666081522477424376950498454792365429488683313923236315289867589423479198"
+        );
         const Y: BaseField = MontFp!(
-            "28674805604490213534501666625669469196027712471925764973107353118380416627740"
+            "13339490233552090450368958280447757142376573534334112444848602710138712444250"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -87,20 +85,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "14963214643119874572386499957394728206596543460449019276604105397189484263280"
+            "34922354134444577625347337499096065687894095372218715356038887009728053109886"
         );
         const Y: BaseField = MontFp!(
-            "17296647990661555087889137480781840477115313932283352412293423694471353621366"
+            "18725394164400530287621860556780810077630072550955952203186626954973958236887"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "13531039750055408164156517843435879815819675443263232973825100543741224229143"
+            "12382817852396365967378279808670832069091228095708181832729182534123779727865"
         );
         const Y: BaseField = MontFp!(
-            "46121997951695178433355385118435481501576576916185564915263044456634663250280"
+            "29548963173537741407170751027566272851901396858714816121479332864436993558952"
         );
         AffinePoint::new_unchecked(X, Y)
     };

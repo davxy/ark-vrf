@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"Baby-JubJub_SHA-512_TAI".
+//! * `SUITE_ID` = b"BabyJubJub-SHA512-TAI".
 //!
 //! - The EC group **G** is the prime subgroup of the Baby-JubJub elliptic curve
 //!   as defined by <https://github.com/barryWhiteHat/baby_jubjub>.
@@ -47,9 +47,9 @@ use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct BabyJubJubSha512Ell2;
+pub struct BabyJubJubSha512Tai;
 
-type ThisSuite = BabyJubJubSha512Ell2;
+type ThisSuite = BabyJubJubSha512Tai;
 
 suite_types!(ThisSuite);
 

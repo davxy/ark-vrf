@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"JubJub_SHA-512_TAI".
+//! * `SUITE_ID` = b"JubJub-SHA512-TAI".
 //!
 //! - The EC group **G** is the prime subgroup of the JubJub elliptic curve
 //!   as defined by <https://github.com/zkcrypto/jubjub>.
@@ -47,9 +47,9 @@ use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct JubJubSha512Ell2;
+pub struct JubJubSha512Tai;
 
-type ThisSuite = JubJubSha512Ell2;
+type ThisSuite = JubJubSha512Tai;
 
 suite_types!(ThisSuite);
 

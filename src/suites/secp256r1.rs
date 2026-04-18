@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-P256-SHA256-TAI):
 //!
-//! *  `suite_string` = `b"Secp256r1_SHA-256_TAI"`.
+//! *  `SUITE_ID` = `b"Secp256r1-SHA256-TAI"`.
 //!
 //! *  The EC group G is the NIST P-256 elliptic curve, with the finite
 //!    field and curve parameters as specified in Section 3.2.1.3 of

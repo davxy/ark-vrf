@@ -3,11 +3,11 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{
-    AffinePoint, Input, Secret, VrfIo,
     ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
+    AffinePoint, Input, Secret, VrfIo,
 };
-use bench_utils::BenchInfo;
-use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use bench_utils::SuiteExt;
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
@@ -44,12 +44,12 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     }
 }
 
-fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn ring_benches<S: RingSuite>(c: &mut Criterion) {
     for &n in &RING_SIZES {
         let setup = make_ring_setup::<S>(n);
         let id = BenchmarkId::from_parameter(n);
 
-        c.benchmark_group(format!("{}/ring_params_setup", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_params_setup", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -61,19 +61,19 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 });
             });
 
-        c.benchmark_group(format!("{}/ring_context_setup", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_context_setup", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| ring::RingContext::<S>::new(black_box(n)));
             });
 
-        c.benchmark_group(format!("{}/ring_prover_key", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_prover_key", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| setup.ring_setup.prover_key(black_box(&setup.ring)).unwrap());
             });
 
-        c.benchmark_group(format!("{}/ring_verifier_key", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_verifier_key", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -88,7 +88,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         let prover_key = setup.ring_setup.prover_key(&setup.ring).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, setup.prover_idx);
 
-        c.benchmark_group(format!("{}/ring_prove", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_prove", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| setup.secret.prove(setup.io, b"ad", black_box(&prover)));
@@ -99,7 +99,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         let commitment = verifier_key.commitment();
         let verifier = ring_ctx.ring_verifier(verifier_key.clone());
 
-        c.benchmark_group(format!("{}/ring_verify", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_verify", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -113,13 +113,13 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 });
             });
 
-        c.benchmark_group(format!("{}/ring_verifier_from_key", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_verifier_from_key", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| ring_ctx.ring_verifier(black_box(verifier_key.clone())));
             });
 
-        c.benchmark_group(format!("{}/ring_vk_from_commitment", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_vk_from_commitment", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -129,7 +129,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 });
             });
 
-        c.benchmark_group(format!("{}/ring_vk_builder_create", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_vk_builder_create", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| setup.ring_setup.verifier_key_builder());
@@ -137,7 +137,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
 
         let (mut builder, builder_pcs_params) = setup.ring_setup.verifier_key_builder();
 
-        c.benchmark_group(format!("{}/ring_vk_builder_append", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_vk_builder_append", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -150,7 +150,7 @@ fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
 
         builder.append(&setup.ring, &builder_pcs_params).unwrap();
 
-        c.benchmark_group(format!("{}/ring_vk_builder_finalize", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/ring_vk_builder_finalize", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| black_box(builder.clone()).finalize());
@@ -166,7 +166,7 @@ struct BatchItem<S: RingSuite> {
     proof: ring::Proof<S>,
 }
 
-fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn batch_benches<S: RingSuite>(c: &mut Criterion) {
     let setup = make_ring_setup::<S>(1023);
 
     let ring_ctx = setup.ring_setup.ring_context();
@@ -175,7 +175,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
 
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
-    println!("Preparing {max_batch_size} {} proofs...", S::SUITE_NAME);
+    println!("Preparing {max_batch_size} {} proofs...", S::NAME);
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let batch_items: Vec<BatchItem<S>> = (0..max_batch_size)
         .into_par_iter()
@@ -197,7 +197,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     let verifier_key = setup.ring_setup.verifier_key(&setup.ring).unwrap();
 
     // batch_verifier_new: cost is independent of batch size, bench once.
-    c.benchmark_group(format!("{}/batch_verifier_new", S::SUITE_NAME))
+    c.benchmark_group(format!("{}/batch_verifier_new", S::NAME))
         .sample_size(10)
         .bench_function("batch_verifier_new", |b| {
             b.iter(|| {
@@ -216,7 +216,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
         let id = BenchmarkId::from_parameter(batch_size);
 
         // batch_push: sequential push of batch_size items.
-        c.benchmark_group(format!("{}/batch_push", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/batch_push", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter_batched(
@@ -235,7 +235,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             });
 
         // batch_prepare_seq: sequential prepare of batch_size items.
-        c.benchmark_group(format!("{}/batch_prepare_seq", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/batch_prepare_seq", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -251,7 +251,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             });
 
         // batch_prepare_par: parallel prepare of batch_size items.
-        c.benchmark_group(format!("{}/batch_prepare_par", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/batch_prepare_par", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter(|| {
@@ -267,7 +267,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
             });
 
         // batch_push_prepared: push_prepared of pre-prepared items.
-        c.benchmark_group(format!("{}/batch_push_prepared", S::SUITE_NAME))
+        c.benchmark_group(format!("{}/batch_push_prepared", S::NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
                 b.iter_batched(
@@ -303,7 +303,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
                 bv.push(item.io, &item.ad, &item.proof).unwrap();
             }
 
-            c.benchmark_group(format!("{}/batch_verify", S::SUITE_NAME))
+            c.benchmark_group(format!("{}/batch_verify", S::NAME))
                 .sample_size(10)
                 .bench_function(id, |b| {
                     b.iter(|| bv.verify().unwrap());
@@ -312,7 +312,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     }
 }
 
-fn bench_ring_suite<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn bench_ring_suite<S: RingSuite>(c: &mut Criterion) {
     ring_benches::<S>(c);
     batch_benches::<S>(c);
 }

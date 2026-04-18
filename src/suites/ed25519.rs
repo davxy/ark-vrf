@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-EDWARDS25519-SHA512-TAI):
 //!
-//! *  `suite_string` = `b"Ed25519_SHA-512_TAI"`.
+//! *  `SUITE_ID` = `b"Ed25519-SHA512-TAI"`.
 //!
 //! *  The EC group G is the edwards25519 elliptic curve, with the finite
 //!    field and curve parameters as defined in Table 1 in Section 5.1 of

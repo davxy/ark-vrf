@@ -507,7 +507,7 @@ mod tests {
         let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "b2b8e59070a8ddc277c0b7e07e704dd1a08e48faeaf65ed5681f9b376831b5e4";
+        let expected = "a3988236b39cac5f3c91bd4ce12599dc0269474b4997b72e119643d7d47de1c6";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

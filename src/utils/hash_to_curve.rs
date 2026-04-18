@@ -56,7 +56,9 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
 ///
 /// Both [`hash_to_curve_ell2_xmd`] and [`hash_to_curve_ell2_xof`] delegate to this,
 /// differing only in the `H2F` type parameter (`DefaultFieldHasher` vs `XofFieldHasher`).
-fn hash_to_curve_ell2<S: Suite, H2F>(data: &[u8], h2c_suite_id: &[u8]) -> Option<AffinePoint<S>>
+///
+/// Uses `S::SUITE_ID` as the Domain Separation Tag for the hash-to-curve operation.
+fn hash_to_curve_ell2<S: Suite, H2F>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H2F: HashToField<BaseField<S>>,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -66,14 +68,11 @@ where
 {
     use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
 
-    // Domain Separation Tag := "ECVRF_" || h2c_suite_ID_string || suite_string
-    let dst: Vec<_> = [b"ECVRF_".as_slice(), h2c_suite_id, S::SUITE_ID].concat();
-
     MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
         H2F,
         Elligator2Map<CurveConfig<S>>,
-    >::new(&dst)
+    >::new(S::SUITE_ID)
     .and_then(|hasher| hasher.hash(data))
     .ok()
 }
@@ -81,12 +80,8 @@ where
 /// Elligator2 hash-to-curve using `expand_message_xmd` (RFC 9380 section 5.3.1).
 ///
 /// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
-/// Any salting of `data` must be applied by the caller. The `h2c_suite_id`
-/// is the hash-to-curve suite identifier as defined in RFC 9380.
-pub fn hash_to_curve_ell2_xmd<S: Suite, H>(
-    data: &[u8],
-    h2c_suite_id: &[u8],
-) -> Option<AffinePoint<S>>
+/// Any salting of `data` must be applied by the caller.
+pub fn hash_to_curve_ell2_xmd<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::FixedOutputReset + Default + Clone,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -95,7 +90,7 @@ where
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
     use ark_ff::field_hashers::DefaultFieldHasher;
-    hash_to_curve_ell2::<S, DefaultFieldHasher<H, SECURITY_PARAMETER>>(data, h2c_suite_id)
+    hash_to_curve_ell2::<S, DefaultFieldHasher<H, SECURITY_PARAMETER>>(data)
 }
 
 /// XOF-based field hasher implementing `expand_message_xof` from RFC 9380 section 5.3.2.
@@ -154,12 +149,8 @@ impl<F: ark_ff::Field, H: digest::ExtendableOutput + Default + Clone, const SEC_
 ///
 /// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
 /// This is the natural expansion mode for XOF hash functions like BLAKE3 and SHAKE128.
-/// Any salting of `data` must be applied by the caller. The `h2c_suite_id`
-/// is the hash-to-curve suite identifier as defined in RFC 9380.
-pub fn hash_to_curve_ell2_xof<S: Suite, H>(
-    data: &[u8],
-    h2c_suite_id: &[u8],
-) -> Option<AffinePoint<S>>
+/// Any salting of `data` must be applied by the caller.
+pub fn hash_to_curve_ell2_xof<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::ExtendableOutput + Default + Clone,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -167,7 +158,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    hash_to_curve_ell2::<S, XofFieldHasher<H, SECURITY_PARAMETER>>(data, h2c_suite_id)
+    hash_to_curve_ell2::<S, XofFieldHasher<H, SECURITY_PARAMETER>>(data)
 }
 
 #[cfg(test)]

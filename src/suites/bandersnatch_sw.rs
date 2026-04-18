@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"Bandersnatch_SW_SHA-512_TAI" for Short Weierstrass form.
+//! * `SUITE_ID` = b"Bandersnatch-SW-SHA512-TAI" for Short Weierstrass form.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Short Weierstrass form, with finite field and curve parameters as specified in
@@ -43,8 +43,7 @@
 //!
 //! * The `ECVRF_encode_to_curve` function uses *Try and Increment*, inspired
 //!   by section 5.4.1.1 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_TAI_RO_"`
-//!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
+//!   adapted to use the suite's pluggable transcript seeded with `SUITE_ID`.
 
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;

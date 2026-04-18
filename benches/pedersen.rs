@@ -3,23 +3,23 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Secret, pedersen::PedersenSuite};
-use bench_utils::BenchInfo;
+use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
-fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    let name = format!("{}/pedersen_prove", S::SUITE_NAME);
+    let name = format!("{}/pedersen_prove", S::NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));
     });
 }
 
-fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_verify<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -27,7 +27,7 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     let io = secret.vrf_io(input);
     let (proof, _blinding) = secret.prove(io, b"ad");
 
-    let name = format!("{}/pedersen_verify", S::SUITE_NAME);
+    let name = format!("{}/pedersen_verify", S::NAME);
     c.bench_function(&name, |b| {
         b.iter(|| ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap());
     });
@@ -35,7 +35,7 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
-fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -52,8 +52,8 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
         })
         .collect();
 
-    let prepare_group = format!("{}/pedersen_batch_prepare", S::SUITE_NAME);
-    let verify_group = format!("{}/pedersen_batch_verify", S::SUITE_NAME);
+    let prepare_group = format!("{}/pedersen_batch_prepare", S::NAME);
+    let verify_group = format!("{}/pedersen_batch_verify", S::NAME);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);
@@ -84,7 +84,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     }
 }
 
-fn bench_pedersen_suite<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_suite<S: PedersenSuite>(c: &mut Criterion) {
     bench_pedersen_prove::<S>(c);
     bench_pedersen_verify::<S>(c);
     bench_pedersen_batch::<S>(c);

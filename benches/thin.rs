@@ -2,24 +2,25 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret};
-use bench_utils::BenchInfo;
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use ark_vrf::{AffinePoint, Input, Secret, Suite};
+use bench_utils::SuiteExt;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-fn bench_thin_prove<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::Prover;
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    let name = format!("{}/thin_prove", S::SUITE_NAME);
+    // AI: Can this name be a constant?
+    let name = format!("{}/thin_prove", S::NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));
     });
 }
 
-fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -28,7 +29,7 @@ fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
     let io = secret.vrf_io(input);
     let proof = secret.prove(io, b"ad");
 
-    let name = format!("{}/thin_verify", S::SUITE_NAME);
+    let name = format!("{}/thin_verify", S::NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
             public
@@ -40,7 +41,7 @@ fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
-fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -58,8 +59,8 @@ fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
         })
         .collect();
 
-    let prepare_group = format!("{}/thin_batch_prepare", S::SUITE_NAME);
-    let verify_group = format!("{}/thin_batch_verify", S::SUITE_NAME);
+    let prepare_group = format!("{}/thin_batch_prepare", S::NAME);
+    let verify_group = format!("{}/thin_batch_verify", S::NAME);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);
@@ -90,7 +91,7 @@ fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
     }
 }
 
-fn bench_thin_suite<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_suite<S: Suite>(c: &mut Criterion) {
     bench_thin_prove::<S>(c);
     bench_thin_verify::<S>(c);
     bench_thin_batch::<S>(c);

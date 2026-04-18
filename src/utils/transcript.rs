@@ -246,7 +246,7 @@ impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
 #[derive(Clone)]
 pub struct DigestXofReader<H: Digest> {
     seed: GenericArray<u8, H::OutputSize>,
-    counter: u32,
+    counter: u64,
     buffer: GenericArray<u8, H::OutputSize>,
     buf_offset: usize,
 }
