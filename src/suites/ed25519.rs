@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-EDWARDS25519-SHA512-TAI):
 //!
-//! *  `suite_string` = `b"Ed25519_SHA-512_TAI"`.
+//! *  `SUITE_ID` = `b"Ed25519-SHA512-TAI-v1"`.
 //!
 //! *  The EC group G is the edwards25519 elliptic curve, with the finite
 //!    field and curve parameters as defined in Table 1 in Section 5.1 of
@@ -38,7 +38,6 @@
 //! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
 //!    by Section 5.4.1.1 of RFC-9381.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -49,7 +48,7 @@ pub struct Ed25519Sha512Tai;
 type ThisSuite = Ed25519Sha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::ED25519, hash::SHA512, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"Ed25519-SHA512-TAI-v1";
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }
@@ -57,10 +56,11 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "42736010832028619070350171194191223268611377066786943783445021265032342342218"
+            "45003173884697328536089278691112838614164406922820087464913813433380838325453"
         );
-        const Y: BaseField =
-            MontFp!("8628250443818480863934028036369439777606731830107058507107120454741634818992");
+        const Y: BaseField = MontFp!(
+            "31256014272390301975555524011230972931324093235775711248505761870355310252869"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 }

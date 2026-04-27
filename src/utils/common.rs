@@ -121,20 +121,34 @@ where
 }
 
 /// Internal domain separation tags for protocol hashing.
+///
+/// Each variant is absorbed as a single byte after `SUITE_ID` to make every
+/// distinct hashing context produce independent transcript states. Values are
+/// grouped by purpose so future additions can slot into the relevant range:
 #[repr(u8)]
 pub(crate) enum DomSep {
+    /// Tiny VRF scheme tag.
     TinyVrf = 0x00,
+    /// Thin VRF scheme tag.
     ThinVrf = 0x01,
+    /// Pedersen VRF scheme tag.
     PedersenVrf = 0x02,
+    /// Nonce expansion.
     NonceExpand = 0x10,
+    /// Deterministic nonce derivation from the expanded secret and transcript.
     Nonce = 0x11,
+    /// Pedersen blinding scalar derivation.
     PedersenBlinding = 0x12,
+    /// Point-to-hash output derivation.
     PointToHash = 0x20,
+    /// Per-I/O delinearization scalar stream for multi-input proofs.
     Delinearize = 0x30,
+    /// Schnorr challenge scalar derivation.
     Challenge = 0x40,
-    ThinBatch = 0x50,
-    PedersenBatch = 0x51,
-    HashToCurveTai = 0xFE,
+    /// Batch verification randomization scalar.
+    BatchVerify = 0x50,
+    /// Hash-to-curve operation.
+    HashToCurve = 0x60,
 }
 
 /// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
@@ -151,9 +165,9 @@ fn vrf_transcript_base<S: Suite>(
     let mut t = S::Transcript::new(S::SUITE_ID);
     t.absorb_raw(&[scheme as u8]);
     absorb_ios::<S>(&mut t, ios);
-    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
-    t.absorb_raw(&ad_len.to_le_bytes());
-    t.absorb_raw(ad.as_ref());
+    let ad = ad.as_ref();
+    t.absorb_raw(&(ad.len() as u64).to_le_bytes());
+    t.absorb_raw(ad);
     let scalars = DelinearizeScalars::new(t.clone());
     (t, scalars, n)
 }
@@ -356,12 +370,12 @@ impl<S: Suite> DelinearizeScalars<S> {
 
 /// Absorb I/O pairs into a transcript.
 ///
-/// The count is absorbed first as a little-endian `u32` so that the
+/// The count is absorbed first as a little-endian `u64` so that the
 /// framing is unambiguous even though each `VrfIo` already has a
 /// fixed-size serialization. This is cheap and avoids any implicit
 /// dependency on the serialization being fixed-length.
 fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item = VrfIo<S>>) {
-    let n = u32::try_from(ios.len()).expect("too many ios");
+    let n = ios.len() as u64;
     t.absorb_raw(&n.to_le_bytes());
     for io in ios {
         t.absorb_serialize(&io);

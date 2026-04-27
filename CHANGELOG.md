@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1] - Unreleased
+## [0.5.0] - Unreleased
 
 ### Added
 
@@ -22,6 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `RingProofParams` renamed to `RingSetup`.
+- `Suite::SUITE_ID` is now a self-describing byte string (e.g.
+  `b"Bandersnatch-SHA512-ELL2-v1"`) used directly as the transcript seed and
+  hash-to-curve DST prefix, replacing the structured 4-byte
+  `SuiteId { version, curve, hash, h2c }`. `Transcript::new` now takes
+  `&[u8]`. Breaking change for custom `Suite` implementations.
+- Hash-to-curve DST unified to `SUITE_ID || DomSep::HashToCurve` for both
+  Try-And-Increment and Elligator2 paths, replacing the prior
+  `"ECVRF_" || h2c_suite_id || suite_bytes` form. `hash_to_curve_ell2_xmd`
+  and `hash_to_curve_ell2_xof` no longer take a separate `h2c_suite_id`
+  argument. `DomSep::HashToCurveTai` is renamed to `HashToCurve` and shared
+  across both paths; `ThinBatch`/`PedersenBatch` collapse into a single
+  `BatchVerify`.
+- `DigestXof` counter widened from `u32` to `u64`.
+- Per-suite `BLINDING_BASE`, `ACCUMULATOR_BASE`, `PADDING` points and all
+  test vectors regenerated under the new DSTs; previous values do not
+  verify.
 
 ### Removed
 
@@ -29,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RingContext::new`.
 - `ring::BatchVerifier::prepare` and `pedersen::BatchVerifier::prepare`,
   superseded by `BatchItem::new` constructors.
+- `SuiteId` struct and the `curve`/`hash`/`h2c` constant modules under
+  `suites`, superseded by the byte-string `SUITE_ID`.
 
 ## [0.4.0] - 2026-04-02
 

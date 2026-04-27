@@ -320,7 +320,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
         // response scalars s and sb need to be included separately.
         let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(&[DomSep::PedersenBatch as u8]);
+        t.absorb_raw(&[DomSep::BatchVerify as u8]);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);

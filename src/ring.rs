@@ -219,7 +219,11 @@ impl<S: RingSuite> Verifier<S> for Public<S> {
     ) -> Result<(), Error> {
         use pedersen::Verifier as PedersenVerifier;
         <Self as PedersenVerifier<S>>::verify(ios, ad, &proof.pedersen_proof)?;
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let key_commitment = proof
+            .pedersen_proof
+            .key_commitment()
+            .into_te()
+            .ok_or(Error::InvalidData)?;
         if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
@@ -246,9 +250,13 @@ impl<S: RingSuite> RingContext<S> {
         let domain_size = piop_domain_size::<S>(ring_size);
         let piop_params = PiopParams::<S>::setup(
             ring_proof::Domain::new(domain_size, true),
-            S::BLINDING_BASE.into_te(),
-            S::ACCUMULATOR_BASE.into_te(),
-            S::PADDING.into_te(),
+            S::BLINDING_BASE
+                .into_te()
+                .expect("BLINDING_BASE must not be identity"),
+            S::ACCUMULATOR_BASE
+                .into_te()
+                .expect("ACCUMULATOR_BASE must not be identity"),
+            S::PADDING.into_te().expect("PADDING must not be identity"),
         );
         Self { piop_params }
     }
@@ -275,7 +283,7 @@ impl<S: RingSuite> RingContext<S> {
             prover_key,
             self.piop_params,
             key_index,
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
 
@@ -284,7 +292,7 @@ impl<S: RingSuite> RingContext<S> {
         RingVerifier::<S>::init(
             verifier_key,
             self.piop_params,
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
 }
@@ -358,7 +366,7 @@ impl<S: RingSuite> RingSetup<S> {
         if pks.len() > self.piop_params.keyset_part_size {
             return Err(Error::InvalidData);
         }
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0)
     }
 
@@ -369,7 +377,7 @@ impl<S: RingSuite> RingSetup<S> {
         if pks.len() > self.piop_params.keyset_part_size {
             return Err(Error::InvalidData);
         }
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1)
     }
 
@@ -546,7 +554,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
             debug_assert_eq!(segment.len(), range.len());
             Ok(segment.clone())
         };
-        let pks = TEMapping::to_te_slice(pks);
+        let pks = TEMapping::to_te_slice(pks).ok_or(usize::MAX)?;
         self.partial.append(&pks, lookup);
         Ok(())
     }
@@ -572,16 +580,23 @@ impl<S: RingSuite> BatchItem<S> {
     /// Performs the cheap per-proof work (hashing, transcript setup) without
     /// the expensive pairing and MSM checks. `verifier` must be the ring
     /// verifier the proof was produced against.
+    ///
+    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
+    /// converted (e.g. identity point on SW-form suites).
     pub fn new(
         verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let pedersen = pedersen::BatchItem::new(ios, ad, &proof.pedersen_proof);
-        let key_commitment = proof.pedersen_proof.key_commitment().into_te();
+        let key_commitment = proof
+            .pedersen_proof
+            .key_commitment()
+            .into_te()
+            .ok_or(Error::InvalidData)?;
         let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
-        Self { ring, pedersen }
+        Ok(Self { ring, pedersen })
     }
 }
 
@@ -627,8 +642,10 @@ impl<S: RingSuite> BatchVerifier<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-    ) {
-        self.push_prepared(BatchItem::new(verifier, ios, ad, proof));
+    ) -> Result<(), Error> {
+        let item = BatchItem::new(verifier, ios, ad, proof)?;
+        self.push_prepared(item);
+        Ok(())
     }
 
     /// Verify all collected proofs in a single batch.
@@ -984,7 +1001,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| super::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
+                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {

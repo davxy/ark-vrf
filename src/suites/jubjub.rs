@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"JubJub_SHA-512_TAI".
+//! * `SUITE_ID` = b"JubJub-SHA512-TAI-v1".
 //!
 //! - The EC group **G** is the prime subgroup of the JubJub elliptic curve
 //!   as defined by <https://github.com/zkcrypto/jubjub>.
@@ -43,29 +43,29 @@
 //! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
 //!   by Section 5.4.1.1 of RFC-9381.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct JubJubSha512Ell2;
+pub struct JubJubSha512Tai;
 
-type ThisSuite = JubJubSha512Ell2;
+type ThisSuite = JubJubSha512Tai;
 
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::JUBJUB, hash::SHA512, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"JubJub-SHA512-TAI-v1";
     type Affine = ark_ed_on_bls12_381::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("2671563590660729217877867502637159080924340550540298316336804174287037983535");
+        const X: BaseField = MontFp!(
+            "38206460563694846719174258613922853630278999941532690543235578292520143148532"
+        );
         const Y: BaseField = MontFp!(
-            "27990482544029132573047185251102012550987670910599975985529822463373166358391"
+            "34254498978062207918041301829525626783549813531091321004550549786528984401675"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -77,20 +77,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "20522558845338057984236756677352955204440764593388078806320820759828434217414"
+            "48142684311216766702182564801462043940571084233680216669499475549492432046964"
         );
         const Y: BaseField = MontFp!(
-            "30640182283898004439951532793265155461990384517852369791254931716384123542036"
+            "34380560660182334518990118617091967209302636551264477863958902286043397647879"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "38956341538508863744993405884988306267554601876436576952130150310707616181394"
+            "17348704025397475127937572481155408456556065464328870407269802701696798733683"
         );
         const Y: BaseField = MontFp!(
-            "20837124983713908503950353873416686644548370407048794182669789602967149453355"
+            "24318278422173803457621119807961883607097742387673491974779969503617097905596"
         );
         AffinePoint::new_unchecked(X, Y)
     };

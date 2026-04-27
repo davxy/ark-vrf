@@ -2,11 +2,11 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret};
-use bench_utils::BenchInfo;
+use ark_vrf::{AffinePoint, Input, Secret, Suite};
+use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
-fn bench_thin_prove<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::Prover;
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -19,7 +19,7 @@ fn bench_thin_prove<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -40,7 +40,7 @@ fn bench_thin_verify<S: BenchInfo>(c: &mut Criterion) {
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
-fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -90,7 +90,7 @@ fn bench_thin_batch<S: BenchInfo>(c: &mut Criterion) {
     }
 }
 
-fn bench_thin_suite<S: BenchInfo>(c: &mut Criterion) {
+fn bench_thin_suite<S: Suite>(c: &mut Criterion) {
     bench_thin_prove::<S>(c);
     bench_thin_verify::<S>(c);
     bench_thin_batch::<S>(c);

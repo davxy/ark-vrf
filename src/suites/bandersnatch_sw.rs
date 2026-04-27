@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"Bandersnatch_SW_SHA-512_TAI" for Short Weierstrass form.
+//! * `SUITE_ID` = b"Bandersnatch-SW-SHA512-TAI-v1" for Short Weierstrass form.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Short Weierstrass form, with finite field and curve parameters as specified in
@@ -43,10 +43,8 @@
 //!
 //! * The `ECVRF_encode_to_curve` function uses *Try and Increment*, inspired
 //!   by section 5.4.1.1 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_TAI_RO_"`
-//!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
+//!   adapted to use the suite's pluggable transcript seeded with `SUITE_ID`.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;
 
@@ -56,7 +54,7 @@ pub struct BandersnatchSha512Tai;
 type ThisSuite = BandersnatchSha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH_SW, hash::SHA512, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"Bandersnatch-SW-SHA512-TAI-v1";
     type Affine = ark_ed_on_bls12_381_bandersnatch::SWAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
@@ -64,10 +62,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "48417510423101441118061444208906839372921043480482028226883257289063255545370"
+            "28115362618644671219696075022370511395136332234538034358311199318506963235315"
         );
         const Y: BaseField =
-            MontFp!("605975869554501667057064844799976277818323013043881651153113184398732331110");
+            MontFp!("3900851469868158154936962463930962496000252801946757953905982128670530185313");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -80,21 +78,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "25211608582516829155149684046519409765416282531700259721714491517260527956556"
+            "13189182432637108534251278524663360416811744717379968387043749958796254980045"
         );
         const Y: BaseField = MontFp!(
-            "32863183837707411136510171551403506326134988374168040624784347522530012895695"
+            "14483286006782706188671626508232161325054303360192563232232823772738911894793"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "46209466588428303799925407479102585354714183247629074296053567086083553831253"
+            "20496180070424734470560955314776462366297546779079302509428101119888111900885"
         );
-        const Y: BaseField = MontFp!(
-            "46784016388819574388957654398028401259803727732223934061065126175128758725649"
-        );
+        const Y: BaseField =
+            MontFp!("8839106592405352067483360946162273985142890146060814748321063063028225641813");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -154,5 +151,35 @@ mod tests {
         };
         roundtrip(testing::random_val::<SWAffine>(None));
         roundtrip(AffinePoint::generator());
+    }
+
+    #[test]
+    fn identity_point_rejected() {
+        use ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
+
+        // SW identity -> TE must fail
+        let sw_identity = SWAffine::zero();
+        assert!(sw_to_te::<BandersnatchConfig>(&sw_identity).is_none());
+        assert!(<SWAffine as TEMapping<BandersnatchConfig>>::into_te(sw_identity).is_none());
+
+        // TE identity -> SW must fail
+        let te_identity = EdwardsAffine::zero();
+        assert!(te_to_sw::<BandersnatchConfig>(&te_identity).is_none());
+        assert!(<EdwardsAffine as SWMapping<BandersnatchConfig>>::into_sw(te_identity).is_none());
+    }
+
+    #[cfg(feature = "ring")]
+    #[test]
+    fn identity_in_ring_rejected() {
+        use crate::ring::{RingSetup, testing::TEST_RING_SIZE};
+
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<ThisSuite>::from_rand(TEST_RING_SIZE, rng);
+
+        let mut pks = testing::random_vec::<AffinePoint>(TEST_RING_SIZE, Some(rng));
+        pks[0] = AffinePoint::zero();
+
+        assert!(ring_setup.prover_key(&pks).is_err());
+        assert!(ring_setup.verifier_key(&pks).is_err());
     }
 }

@@ -20,8 +20,8 @@ use sha2::Sha512;
 /// resets), the domain-separation bytes injected by the caller are
 /// sufficient to prevent ambiguous parses.
 pub trait Transcript: Clone + io::Read + io::Write {
-    /// Create a new transcript from the suite identifier.
-    fn new(id: crate::suites::SuiteId) -> Self;
+    /// Create a new transcript.
+    fn new(label: &[u8]) -> Self;
 
     /// Absorb raw bytes into the transcript.
     ///
@@ -173,9 +173,9 @@ impl<H: digest::ExtendableOutput + Default + Clone> Transcript for XofTranscript
 where
     H::Reader: Clone,
 {
-    fn new(id: crate::suites::SuiteId) -> Self {
+    fn new(label: &[u8]) -> Self {
         let mut h = H::default();
-        h.update(&id.to_bytes());
+        h.update(label);
         Self {
             state: XofState::Absorbing(h),
         }
@@ -231,7 +231,7 @@ impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
         let seed = self.0.finalize();
         let buffer = H::new()
             .chain_update(&seed)
-            .chain_update(0u32.to_le_bytes())
+            .chain_update(0u64.to_le_bytes())
             .finalize();
         DigestXofReader {
             seed,
@@ -246,7 +246,7 @@ impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
 #[derive(Clone)]
 pub struct DigestXofReader<H: Digest> {
     seed: GenericArray<u8, H::OutputSize>,
-    counter: u32,
+    counter: u64,
     buffer: GenericArray<u8, H::OutputSize>,
     buf_offset: usize,
 }
@@ -298,10 +298,9 @@ mod tests {
         ($T:ty, $mod:ident) => {
             mod $mod {
                 use super::super::*;
-                use crate::suites::SuiteId;
 
-                const ID_A: SuiteId = SuiteId::new(1, 2, 3, 4);
-                const ID_B: SuiteId = SuiteId::new(5, 6, 7, 8);
+                const ID_A: &[u8] = b"foo";
+                const ID_B: &[u8] = b"bar";
 
                 #[test]
                 fn deterministic_squeeze() {

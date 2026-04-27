@@ -3,11 +3,11 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{
-    AffinePoint, Input, Secret, VrfIo,
     ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
+    AffinePoint, Input, Secret, VrfIo,
 };
-use bench_utils::BenchInfo;
-use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use bench_utils::SuiteExt;
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
@@ -44,7 +44,7 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     }
 }
 
-fn ring_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn ring_benches<S: RingSuite>(c: &mut Criterion) {
     for &n in &RING_SIZES {
         let setup = make_ring_setup::<S>(n);
         let id = BenchmarkId::from_parameter(n);
@@ -166,7 +166,7 @@ struct BatchItem<S: RingSuite> {
     proof: ring::Proof<S>,
 }
 
-fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn batch_benches<S: RingSuite>(c: &mut Criterion) {
     let setup = make_ring_setup::<S>(1023);
 
     let ring_ctx = setup.ring_setup.ring_context();
@@ -290,7 +290,7 @@ fn batch_benches<S: BenchInfo + RingSuite>(c: &mut Criterion) {
     }
 }
 
-fn bench_ring_suite<S: BenchInfo + RingSuite>(c: &mut Criterion) {
+fn bench_ring_suite<S: RingSuite>(c: &mut Criterion) {
     ring_benches::<S>(c);
     batch_benches::<S>(c);
 }
