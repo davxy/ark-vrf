@@ -6,7 +6,7 @@ mod bench_utils;
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo};
 use bench_utils::SuiteExt;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_vrf_output<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -30,8 +30,8 @@ where
     ark_vrf::CurveConfig<S>: ark_ec::hashing::curve_maps::elligator2::Elligator2Config,
     ark_ec::hashing::curve_maps::elligator2::Elligator2Map<ark_vrf::CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<
-            <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
-        >,
+                <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
+            >,
 {
     let name = format!("{}/data_to_point_ell2", S::NAME);
     c.bench_function(&name, |b| {

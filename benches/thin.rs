@@ -4,7 +4,7 @@ mod bench_utils;
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Secret, Suite};
 use bench_utils::SuiteExt;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::Prover;

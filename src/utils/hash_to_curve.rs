@@ -3,12 +3,12 @@
 //! Provides Try-And-Increment (TAI) and Elligator2 hash-to-curve methods
 //! following RFC 9380 and RFC 9381.
 
-use crate::utils::transcript::Transcript;
 use crate::utils::SECURITY_PARAMETER;
+use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::{
-    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
     AffineRepr,
+    hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
 };
 use ark_ff::field_hashers::HashToField;
 use ark_std::vec;
@@ -68,7 +68,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
+    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
 
     let dst = [S::SUITE_ID, &[DomSep::HashToCurve as u8]].concat();
     MapToCurveBasedHasher::<

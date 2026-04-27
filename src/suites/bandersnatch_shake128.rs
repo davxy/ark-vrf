@@ -37,12 +37,10 @@ impl Suite for ThisSuite {
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "1050831719057310466596229171764640086427518885944903791309071083956994157506"
-        );
-        const Y: BaseField = MontFp!(
-            "9665130594780898675968989362841333017417727460284044738410044570700441742332"
-        );
+        const X: BaseField =
+            MontFp!("1050831719057310466596229171764640086427518885944903791309071083956994157506");
+        const Y: BaseField =
+            MontFp!("9665130594780898675968989362841333017417727460284044738410044570700441742332");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -105,8 +103,10 @@ pub(crate) mod tests {
     fn elligator2_hash_to_curve() {
         use crate::testing::CheckPoint;
         let raw = crate::testing::random_vec(42, None);
-        assert!(ThisSuite::data_to_point(&raw)
-            .map(|p| p.check(true).ok())
-            .is_some());
+        assert!(
+            ThisSuite::data_to_point(&raw)
+                .map(|p| p.check(true).ok())
+                .is_some()
+        );
     }
 }

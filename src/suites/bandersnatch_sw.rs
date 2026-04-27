@@ -61,11 +61,11 @@ impl Suite for ThisSuite {
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "8104426959907325909536225183770174834471169751429304423661064073687492033493"
+        const X: BaseField =
+            MontFp!("8104426959907325909536225183770174834471169751429304423661064073687492033493");
+        const Y: BaseField = MontFp!(
+            "49170039762124183499927087838097877768940462585639384810207824701067711160638"
         );
-        const Y: BaseField =
-            MontFp!("49170039762124183499927087838097877768940462585639384810207824701067711160638");
         AffinePoint::new_unchecked(X, Y)
     };
 }

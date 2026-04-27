@@ -3,11 +3,11 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{
-    ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
     AffinePoint, Input, Secret, VrfIo,
+    ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
 };
 use bench_utils::SuiteExt;
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
