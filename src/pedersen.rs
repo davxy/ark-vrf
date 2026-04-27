@@ -241,6 +241,29 @@ pub struct BatchItem<S: PedersenSuite> {
     sb: ScalarField<S>,
 }
 
+impl<S: PedersenSuite> BatchItem<S> {
+    /// Prepare a proof for batch verification.
+    ///
+    /// Computes the challenge and packages all data needed for deferred
+    /// verification. This is cheap (one hash, no scalar multiplications)
+    /// and can be done in parallel.
+    pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
+        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        t.absorb_serialize(&proof.pk_com);
+        let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
+        Self {
+            c,
+            input: io.input.0,
+            output: io.output.0,
+            pk_com: proof.pk_com,
+            r: proof.r,
+            ok: proof.ok,
+            s: proof.s,
+            sb: proof.sb,
+        }
+    }
+}
+
 /// Batch verifier for Pedersen VRF proofs.
 ///
 /// Collects multiple proofs and verifies them together via a single
@@ -264,31 +287,6 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         Self::default()
     }
 
-    /// Prepare a proof for batch verification.
-    ///
-    /// Computes the challenge and packages all data needed for deferred
-    /// verification. This is cheap (one hash, no scalar multiplications)
-    /// and can be done in parallel.
-    pub fn prepare(
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> BatchItem<S> {
-        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
-        t.absorb_serialize(&proof.pk_com);
-        let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
-        BatchItem {
-            c,
-            input: io.input.0,
-            output: io.output.0,
-            pk_com: proof.pk_com,
-            r: proof.r,
-            ok: proof.ok,
-            s: proof.s,
-            sb: proof.sb,
-        }
-    }
-
     /// Push a previously prepared entry into the batch.
     pub fn push_prepared(&mut self, entry: BatchItem<S>) {
         self.items.push(entry);
@@ -296,8 +294,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 
     /// Prepare and push a proof in one step.
     pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
-        let entry = Self::prepare(ios, ad, proof);
-        self.push_prepared(entry);
+        self.push_prepared(BatchItem::new(ios, ad, proof));
     }
 
     /// Batch-verify multiple Pedersen proofs using a single multi-scalar multiplication.
@@ -413,7 +410,7 @@ pub(crate) mod testing {
     }
 
     pub fn batch_verify<S: PedersenSuite>() {
-        use pedersen::{BatchVerifier, Prover, Verifier};
+        use pedersen::{BatchItem, BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
@@ -432,10 +429,10 @@ pub(crate) mod testing {
         batch.push(io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
-        // Batch using prepare + push_prepared.
+        // Batch using BatchItem::new + push_prepared.
         let mut batch = BatchVerifier::new();
-        let entry1 = BatchVerifier::prepare(io, b"foo", &proof1);
-        let entry2 = BatchVerifier::prepare(io, b"bar", &proof2);
+        let entry1 = BatchItem::new(io, b"foo", &proof1);
+        let entry2 = BatchItem::new(io, b"bar", &proof2);
         batch.push_prepared(entry1);
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());

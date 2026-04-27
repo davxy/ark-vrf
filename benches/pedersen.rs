@@ -2,7 +2,10 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret, pedersen::PedersenSuite};
+use ark_vrf::{
+    AffinePoint, Input, Secret,
+    pedersen::{BatchItem, PedersenSuite},
+};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -64,7 +67,7 @@ fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(*io, ad, proof))
+                        .map(|(io, ad, proof)| BatchItem::<S>::new(*io, ad, proof))
                         .collect();
                 });
             });

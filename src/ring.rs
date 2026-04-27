@@ -119,10 +119,12 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Kzg<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Kzg<S>, CurveConfig<S>>;
 
-/// Ring proof batch verifier (KZG-based).
-pub type RingBatchVerifier<S> = ring_proof::ring_verifier::KzgBatchVerifier<
+/// Multi-ring KZG batch verifier.
+///
+/// Accumulates ring proofs from one or more rings (sharing the same KZG SRS)
+/// into a single batched pairing check.
+pub type RingBatchVerifier<S> = ring_proof::multi_ring_batch_verifier::BatchVerifier<
     <S as RingSuite>::Pairing,
-    CurveConfig<S>,
     ring_proof::ArkTranscript,
 >;
 
@@ -563,19 +565,46 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     }
 }
 
-type RingPreparedBatchItem<S> =
-    ring_proof::ring_verifier::PreparedBatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+type RingProofBatchItem<S> =
+    ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
 /// Pre-processed data for a single ring proof awaiting batch verification.
 pub struct BatchItem<S: RingSuite> {
-    ring: RingPreparedBatchItem<S>,
+    ring: RingProofBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
+}
+
+impl<S: RingSuite> BatchItem<S> {
+    /// Prepare a proof for deferred batch verification.
+    ///
+    /// Performs the cheap per-proof work (hashing, transcript setup) without
+    /// the expensive pairing and MSM checks. `verifier` must be the ring
+    /// verifier the proof was produced against.
+    ///
+    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
+    /// converted (e.g. identity point on SW-form suites).
+    pub fn new(
+        verifier: &RingVerifier<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Result<Self, Error> {
+        let key_commitment = proof
+            .pedersen_proof
+            .key_commitment()
+            .into_te()
+            .ok_or(Error::InvalidData)?;
+        let pedersen = pedersen::BatchItem::new(ios, ad, &proof.pedersen_proof);
+        let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
+        Ok(Self { ring, pedersen })
+    }
 }
 
 /// Batch verifier for ring VRF proofs.
 ///
-/// Collects multiple ring proofs and verifies them together, amortizing the
-/// cost of pairing checks and multi-scalar multiplications.
+/// Collects ring proofs from one or more rings (sharing the same KZG SRS)
+/// and verifies them together, amortizing the cost of pairing checks and
+/// multi-scalar multiplications.
 ///
 /// The same subgroup membership assumptions as [`Verifier`] apply to all
 /// points fed into the batch (I/O pairs and proof points).
@@ -585,37 +614,19 @@ pub struct BatchVerifier<S: RingSuite> {
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
-    /// Create a new batch verifier from a ring verifier instance.
-    pub fn new(ring_verifier: RingVerifier<S>) -> Self {
+    /// Create a new batch verifier seeded with the KZG SRS taken from `ring_verifier`.
+    ///
+    /// Any ring verifier sharing the same SRS can later be passed to
+    /// [`Self::push`] or [`BatchItem::new`]; the verifier supplied here is
+    /// only used to extract the KZG verifier key.
+    pub fn new(ring_verifier: &RingVerifier<S>) -> Self {
         Self {
-            ring_batch: ring_verifier.kzg_batch_verifier(),
+            ring_batch: RingBatchVerifier::<S>::new(
+                ring_verifier.pcs_vk().clone(),
+                ring_proof::ArkTranscript::new(S::SUITE_ID),
+            ),
             pedersen_batch: pedersen::BatchVerifier::new(),
         }
-    }
-
-    /// Prepare a proof for deferred batch verification.
-    ///
-    /// Performs the cheap per-proof work (hashing, transcript setup) without
-    /// the expensive pairing and MSM checks.
-    ///
-    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// converted (e.g. identity point on SW-form suites).
-    pub fn prepare(
-        &self,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> Result<BatchItem<S>, Error> {
-        let pedersen = pedersen::BatchVerifier::prepare(ios, ad, &proof.pedersen_proof);
-        let key_commitment = proof
-            .pedersen_proof
-            .key_commitment()
-            .into_te()
-            .ok_or(Error::InvalidData)?;
-        let ring = self
-            .ring_batch
-            .prepare(proof.ring_proof.clone(), key_commitment);
-        Ok(BatchItem { ring, pedersen })
     }
 
     /// Push a previously prepared item into the batch.
@@ -630,12 +641,13 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// converted (e.g. identity point on SW-form suites).
     pub fn push(
         &mut self,
+        verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
-        let prepared = self.prepare(ios, ad, proof)?;
-        self.push_prepared(prepared);
+        let item = BatchItem::new(verifier, ios, ad, proof)?;
+        self.push_prepared(item);
         Ok(())
     }
 
@@ -838,13 +850,13 @@ pub(crate) mod testing {
         }
     }
 
-    struct BatchItem<S: RingSuite> {
+    struct TestItem<S: RingSuite> {
         io: VrfIo<S>,
         ad: Vec<u8>,
         proof: Proof<S>,
     }
 
-    impl<S: RingSuite> BatchItem<S> {
+    impl<S: RingSuite> TestItem<S> {
         fn new(
             secret: &Secret<S>,
             prover: &RingProver<S>,
@@ -875,7 +887,7 @@ pub(crate) mod testing {
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        let item = BatchItem::<S>::new(&secret, &prover, rng);
+        let item = TestItem::<S>::new(&secret, &prover, rng);
 
         let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
@@ -952,7 +964,7 @@ pub(crate) mod testing {
         let batch: Vec<_> = (0..BATCH_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
-                BatchItem::<S>::new(&secret, &prover, rng)
+                TestItem::<S>::new(&secret, &prover, rng)
             })
             .collect();
 
@@ -960,13 +972,15 @@ pub(crate) mod testing {
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
         // Batch verify all proofs
-        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
+        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let res = batch_verifier.verify();
         assert!(res.is_ok());
 
         // Prove incrementally constructed batches
         for item in batch.iter() {
-            batch_verifier.push(item.io, &item.ad, &item.proof);
+            batch_verifier
+                .push(&verifier, item.io, &item.ad, &item.proof)
+                .unwrap();
             let res = batch_verifier.verify();
             assert!(res.is_ok());
         }
@@ -975,13 +989,13 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
-        let verifier = ring_ctx.ring_verifier(verifier_key);
-        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
+        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let start = std::time::Instant::now();
         common::timed("Proofs push", || {
             for item in batch.iter() {
-                batch_verifier.push(item.io, &item.ad, &item.proof).unwrap();
+                batch_verifier
+                    .push(&verifier, item.io, &item.ad, &item.proof)
+                    .unwrap();
             }
         });
         common::timed("Unprepared batch verification", || batch_verifier.verify());
@@ -989,18 +1003,12 @@ pub(crate) mod testing {
 
         println!("============================================================");
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
-        let verifier = ring_ctx.ring_verifier(verifier_key);
-        let mut batch_verifier = BatchVerifier::<S>::new(verifier);
+        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let start = std::time::Instant::now();
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| {
-                    batch_verifier
-                        .prepare(item.io, &item.ad, &item.proof)
-                        .unwrap()
-                })
+                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
@@ -1010,6 +1018,52 @@ pub(crate) mod testing {
         });
         common::timed("Prepared batch verification", || batch_verifier.verify());
         println!("Total time: {:?}", start.elapsed());
+
+        println!("============================================================");
+
+        // Multi-ring batch: build a second ring sharing the same KZG SRS,
+        // then aggregate proofs from both rings into a single batch verifier.
+        let mut pks_b = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx_b = 1;
+        pks_b[prover_idx_b] = public.0;
+        let prover_key_b = ring_setup.prover_key(&pks_b).unwrap();
+        let prover_b = ring_ctx.ring_prover(prover_key_b, prover_idx_b);
+        let verifier_key_b = ring_setup.verifier_key(&pks_b).unwrap();
+        let verifier_b = ring_ctx.ring_verifier(verifier_key_b);
+
+        let batch_b: Vec<_> = (0..TEST_RING_SIZE)
+            .into_par_iter()
+            .map_init(ark_std::test_rng, |rng, _| {
+                TestItem::<S>::new(&secret, &prover_b, rng)
+            })
+            .collect();
+
+        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
+        for item in batch.iter() {
+            batch_verifier
+                .push(&verifier, item.io, &item.ad, &item.proof)
+                .unwrap();
+        }
+        for item in batch_b.iter() {
+            batch_verifier
+                .push(&verifier_b, item.io, &item.ad, &item.proof)
+                .unwrap();
+        }
+        common::timed("Multi-ring batch verification", || batch_verifier.verify())
+            .expect("multi-ring batch verifies");
+
+        // Negative case: pushing a ring-B proof against verifier_a must not
+        // produce a batch that verifies. This guards against the per-item
+        // verifier argument being silently ignored.
+        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
+        let item_b = &batch_b[0];
+        batch_verifier
+            .push(&verifier, item_b.io, &item_b.ad, &item_b.proof)
+            .unwrap();
+        assert!(
+            batch_verifier.verify().is_err(),
+            "ring-B proof must not verify against verifier_a"
+        );
     }
 
     #[allow(unused)]
