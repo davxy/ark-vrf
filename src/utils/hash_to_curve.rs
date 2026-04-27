@@ -20,8 +20,10 @@ use ark_std::vec::Vec;
 
 /// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
 ///
-/// 1. Absorbs `SUITE_ID || DomSep::HashToCurve || data || ctr` into the
-///    suite transcript and squeezes a candidate value.
+/// 1. Absorbs `SUITE_ID || DomSep::HashToCurve || len(data) || data || ctr`
+///    into the suite transcript and squeezes a candidate value. The data
+///    length is encoded as a little-endian `u64` to keep the encoding
+///    unambiguous regardless of `data` length.
 /// 2. Attempts to interpret the squeezed bytes as a curve point via
 ///    [`AffineRepr::from_random_bytes`].
 /// 3. Clears the cofactor and checks the point is not the identity.
@@ -36,6 +38,7 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
 
     let mut prefix = S::Transcript::new(S::SUITE_ID);
     prefix.absorb_raw(&[DomSep::HashToCurve as u8]);
+    prefix.absorb_raw(&(data.len() as u64).to_le_bytes());
     prefix.absorb_raw(data);
 
     for ctr in 0..=255_u8 {

@@ -13,7 +13,7 @@ fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    let name = format!("{}/pedersen_prove", S::NAME);
+    let name = format!("{}/pedersen_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));
     });
@@ -27,7 +27,7 @@ fn bench_pedersen_verify<S: PedersenSuite>(c: &mut Criterion) {
     let io = secret.vrf_io(input);
     let (proof, _blinding) = secret.prove(io, b"ad");
 
-    let name = format!("{}/pedersen_verify", S::NAME);
+    let name = format!("{}/pedersen_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap());
     });
@@ -52,8 +52,8 @@ fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
         })
         .collect();
 
-    let prepare_group = format!("{}/pedersen_batch_prepare", S::NAME);
-    let verify_group = format!("{}/pedersen_batch_verify", S::NAME);
+    let prepare_group = format!("{}/pedersen_batch_prepare", S::SUITE_NAME);
+    let verify_group = format!("{}/pedersen_batch_verify", S::SUITE_NAME);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);

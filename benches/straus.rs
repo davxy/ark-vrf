@@ -18,7 +18,7 @@ fn bench_straus_suite<S: Suite>(c: &mut Criterion) {
         let scalars: Vec<ScalarField<S>> = (0..n).map(|_| ScalarField::<S>::rand(rng)).collect();
 
         for &w in WINDOW_SIZES {
-            c.benchmark_group(format!("{}/straus_msm/n={n}", S::NAME))
+            c.benchmark_group(format!("{}/straus_msm/n={n}", S::SUITE_NAME))
                 .bench_function(BenchmarkId::from_parameter(format!("w={w}")), |b| {
                     b.iter(|| short_msm(black_box(&points), black_box(&scalars), w));
                 });

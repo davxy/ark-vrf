@@ -8,8 +8,8 @@
     "h": "1af0a856733b0c0559479c650ba60b6ef865e593eb96c293ffbe2d3257634d0b",
     "gamma": "06dd6e67e7889ea33ba55bf3cfba3876053e9fbb246a106c2d3a40461ce265a7",
     "beta": "a2fe65565140cf8d8fcc20088ecd158585e86102e6c181d2d5c42bb79aaaafa0",
-    "proof_r": "874a57f7998964877183525a43c8fa201e8ce6e997083afbaa2bf6ee7716a0bc",
-    "proof_s": "38d705c4dd6391fb10e03a7ef3a2baa63d7557f9b5c750e3076f1d7038111509"
+    "proof_r": "d3d7c7f4479e345739df433e76b32efb8e57fc08f3c0b8f27bb127949eb11964",
+    "proof_s": "63968b87f066889851b08e73fe19089660b49b6bbde1a10e61f25f8cebffca06"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-2",
@@ -20,8 +20,8 @@
     "h": "543b32e34a146eb3d43c0a4816d2726d3b97c1c3a019a89caaaea92d6b15c40e",
     "gamma": "853e304b89f350f95d179cc8c7edb15b0fee4b228997b4c54280f156c2684edb",
     "beta": "cd05c0c33f92ac6bd63c1675dc1cd984dbc7312795f0e1927f63aa7287864a68",
-    "proof_r": "9ec74d1c1a8d4c6c8cd347ff864d140131a3060f3e56684be452b26fe2d01ed3",
-    "proof_s": "8fdeb09f6b078a2f2830f9e7f15c428fe9e373ee165c936f09ff9d551e39ca19"
+    "proof_r": "5b6eab9bfbcbe68b6f9ec329db3027e71b3d441ddd2ea0079d670dc4219d4ebe",
+    "proof_s": "99760e714a7a1beaebeffd885a6375f86b0391af72cb8619f9fa020ee37b490e"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-3",
@@ -32,8 +32,8 @@
     "h": "1af0a856733b0c0559479c650ba60b6ef865e593eb96c293ffbe2d3257634d0b",
     "gamma": "7b515b64f4aec4b3f25f7e843f3fa4a7553b912707a84447bafba05b169a06a6",
     "beta": "ff8f3c299cf212a4a4a30eb34c404705a05ca93276a166787b4eb7bd44705881",
-    "proof_r": "f752d59e4323bf9553ca95d72b9d84e3ee66ae893c3a1f26a734289842e74fb0",
-    "proof_s": "5c49e4cd211c2963b086ff0ab0e7aa351eb1681136ffe5c59ff6ae1d510af109"
+    "proof_r": "f9161743cd3d7438d6a16397bb5f74a90a8f2d5525b4cd9c5b7b5f698e03f40f",
+    "proof_s": "8be0b86c7c3f2acc0389aa47e65c902cb19e5a1fb02d080c99b4d35a9ae2bb14"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-4",
@@ -44,8 +44,8 @@
     "h": "88e229414c2413c954edda9477e7fb059c843d27f4234f7154efaa1d686145ca",
     "gamma": "c6a9a7da335d6c1bc66f372271d345b9ea57e318e6850d86b6dd1276b59dfbbf",
     "beta": "98882aa73cda3b1f89d592604f20f2c7255e223d1bd2edf3698a4f7749137bbb",
-    "proof_r": "e8b2ce90f858d7ff8bbf6ca64757836a59f92cbd004d558c2110192ec97f9caa",
-    "proof_s": "75cb371b9866b062b608b5ce05cf339ef20dd490aca1b5d086b69dc64a4be006"
+    "proof_r": "cac0aad60611fa74b6c71f6635dbede529b87efd19245eff27c3876cfabe5333",
+    "proof_s": "7d7fcd913d28caa36fd671602d7431653cc6c1afa7fe112e7fe51f375e52fe11"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-5",
@@ -56,8 +56,8 @@
     "h": "6c89d9cced3b7bd9ccf4dd3e70ac0e435aebf571360fe56a16ba85706e562892",
     "gamma": "38ef198de5934b7a36967d586807c465eb9a2834f21a11812a24f266a2d47d92",
     "beta": "27f5464ad4977cc73631393943c83a6e858cccfbbe8ac00eb763066976af5431",
-    "proof_r": "1af289944d8fb3be6af3f9b8b53531cd0e5e6ea4d45dde9e99116dc2d3626dbe",
-    "proof_s": "47309ec4a41439be3a5ae12f98607baee7f9cbd1f72cdd4ddec74ceaf0654400"
+    "proof_r": "285c435d928cb3548a44ebf5f527da30f97763b12c059af365aa75d070a12542",
+    "proof_s": "64ab2cb7f93365d9c4de43a883d5eaa9ba721946c33b88e4c3ab7e80f7a0d216"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-6",
@@ -68,8 +68,8 @@
     "h": "6c89d9cced3b7bd9ccf4dd3e70ac0e435aebf571360fe56a16ba85706e562892",
     "gamma": "38ef198de5934b7a36967d586807c465eb9a2834f21a11812a24f266a2d47d92",
     "beta": "27f5464ad4977cc73631393943c83a6e858cccfbbe8ac00eb763066976af5431",
-    "proof_r": "5c50f0c2d56409bf222086d8c18e3a37f7027b69072bf2efb89be93691116a0a",
-    "proof_s": "571591c43cd0d610377090c6e64d6fb780c4cb55b5555401a175050d78ac0303"
+    "proof_r": "c03ea2f0015e8ad3786ea2c88313ab6ff93e8df2f4469e73b020e77f39c16e31",
+    "proof_s": "c2c9d7c57d47d7bf2d4ac101396536d7d7e37cbde6a74f6e985ad1f85a1ae20a"
   },
   {
     "comment": "bandersnatch_shake128_ell2_thin - vector-7",
@@ -80,7 +80,7 @@
     "h": "6c89d9cced3b7bd9ccf4dd3e70ac0e435aebf571360fe56a16ba85706e562892",
     "gamma": "486a036eacc83d800b11c53d8810fa207b4e38f668e10b0fbdd16bfca0d77b93",
     "beta": "7d782d1ab24b55f7acc286d1fe737aaaf2550d5641d194e20e3ad211c4634f0c",
-    "proof_r": "c2be850f55f8a0fb4a4157570b604a02eb68bc0fa9aee4e4dd9ebd6a48838989",
-    "proof_s": "31f97a09acaf58f5bc8f9d47a3696dfc8426912523437e4627ea242c1ded9f1a"
+    "proof_r": "f39ac083d7a350a7848bf9688c9be284ec83bd77cb6c28f4c0ed1209019bb630",
+    "proof_s": "e40c7763383e099af6bfceb6d5c6f2cca00444186ec661a170d1070d4654e711"
   }
 ]

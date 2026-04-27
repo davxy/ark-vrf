@@ -12,7 +12,7 @@ fn bench_tiny_prove<S: Suite>(c: &mut Criterion) {
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    let name = format!("{}/tiny_prove", S::NAME);
+    let name = format!("{}/tiny_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));
     });
@@ -27,7 +27,7 @@ fn bench_tiny_verify<S: Suite>(c: &mut Criterion) {
     let io = secret.vrf_io(input);
     let proof = secret.prove(io, b"ad");
 
-    let name = format!("{}/tiny_verify", S::NAME);
+    let name = format!("{}/tiny_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
             public

@@ -13,7 +13,7 @@ fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    let name = format!("{}/thin_prove", S::NAME);
+    let name = format!("{}/thin_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));
     });
@@ -28,7 +28,7 @@ fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
     let io = secret.vrf_io(input);
     let proof = secret.prove(io, b"ad");
 
-    let name = format!("{}/thin_verify", S::NAME);
+    let name = format!("{}/thin_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
             public
@@ -58,8 +58,8 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
         })
         .collect();
 
-    let prepare_group = format!("{}/thin_batch_prepare", S::NAME);
-    let verify_group = format!("{}/thin_batch_verify", S::NAME);
+    let prepare_group = format!("{}/thin_batch_prepare", S::SUITE_NAME);
+    let verify_group = format!("{}/thin_batch_verify", S::SUITE_NAME);
 
     for &batch_size in BATCH_SIZES {
         let id = BenchmarkId::from_parameter(batch_size);

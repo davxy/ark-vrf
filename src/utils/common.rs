@@ -165,9 +165,9 @@ fn vrf_transcript_base<S: Suite>(
     let mut t = S::Transcript::new(S::SUITE_ID);
     t.absorb_raw(&[scheme as u8]);
     absorb_ios::<S>(&mut t, ios);
-    let ad_len = u32::try_from(ad.as_ref().len()).expect("ad too long");
-    t.absorb_raw(&ad_len.to_le_bytes());
-    t.absorb_raw(ad.as_ref());
+    let ad = ad.as_ref();
+    t.absorb_raw(&(ad.len() as u64).to_le_bytes());
+    t.absorb_raw(ad);
     let scalars = DelinearizeScalars::new(t.clone());
     (t, scalars, n)
 }
@@ -370,12 +370,12 @@ impl<S: Suite> DelinearizeScalars<S> {
 
 /// Absorb I/O pairs into a transcript.
 ///
-/// The count is absorbed first as a little-endian `u32` so that the
+/// The count is absorbed first as a little-endian `u64` so that the
 /// framing is unambiguous even though each `VrfIo` already has a
 /// fixed-size serialization. This is cheap and avoids any implicit
 /// dependency on the serialization being fixed-length.
 fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item = VrfIo<S>>) {
-    let n = u32::try_from(ios.len()).expect("too many ios");
+    let n = ios.len() as u64;
     t.absorb_raw(&n.to_le_bytes());
     for io in ios {
         t.absorb_serialize(&io);
