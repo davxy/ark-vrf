@@ -179,6 +179,7 @@ of the Bandersnatch VRF specification.
 - `no_std` support.
 - `parallel` and `asm` optimization features.
 
+[0.5.0]: https://github.com/davxy/ark-vrf/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/davxy/ark-vrf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/davxy/ark-vrf/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/davxy/ark-vrf/compare/v0.2.1...v0.2.2
