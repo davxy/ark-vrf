@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Bump `w3f-ring-proof` dependency to 0.0.8.
 - `RingProofParams` renamed to `RingSetup`.
 - `Suite::SUITE_ID` is now a self-describing byte string (e.g.
   `b"Bandersnatch-SHA512-ELL2-v1"`) used directly as the transcript seed and
