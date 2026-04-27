@@ -3,11 +3,11 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{
-    ring::{self, BatchVerifier, Prover, RingSuite, Verifier},
     AffinePoint, Input, Secret, VrfIo,
+    ring::{self, BatchItem, BatchVerifier, Prover, RingSuite, Verifier},
 };
 use bench_utils::SuiteExt;
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use rayon::prelude::*;
 
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
@@ -160,7 +160,7 @@ fn ring_benches<S: RingSuite>(c: &mut Criterion) {
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
-struct BatchItem<S: RingSuite> {
+struct TestItem<S: RingSuite> {
     io: VrfIo<S>,
     ad: Vec<u8>,
     proof: ring::Proof<S>,
@@ -177,7 +177,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
 
     println!("Preparing {max_batch_size} {} proofs...", S::SUITE_NAME);
     let completed = std::sync::atomic::AtomicUsize::new(0);
-    let batch_items: Vec<BatchItem<S>> = (0..max_batch_size)
+    let batch_items: Vec<TestItem<S>> = (0..max_batch_size)
         .into_par_iter()
         .map_init(ark_std::test_rng, |rng, i| {
             let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(rng));
@@ -190,7 +190,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
             if curr_pct > prev_pct {
                 println!("  {}%", curr_pct * 10);
             }
-            BatchItem { io, ad, proof }
+            TestItem { io, ad, proof }
         })
         .collect();
 
@@ -215,7 +215,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
                     || BatchVerifier::<S>::new(&verifier),
                     |mut bv| {
                         for item in &batch_items[..batch_size] {
-                            bv.push(&verifier, item.io, &item.ad, &item.proof);
+                            bv.push(&verifier, item.io, &item.ad, &item.proof).unwrap();
                         }
                     },
                     BatchSize::LargeInput,
@@ -229,9 +229,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|item| {
-                            ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
-                        })
+                        .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
                         .collect();
                 });
             });
@@ -243,9 +241,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .par_iter()
-                        .map(|item| {
-                            ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
-                        })
+                        .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
                         .collect();
                 });
             });
@@ -259,7 +255,8 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
                         let prepared = batch_items[..batch_size]
                             .iter()
                             .map(|item| {
-                                ring::BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
+                                BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof)
+                                    .unwrap()
                             })
                             .collect::<Vec<_>>();
                         let bv = BatchVerifier::<S>::new(&verifier);
@@ -278,7 +275,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
         {
             let mut bv = BatchVerifier::<S>::new(&verifier);
             for item in &batch_items[..batch_size] {
-                bv.push(&verifier, item.io, &item.ad, &item.proof);
+                bv.push(&verifier, item.io, &item.ad, &item.proof).unwrap();
             }
 
             c.benchmark_group(format!("{}/batch_verify", S::SUITE_NAME))

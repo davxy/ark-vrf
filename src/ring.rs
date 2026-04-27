@@ -623,7 +623,7 @@ impl<S: RingSuite> BatchVerifier<S> {
         Self {
             ring_batch: RingBatchVerifier::<S>::new(
                 ring_verifier.pcs_vk().clone(),
-                ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+                ring_proof::ArkTranscript::new(S::SUITE_ID),
             ),
             pedersen_batch: pedersen::BatchVerifier::new(),
         }
@@ -847,13 +847,13 @@ pub(crate) mod testing {
         }
     }
 
-    struct BatchItem<S: RingSuite> {
+    struct TestItem<S: RingSuite> {
         io: VrfIo<S>,
         ad: Vec<u8>,
         proof: Proof<S>,
     }
 
-    impl<S: RingSuite> BatchItem<S> {
+    impl<S: RingSuite> TestItem<S> {
         fn new(
             secret: &Secret<S>,
             prover: &RingProver<S>,
@@ -884,7 +884,7 @@ pub(crate) mod testing {
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        let item = BatchItem::<S>::new(&secret, &prover, rng);
+        let item = TestItem::<S>::new(&secret, &prover, rng);
 
         let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
@@ -961,7 +961,7 @@ pub(crate) mod testing {
         let batch: Vec<_> = (0..BATCH_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
-                BatchItem::<S>::new(&secret, &prover, rng)
+                TestItem::<S>::new(&secret, &prover, rng)
             })
             .collect();
 
@@ -1001,7 +1001,7 @@ pub(crate) mod testing {
         let prepared = common::timed("Proofs prepare", || {
             batch
                 .par_iter()
-                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof))
+                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
                 .collect::<Vec<_>>()
         });
         common::timed("Proofs push prepared", || {
@@ -1027,7 +1027,7 @@ pub(crate) mod testing {
         let batch_b: Vec<_> = (0..TEST_RING_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
-                BatchItem::<S>::new(&secret, &prover_b, rng)
+                TestItem::<S>::new(&secret, &prover_b, rng)
             })
             .collect();
 

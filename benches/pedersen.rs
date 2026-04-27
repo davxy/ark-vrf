@@ -2,9 +2,12 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{pedersen::PedersenSuite, AffinePoint, Input, Secret};
+use ark_vrf::{
+    AffinePoint, Input, Secret,
+    pedersen::{BatchItem, PedersenSuite},
+};
 use bench_utils::SuiteExt;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;
