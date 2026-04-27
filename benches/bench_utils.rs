@@ -3,7 +3,7 @@
 use ark_vrf::Suite;
 
 pub trait SuiteExt: Suite {
-    const NAME: &'static str = match core::str::from_utf8(Self::SUITE_ID) {
+    const SUITE_NAME: &'static str = match core::str::from_utf8(Self::SUITE_ID) {
         Ok(s) => s,
         Err(_) => panic!("Suite::SUITE_ID is not valid UTF-8"),
     };

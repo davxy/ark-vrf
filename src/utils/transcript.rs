@@ -20,8 +20,8 @@ use sha2::Sha512;
 /// resets), the domain-separation bytes injected by the caller are
 /// sufficient to prevent ambiguous parses.
 pub trait Transcript: Clone + io::Read + io::Write {
-    /// Create a new transcript from the suite identifier.
-    fn new(id: &[u8]) -> Self;
+    /// Create a new transcript.
+    fn new(label: &[u8]) -> Self;
 
     /// Absorb raw bytes into the transcript.
     ///
@@ -173,9 +173,9 @@ impl<H: digest::ExtendableOutput + Default + Clone> Transcript for XofTranscript
 where
     H::Reader: Clone,
 {
-    fn new(id: &[u8]) -> Self {
+    fn new(label: &[u8]) -> Self {
         let mut h = H::default();
-        h.update(id);
+        h.update(label);
         Self {
             state: XofState::Absorbing(h),
         }
