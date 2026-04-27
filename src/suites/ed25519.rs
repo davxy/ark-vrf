@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-EDWARDS25519-SHA512-TAI):
 //!
-//! *  `SUITE_ID` = `b"Ed25519-SHA512-TAI"`.
+//! *  `SUITE_ID` = `b"Ed25519-SHA512-TAI-v1"`.
 //!
 //! *  The EC group G is the edwards25519 elliptic curve, with the finite
 //!    field and curve parameters as defined in Table 1 in Section 5.1 of
@@ -48,7 +48,7 @@ pub struct Ed25519Sha512Tai;
 type ThisSuite = Ed25519Sha512Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Ed25519-SHA512-TAI";
+    const SUITE_ID: &'static [u8] = b"Ed25519-SHA512-TAI-v1";
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript;
 }
@@ -56,10 +56,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "53720523321011412906419865453565165985668525387909293666335795559477735694193"
+            "27813532958320568099445493411595987500306293569976053230756795415737846927528"
         );
         const Y: BaseField =
-            MontFp!("2269574952324128508698630141025019135401453191558669156254503600415059477305");
+            MontFp!("54547484229673119163366491117199189418784035096264288418869039753160695553432");
         AffinePoint::new_unchecked(X, Y)
     };
 }

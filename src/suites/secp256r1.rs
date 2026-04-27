@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-P256-SHA256-TAI):
 //!
-//! *  `SUITE_ID` = `b"Secp256r1-SHA256-TAI"`.
+//! *  `SUITE_ID` = `b"Secp256r1-SHA256-TAI-v1"`.
 //!
 //! *  The EC group G is the NIST P-256 elliptic curve, with the finite
 //!    field and curve parameters as specified in Section 3.2.1.3 of
@@ -51,7 +51,7 @@ pub struct Secp256r1Sha256Tai;
 type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Secp256r1-SHA256-TAI";
+    const SUITE_ID: &'static [u8] = b"Secp256r1-SHA256-TAI-v1";
     type Affine = ark_secp256r1::Affine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
@@ -59,10 +59,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "103037436105625501220007351255637766692061763575799051068888314436237419266211"
+            "30534796084671201977931121681729795142822511408831316201330560580542792811920"
         );
         const Y: BaseField = MontFp!(
-            "77974554569505218641067051055069039754732854543237082925512586073759101961964"
+            "89632443060907226846467215145801158688057181186270600274874948333951883811206"
         );
         AffinePoint::new_unchecked(X, Y)
     };

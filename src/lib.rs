@@ -155,6 +155,11 @@ impl From<ark_serialize::SerializationError> for Error {
 /// can be overridden to implement custom VRF variants.
 pub trait Suite: Copy {
     /// Suite identifier.
+    ///
+    /// A unique byte string used for transcript domain separation and as the
+    /// hash-to-curve DST prefix. The actual constructions a `SUITE_ID` stands
+    /// for are defined by the suite specification (see each suite's module
+    /// docs). Implementations targeting interop must use the same string.
     const SUITE_ID: &'static [u8];
 
     /// Curve point in affine representation.
@@ -507,7 +512,7 @@ mod tests {
         let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "9f30672048a3a29f2fe2e8ea6f6531990e7f959a025a290e5b863aeaebb0ea53";
+        let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

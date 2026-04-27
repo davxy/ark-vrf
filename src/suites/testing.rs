@@ -7,7 +7,7 @@ use ark_ff::MontFp;
 pub struct TestSuite;
 
 impl Suite for TestSuite {
-    const SUITE_ID: &'static [u8] = b"Testing";
+    const SUITE_ID: &'static [u8] = b"Testing-SHA256-TAI-v1";
     type Affine = ark_ed25519::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
@@ -15,10 +15,10 @@ impl Suite for TestSuite {
 impl PedersenSuite for TestSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "26342723478127489707706885311158140515104362911805193442412617654341809232571"
+            "2499570249168467314542487905307657839392802913085905524752106194516883704331"
         );
         const Y: BaseField = MontFp!(
-            "37844095356730936327486076883307616153813389938871102958797836324750211720308"
+            "56224133503529451846112322782623821045557302919163807907632168046838178802214"
         );
         AffinePoint::new_unchecked(X, Y)
     };

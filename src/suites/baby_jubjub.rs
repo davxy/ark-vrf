@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `SUITE_ID` = b"BabyJubJub-SHA512-TAI".
+//! * `SUITE_ID` = b"BabyJubJub-SHA512-TAI-v1".
 //!
 //! - The EC group **G** is the prime subgroup of the Baby-JubJub elliptic curve
 //!   as defined by <https://github.com/barryWhiteHat/baby_jubjub>.
@@ -54,7 +54,7 @@ type ThisSuite = BabyJubJubSha512Tai;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"BabyJubJub-SHA512-TAI";
+    const SUITE_ID: &'static [u8] = b"BabyJubJub-SHA512-TAI-v1";
     type Affine = ark_ed_on_bn254::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
 }
@@ -62,10 +62,10 @@ impl Suite for ThisSuite {
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "15797289012139890952918652741983061499993108868002576830851728385607852258421"
+            "15597186817295130309136306140714201737621014914558683139248341654658140119832"
         );
         const Y: BaseField = MontFp!(
-            "17743238679668623128365684338219902634658870082338213231202641821728201928604"
+            "16967622810045942549960431693318811593013033116764071907637460808242710850945"
         );
         AffinePoint::new_unchecked(X, Y)
     };
@@ -77,19 +77,19 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "21433810013380207923117265600927837050017035925963604061655421603544881837522"
+            "3407479902735981537256301409827874012184011537590181148625668462052190025720"
         );
         const Y: BaseField =
-            MontFp!("6775681885644986793719018988119744802486174723011050942341663377165653894592");
+            MontFp!("6877988881685429494394561891709982476301239347135775917914022718847454946840");
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "16578944628535772021649872858836608926257290522186066354674854052388117281285"
+            "18313895518139262818886573261785024820041847059019281537835352997231009282924"
         );
         const Y: BaseField =
-            MontFp!("8245891045969063948555066877845954229931266423611340592496179617443193979568");
+            MontFp!("19871478277724683052901402508413175456738152278688729484443172439827739220110");
         AffinePoint::new_unchecked(X, Y)
     };
 }
