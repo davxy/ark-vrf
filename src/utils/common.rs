@@ -121,20 +121,34 @@ where
 }
 
 /// Internal domain separation tags for protocol hashing.
+///
+/// Each variant is absorbed as a single byte after `SUITE_ID` to make every
+/// distinct hashing context produce independent transcript states. Values are
+/// grouped by purpose so future additions can slot into the relevant range:
 #[repr(u8)]
 pub(crate) enum DomSep {
+    /// Tiny VRF scheme tag.
     TinyVrf = 0x00,
+    /// Thin VRF scheme tag.
     ThinVrf = 0x01,
+    /// Pedersen VRF scheme tag.
     PedersenVrf = 0x02,
+    /// Nonce expansion.
     NonceExpand = 0x10,
+    /// Deterministic nonce derivation from the expanded secret and transcript.
     Nonce = 0x11,
+    /// Pedersen blinding scalar derivation.
     PedersenBlinding = 0x12,
+    /// Point-to-hash output derivation.
     PointToHash = 0x20,
+    /// Per-I/O delinearization scalar stream for multi-input proofs.
     Delinearize = 0x30,
+    /// Schnorr challenge scalar derivation.
     Challenge = 0x40,
-    ThinBatch = 0x50,
-    PedersenBatch = 0x51,
-    HashToCurveTai = 0xFE,
+    /// Batch verification randomization scalar.
+    BatchVerify = 0x50,
+    /// Hash-to-curve operation.
+    HashToCurve = 0x60,
 }
 
 /// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for

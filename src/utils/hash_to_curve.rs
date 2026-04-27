@@ -3,12 +3,12 @@
 //! Provides Try-And-Increment (TAI) and Elligator2 hash-to-curve methods
 //! following RFC 9380 and RFC 9381.
 
-use crate::utils::SECURITY_PARAMETER;
 use crate::utils::transcript::Transcript;
+use crate::utils::SECURITY_PARAMETER;
 use crate::*;
 use ark_ec::{
-    AffineRepr,
     hashing::curve_maps::elligator2::{Elligator2Config, Elligator2Map},
+    AffineRepr,
 };
 use ark_ff::field_hashers::HashToField;
 use ark_std::vec;
@@ -20,8 +20,9 @@ use ark_std::vec::Vec;
 
 /// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
 ///
-/// 1. Hashes `suite_id || 0x01 || data || ctr || 0x00` using the suite transcript.
-/// 2. Attempts to interpret the hash output as a curve point via
+/// 1. Absorbs `SUITE_ID || DomSep::HashToCurve || data || ctr` into the
+///    suite transcript and squeezes a candidate value.
+/// 2. Attempts to interpret the squeezed bytes as a curve point via
 ///    [`AffineRepr::from_random_bytes`].
 /// 3. Clears the cofactor and checks the point is not the identity.
 /// 4. Repeats with an incremented counter (up to 256 attempts) if no valid
@@ -34,7 +35,7 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     let hash = &mut hash_buf[..base_len];
 
     let mut prefix = S::Transcript::new(S::SUITE_ID);
-    prefix.absorb_raw(&[DomSep::HashToCurveTai as u8]);
+    prefix.absorb_raw(&[DomSep::HashToCurve as u8]);
     prefix.absorb_raw(data);
 
     for ctr in 0..=255_u8 {
@@ -57,7 +58,8 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
 /// Both [`hash_to_curve_ell2_xmd`] and [`hash_to_curve_ell2_xof`] delegate to this,
 /// differing only in the `H2F` type parameter (`DefaultFieldHasher` vs `XofFieldHasher`).
 ///
-/// Uses `S::SUITE_ID` as the Domain Separation Tag for the hash-to-curve operation.
+/// Domain Separation Tag is `S::SUITE_ID || DomSep::HashToCurve`, mirroring the
+/// per-operation tagging used by transcript-based paths.
 fn hash_to_curve_ell2<S: Suite, H2F>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H2F: HashToField<BaseField<S>>,
@@ -66,13 +68,14 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
+    use ark_ec::hashing::{map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve};
 
+    let dst = [S::SUITE_ID, &[DomSep::HashToCurve as u8]].concat();
     MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
         H2F,
         Elligator2Map<CurveConfig<S>>,
-    >::new(S::SUITE_ID)
+    >::new(&dst)
     .and_then(|hasher| hasher.hash(data))
     .ok()
 }

@@ -13,7 +13,6 @@ fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
-    // AI: Can this name be a constant?
     let name = format!("{}/thin_prove", S::NAME);
     c.bench_function(&name, |b| {
         b.iter(|| secret.prove(black_box(io), b"ad"));

@@ -231,7 +231,7 @@ impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
         let seed = self.0.finalize();
         let buffer = H::new()
             .chain_update(&seed)
-            .chain_update(0u32.to_le_bytes())
+            .chain_update(0u64.to_le_bytes())
             .finalize();
         DigestXofReader {
             seed,
