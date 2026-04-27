@@ -3,10 +3,10 @@ mod bench_utils;
 
 use ark_std::UniformRand;
 use ark_vrf::{AffinePoint, Input, Secret, pedersen::PedersenSuite};
-use bench_utils::BenchInfo;
+use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
-fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::Prover;
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -19,7 +19,7 @@ fn bench_pedersen_prove<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     });
 }
 
-fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_verify<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{Prover, Verifier};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -35,7 +35,7 @@ fn bench_pedersen_verify<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
-fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::{BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
@@ -84,7 +84,7 @@ fn bench_pedersen_batch<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
     }
 }
 
-fn bench_pedersen_suite<S: BenchInfo + PedersenSuite>(c: &mut Criterion) {
+fn bench_pedersen_suite<S: PedersenSuite>(c: &mut Criterion) {
     bench_pedersen_prove::<S>(c);
     bench_pedersen_verify::<S>(c);
     bench_pedersen_batch::<S>(c);

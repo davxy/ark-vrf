@@ -281,7 +281,7 @@ impl<S: RingSuite> RingContext<S> {
             prover_key,
             self.piop_params,
             key_index,
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
 
@@ -290,7 +290,7 @@ impl<S: RingSuite> RingContext<S> {
         RingVerifier::<S>::init(
             verifier_key,
             self.piop_params,
-            ring_proof::ArkTranscript::new(const { &S::SUITE_ID.to_bytes() }),
+            ring_proof::ArkTranscript::new(S::SUITE_ID),
         )
     }
 }

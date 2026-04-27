@@ -2,7 +2,7 @@
 //!
 //! Configuration inspired by RFC-9381 (ECVRF-P256-SHA256-TAI):
 //!
-//! *  `suite_string` = `b"Secp256r1_SHA-256_TAI"`.
+//! *  `SUITE_ID` = `b"Secp256r1-SHA256-TAI-v1"`.
 //!
 //! *  The EC group G is the NIST P-256 elliptic curve, with the finite
 //!    field and curve parameters as specified in Section 3.2.1.3 of
@@ -42,7 +42,6 @@
 //! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
 //!    by Section 5.4.1.1 of RFC-9381.
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -52,18 +51,17 @@ pub struct Secp256r1Sha256Tai;
 type ThisSuite = Secp256r1Sha256Tai;
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::SECP256R1, hash::SHA256, h2c::TAI);
+    const SUITE_ID: &'static [u8] = b"Secp256r1-SHA256-TAI-v1";
     type Affine = ark_secp256r1::Affine;
     type Transcript = utils::HashTranscript<sha2::Sha256>;
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField = MontFp!(
-            "17800339453842596962527220339298376477881030973854561851382459056600873676587"
-        );
+        const X: BaseField =
+            MontFp!("100063053743935619201936855760019111820847755970243670581468062459849338000");
         const Y: BaseField = MontFp!(
-            "72390597435628002583070601678779585129721493243165367737455048249852619953628"
+            "113675507039234898358330549589155441528265243038226986303017485279501143145422"
         );
         AffinePoint::new_unchecked(X, Y)
     };

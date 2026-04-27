@@ -156,8 +156,11 @@ impl From<ark_serialize::SerializationError> for Error {
 pub trait Suite: Copy {
     /// Suite identifier.
     ///
-    /// Constructed via [`suites::SuiteId::new`] from (curve, hash, h2c, version) bytes.
-    const SUITE_ID: suites::SuiteId;
+    /// A unique byte string used for transcript domain separation and as the
+    /// hash-to-curve DST prefix. The actual constructions a `SUITE_ID` stands
+    /// for are defined by the suite specification (see each suite's module
+    /// docs). Implementations targeting interop must use the same string.
+    const SUITE_ID: &'static [u8];
 
     /// Curve point in affine representation.
     ///
@@ -509,7 +512,7 @@ mod tests {
         let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
-        let expected = "7a3623079db0d1dbd9e9f02fc02365c875a6ec5c93fb9d915a79c38cdcc42e80";
+        let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
     }
 

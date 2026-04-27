@@ -2,7 +2,7 @@
 //!
 //! Configuration:
 //!
-//! * `suite_string` = b"Bandersnatch_SHA-512_ELL2" for Twisted Edwards form.
+//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v1" for Twisted Edwards form.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Twisted Edwards form, with finite field and curve parameters as specified in
@@ -42,12 +42,13 @@
 //!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
 //!
 //! * The `ECVRF_encode_to_curve` function uses *Elligator2* method described in
-//!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380) and is
-//!   described in section 5.4.1.2 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//!   with `h2c_suite_ID_string` = `"Bandersnatch_XMD:SHA-512_ELL2_RO_"`
-//!   and domain separation tag `DST = "ECVRF_" || h2c_suite_ID_string || suite_string`.
+//!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380).
+//!   Field element expansion uses `expand_message_xmd` (RFC 9380 §5.3.1) with
+//!   SHA-512 as the fixed-output hash.
+//!   The domain separation tag is `DST = SUITE_ID || DomSep::HashToCurve`,
+//!   where `DomSep::HashToCurve` is the protocol-internal hash-to-curve tag
+//!   byte shared by the transcript-based paths (see [`crate::utils::hash_to_curve_ell2_xmd`]).
 
-use super::{SuiteId, curve, h2c, hash};
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
@@ -59,25 +60,22 @@ type ThisSuite = BandersnatchSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: SuiteId = SuiteId::new(1, curve::BANDERSNATCH, hash::SHA512, h2c::ELL2);
+    const SUITE_ID: &'static [u8] = b"Bandersnatch-SHA512-ELL2-v1";
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
-        // "XMD" for expand_message_xmd (Section 5.3.1).
-        // "RO" for random oracle (Section 3 - hash_to_curve method)
-        let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
-        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data, h2c_suite_id)
+        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
-        const X: BaseField =
-            MontFp!("5226425992571220769365843487102064307101272980791993134273780736997544949382");
-        const Y: BaseField = MontFp!(
-            "46544868206883149332782258938702216106598247683423727002885664111567608220426"
+        const X: BaseField = MontFp!(
+            "23335687741101763108036518445642207119627658113885888016488710494487028845889"
         );
+        const Y: BaseField =
+            MontFp!("5552214580375038693022409684979828600325210968745774080859660443337357929963");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -88,20 +86,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "42303668360647658687880456753606405401141031996216729331450763906967498848487"
+            "14056632001415368875257708737821299882600475929746323097150942355715730684350"
         );
         const Y: BaseField = MontFp!(
-            "41898972259388202032055565840730004413653698329702630697317353721966090663285"
+            "10322661992765989500407719465917595459409463902187386706652408883505670839210"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "29586100106858075217954567072572265001347911471605742544678436487322334776392"
+            "26913883415342152801331916189968962157924271221160514298872262294143390094043"
         );
         const Y: BaseField = MontFp!(
-            "21753411410084671346581650250322348778806357231808407562422401169820213423498"
+            "30874728313203001508631936119690348239461579770372782660098261717479009115354"
         );
         AffinePoint::new_unchecked(X, Y)
     };

@@ -4,11 +4,11 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Output, Secret, VrfIo};
-use bench_utils::BenchInfo;
+use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo};
+use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
-fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
+fn bench_vrf_output<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let name = format!("{}/vrf_output", S::SUITE_NAME);
@@ -17,14 +17,14 @@ fn bench_vrf_output<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_data_to_point_tai<S: BenchInfo>(c: &mut Criterion) {
+fn bench_data_to_point_tai<S: Suite>(c: &mut Criterion) {
     let name = format!("{}/data_to_point_tai", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| ark_vrf::utils::hash_to_curve_tai::<S>(black_box(b"bench input data")).unwrap());
     });
 }
 
-fn bench_data_to_point_ell2<S: BenchInfo>(c: &mut Criterion)
+fn bench_data_to_point_ell2<S: Suite>(c: &mut Criterion)
 where
     ark_vrf::CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
     ark_vrf::CurveConfig<S>: ark_ec::hashing::curve_maps::elligator2::Elligator2Config,
@@ -33,20 +33,18 @@ where
                 <ark_vrf::AffinePoint<S> as ark_ec::AffineRepr>::Group,
             >,
 {
-    let h2c_suite_id = b"Bandersnatch_XMD:SHA-512_ELL2_RO_";
     let name = format!("{}/data_to_point_ell2", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
-            ark_vrf::utils::hash_to_curve_ell2_xmd::<S, sha2::Sha512>(
+            ark_vrf::utils::hash_to_curve_ell2_xof::<S, ark_vrf::utils::DigestXof<sha2::Sha512>>(
                 black_box(b"bench input data"),
-                h2c_suite_id,
             )
             .unwrap()
         });
     });
 }
 
-fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
+fn bench_challenge<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input);
@@ -69,7 +67,7 @@ fn bench_challenge<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
+fn bench_point_to_hash<S: Suite>(c: &mut Criterion) {
     let mut rng = ark_std::test_rng();
     let point = AffinePoint::<S>::rand(&mut rng);
 
@@ -79,19 +77,19 @@ fn bench_point_to_hash<S: BenchInfo>(c: &mut Criterion) {
     });
 }
 
-fn bench_nonce<S: BenchInfo>(c: &mut Criterion) {
+fn bench_nonce<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
 
-    let name = format!("{}/nonce[{}]", S::SUITE_NAME, S::NONCE_TAG);
+    let name = format!("{}/nonce", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| S::nonce(black_box(secret.scalar()), None));
     });
 }
 
 // All common benchmarks for a single suite.
-fn bench_common_suite<S: BenchInfo>(c: &mut Criterion) {
-    S::print_info();
+fn bench_common_suite<S: Suite>(c: &mut Criterion) {
+    println!("\nSuite: {}", S::SUITE_NAME);
     bench_vrf_output::<S>(c);
     bench_data_to_point_tai::<S>(c);
     bench_point_to_hash::<S>(c);
