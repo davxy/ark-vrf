@@ -44,6 +44,12 @@
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
 //! let reconstructed_key = ring_setup.verifier_key_from_commitment(ring_commitment);
+//!
+//! // Same, without the setup: the PCS verifier params are a few points,
+//! // independent of ring size, and can be distributed separately.
+//! let pcs_params = ring_setup.pcs_verifier_params();
+//! let reconstructed_key =
+//!     ark_vrf::ring::verifier_key_from_commitment::<BandersnatchSha512Ell2>(ring_commitment, pcs_params);
 //! ```
 
 use crate::*;
@@ -96,6 +102,14 @@ pub type PcsCommitment<S> =
 ///
 /// Basically powers of tau SRS.
 pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
+
+/// PCS parameters required by the verifier.
+///
+/// A few points extracted from the SRS, independent of ring size. Together
+/// with a [`RingCommitment`] it is sufficient to reconstruct a
+/// [`RingVerifierKey`] via [`verifier_key_from_commitment`], without access
+/// to the full [`RingSetup`].
+pub type PcsVerifierParams<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
 /// Polynomial Interactive Oracle Proof (IOP) parameters.
 ///
@@ -389,8 +403,17 @@ impl<S: RingSuite> RingSetup<S> {
         &self,
         commitment: RingCommitment<S>,
     ) -> RingVerifierKey<S> {
+        verifier_key_from_commitment::<S>(commitment, self.pcs_verifier_params())
+    }
+
+    /// Extract the PCS parameters required by the verifier.
+    ///
+    /// Small (a few points) and independent of ring size. Sufficient,
+    /// together with a ring commitment, to reconstruct a verifier key via
+    /// [`verifier_key_from_commitment`] without access to the full setup.
+    pub fn pcs_verifier_params(&self) -> PcsVerifierParams<S> {
         use ring_proof::pcs::PcsParams;
-        RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, self.pcs_params.raw_vk())
+        self.pcs_params.raw_vk()
     }
 
     /// Create a builder for incremental construction of the verifier key.
@@ -417,6 +440,24 @@ impl<S: RingSuite> RingSetup<S> {
     pub const fn padding_point() -> AffinePoint<S> {
         S::PADDING
     }
+}
+
+/// Create a verifier key from a precomputed ring commitment and the PCS
+/// verifier parameters.
+///
+/// Lightweight alternative to [`RingSetup::verifier_key_from_commitment`] for
+/// verifier-only users: no SRS required. The parameters can be obtained once
+/// via [`RingSetup::pcs_verifier_params`] and distributed independently.
+///
+/// Soundness rests on `pcs_params` matching the trusted setup the commitment
+/// was produced under. Deserialization validates the points, but cannot tell
+/// a legitimate setup from a malicious one: obtain the parameters from a
+/// trusted source, not alongside untrusted proof data.
+pub fn verifier_key_from_commitment<S: RingSuite>(
+    commitment: RingCommitment<S>,
+    pcs_params: PcsVerifierParams<S>,
+) -> RingVerifierKey<S> {
+    RingVerifierKey::<S>::from_commitment_and_kzg_vk(commitment, pcs_params)
 }
 
 impl<S: RingSuite> CanonicalSerialize for RingSetup<S> {
@@ -469,8 +510,6 @@ pub struct RingBuilderPcsParams<S: RingSuite>(pub Vec<G1Affine<S>>);
 type PartialRingCommitment<S> =
     ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
 
-type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
-
 /// Builder for incremental construction of ring verifier keys.
 ///
 /// Allows constructing a verifier key by adding public keys in batches,
@@ -478,7 +517,7 @@ type RawVerifierKey<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
-    raw_vk: RawVerifierKey<S>,
+    pcs_params: PcsVerifierParams<S>,
 }
 
 /// Pairing G1 affine point type.
@@ -515,21 +554,31 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Self {
-        use ring_proof::pcs::PcsParams;
         let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
-        let raw_vk = ring_setup.pcs_params.raw_vk();
+        let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
             &ring_setup.piop_params,
             lookup,
-            raw_vk.g1.into_group(),
+            pcs_params.g1.into_group(),
         );
-        VerifierKeyBuilder { partial, raw_vk }
+        VerifierKeyBuilder {
+            partial,
+            pcs_params,
+        }
     }
 
     /// Get the number of remaining slots available in the ring.
     #[inline(always)]
     pub fn free_slots(&self) -> usize {
         self.partial.max_keys - self.partial.curr_keys
+    }
+
+    /// Get the PCS parameters required by the verifier.
+    ///
+    /// Same value as [`RingSetup::pcs_verifier_params`] for the setup this
+    /// builder was created from.
+    pub fn pcs_verifier_params(&self) -> PcsVerifierParams<S> {
+        self.pcs_params.clone()
     }
 
     /// Add public keys to the ring being built.
@@ -561,7 +610,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 
     /// Complete the building process and create the verifier key.
     pub fn finalize(self) -> RingVerifierKey<S> {
-        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.raw_vk)
+        RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.pcs_params)
     }
 }
 
@@ -670,6 +719,8 @@ macro_rules! ring_suite_types {
     ($suite:ident) => {
         #[allow(dead_code)]
         pub type PcsParams = $crate::ring::PcsParams<$suite>;
+        #[allow(dead_code)]
+        pub type PcsVerifierParams = $crate::ring::PcsVerifierParams<$suite>;
         #[allow(dead_code)]
         pub type PiopParams = $crate::ring::PiopParams<$suite>;
         #[allow(dead_code)]
@@ -1096,6 +1147,41 @@ pub(crate) mod testing {
     }
 
     #[allow(unused)]
+    pub fn verifier_key_from_commitment<S: RingSuite>() {
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx = 3;
+        pks[prover_idx] = public.0;
+
+        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let prover = ring_setup
+            .ring_context()
+            .ring_prover(prover_key, prover_idx);
+        let item = TestItem::<S>::new(&secret, &prover, rng);
+
+        let commitment = ring_setup.verifier_key(&pks).unwrap().commitment();
+
+        // Round-trip the params to mimic a verifier-only user holding just
+        // the serialized params, the ring commitment and the ring size.
+        let mut buf = Vec::new();
+        ring_setup
+            .pcs_verifier_params()
+            .serialize_compressed(&mut buf)
+            .unwrap();
+        let pcs_params = PcsVerifierParams::<S>::deserialize_compressed(&buf[..]).unwrap();
+
+        let ring_ctx = RingContext::<S>::new(TEST_RING_SIZE);
+        let verifier_key = super::verifier_key_from_commitment::<S>(commitment, pcs_params);
+        let verifier = ring_ctx.ring_verifier(verifier_key);
+        assert!(Public::verify(item.io, &item.ad, &item.proof, &verifier).is_ok());
+    }
+
+    #[allow(unused)]
     pub fn verifier_key_builder<S: RingSuite>() {
         use crate::testing::{random_val, random_vec};
 
@@ -1120,6 +1206,10 @@ pub(crate) mod testing {
         // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
         assert_eq!(vk_builder.free_slots(), pks.len());
+        assert_eq!(
+            vk_builder.pcs_verifier_params(),
+            ring_setup.pcs_verifier_params()
+        );
 
         let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
         assert_eq!(
@@ -1239,6 +1329,11 @@ pub(crate) mod testing {
                 #[test]
                 fn verifier_key_builder() {
                     $crate::ring::testing::verifier_key_builder::<$suite>()
+                }
+
+                #[test]
+                fn verifier_key_from_commitment() {
+                    $crate::ring::testing::verifier_key_from_commitment::<$suite>()
                 }
 
                 #[test]
