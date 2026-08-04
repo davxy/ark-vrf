@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.2] - Unreleased
 
+### Added
+
+- `RingContext::new_without_blinding(ring_size)`: runtime replacement for the
+  removed `test-vectors` feature. Provers built from such a context generate
+  deterministic (non zero-knowledge) proofs, still valid for verifiers using
+  a regular context for the same ring size.
+
+### Changed
+
+- arkworks dependencies bumped to 0.6.
+
+### Removed
+
+- `test-vectors` feature. Cargo features are additive: any crate in the
+  dependency graph could enable it, silently disabling ring proof blinding
+  for every other user of the same build.
+
 ### Security
 
 - The group identity is now rejected as a public key: its secret scalar is

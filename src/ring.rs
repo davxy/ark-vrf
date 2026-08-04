@@ -95,8 +95,7 @@ pub trait RingSuite:
 pub type Kzg<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 
 /// KZG commitment.
-pub type PcsCommitment<S> =
-    ring_proof::pcs::kzg::commitment::KzgCommitment<<S as RingSuite>::Pairing>;
+pub type PcsCommitment<S> = <Kzg<S> as ring_proof::pcs::PCS<BaseField<S>>>::C;
 
 /// KZG Polynomial Commitment Scheme parameters.
 ///
@@ -115,7 +114,7 @@ pub type PcsVerifierParams<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RV
 ///
 /// Basically all the application specific parameters required to construct and
 /// verify the ring proof.
-pub type PiopParams<S> = ring_proof::PiopParams<BaseField<S>, CurveConfig<S>>;
+pub type PiopParams<S> = ring_proof::PiopParams<TEAffine<CurveConfig<S>>>;
 
 /// Ring keys commitment.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
@@ -261,9 +260,27 @@ pub struct RingContext<S: RingSuite> {
 impl<S: RingSuite> RingContext<S> {
     /// Construct context for the given ring size.
     pub fn new(ring_size: usize) -> Self {
+        Self::construct(ring_size, true)
+    }
+
+    /// Construct a context whose provers generate deterministic proofs.
+    ///
+    /// Column blinding is disabled: proofs are reproducible, thus NOT zero-knowledge,
+    /// but remain valid for verifiers using a regular context for the same ring size.
+    /// Useful for reproducible test vectors generation.
+    pub fn new_without_blinding(ring_size: usize) -> Self {
+        Self::construct(ring_size, false)
+    }
+
+    fn construct(ring_size: usize, blinding: bool) -> Self {
         let domain_size = piop_domain_size::<S>(ring_size);
+        let mut domain =
+            ring_proof::Domain::with_zk_rows(domain_size, ring_proof::piop::params::ZK_ROWS);
+        if !blinding {
+            domain = domain.without_blinding();
+        }
         let piop_params = PiopParams::<S>::setup(
-            ring_proof::Domain::new(domain_size, true),
+            domain,
             S::BLINDING_BASE
                 .into_te()
                 .expect("BLINDING_BASE must not be identity"),
@@ -508,7 +525,7 @@ pub struct RingBuilderPcsParams<S: RingSuite>(pub Vec<G1Affine<S>>);
 
 // Under construction ring commitment.
 type PartialRingCommitment<S> =
-    ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, CurveConfig<S>>;
+    ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, TEAffine<CurveConfig<S>>>;
 
 /// Builder for incremental construction of ring verifier keys.
 ///
@@ -1421,9 +1438,10 @@ pub(crate) mod testing {
             let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
             ring_pks[prover_idx] = public.0;
 
-            let ring_ctx = ring_setup.ring_context();
+            // Blinding is disabled to make the proof reproducible
+            let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
             let prover_key = ring_setup.prover_key(&ring_pks).unwrap();
-            let prover = ring_ctx.ring_prover(prover_key, prover_idx);
+            let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
             let proof = secret.prove(io, ad, &prover);
 
             let verifier_key = ring_setup.verifier_key(&ring_pks).unwrap();
@@ -1483,7 +1501,8 @@ pub(crate) mod testing {
 
             let prover_idx = self.ring_pks.iter().position(|&pk| pk == public.0).unwrap();
 
-            let ring_ctx = ring_setup.ring_context();
+            // Blinding is disabled to reproduce the exact proof in the vector
+            let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
             let prover_key = ring_setup.prover_key(&self.ring_pks).unwrap();
             let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
@@ -1500,10 +1519,8 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            #[cfg(feature = "test-vectors")]
             {
-                // Verify if the ring-proof matches. This check is performed only when
-                // deterministic proof generation is required for test vectors.
+                // Check if the (deterministic) ring proof matches
                 let mut p = (Vec::new(), Vec::new());
                 self.ring_proof.serialize_compressed(&mut p.0).unwrap();
                 proof.ring_proof.serialize_compressed(&mut p.1).unwrap();

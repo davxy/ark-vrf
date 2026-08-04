@@ -11,29 +11,30 @@ categories = ["cryptography", "no-std"]
 autobenches = false
 
 [dependencies]
-ark-ec = { version = "0.5", default-features = false }
-ark-ff = { version = "0.5", default-features = false }
-ark-std = { version = "0.5", default-features = false }
-ark-serialize = { version = "0.5", default-features = false }
+ark-ec = { version = "0.6", default-features = false }
+ark-ff = { version = "0.6", default-features = false }
+ark-std = { version = "0.6", default-features = false }
+ark-serialize = { version = "0.6", default-features = false }
 zeroize = { version = "1.8", default-features = false }
 digest = { version = "0.10", default-features = false }
 generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-w3f-ring-proof = { version = "0.0.8", default-features = false, optional = true }
+# TODO: switch back to a crates.io version once `Domain::without_blinding` is released
+w3f-ring-proof = { git = "https://github.com/paritytech/ring-proof", rev = "501c18a58c383a8f38abe7f4ae0648a0a68583e9", default-features = false, optional = true }
 # Curves
-ark-secp256r1 = { version = "0.5", default-features = false, optional = true }
-ark-ed25519 = { version = "0.5", default-features = false, optional = true }
-ark-ed-on-bls12-381 = { version = "0.5", default-features = false, optional = true }
-ark-ed-on-bls12-381-bandersnatch = { version = "0.5", default-features = false, optional = true }
-ark-bls12-381 = { version = "0.5", default-features = false, optional = true }
-ark-ed-on-bn254 = { version = "0.5", default-features = false, optional = true }
-ark-bn254 = { version = "0.5", default-features = false, optional = true }
+ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
+ark-ed25519 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bls12-381 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bls12-381-bandersnatch = { version = "0.6", default-features = false, optional = true }
+ark-bls12-381 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bn254 = { version = "0.6", default-features = false, optional = true }
+ark-bn254 = { version = "0.6", default-features = false, optional = true }
 
 [dev-dependencies]
-ark-std = { version = "0.5", default-features = false, features = ["getrandom"] }
-ark-ed25519 = { version = "0.5" }
+ark-std = { version = "0.6", default-features = false, features = ["getrandom"] }
+ark-ed25519 = { version = "0.6" }
 hex = { version = "0.4" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
@@ -106,8 +107,5 @@ asm = [
   "sha2/asm",
   "sha3?/asm"
 ]
-# Deterministic, no-zk, ring-proof (unsafe)
-test-vectors = [ "w3f-ring-proof?/test-vectors" ]
-
 [package.metadata.docs.rs]
 features = [ "full" ]

@@ -233,12 +233,11 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 ## Features
 
 - `default`: `std`
-- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`, `test-vectors`.
+- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`.
 - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in some internal
    sensible scalar multiplications, but provides side channel defenses.
 - `ring`: Ring-VRF for the curves supporting it.
-- `test-vectors`: Deterministic ring-vrf proof. Useful for reproducible test vectors generation.
 
 ### Curves
 
