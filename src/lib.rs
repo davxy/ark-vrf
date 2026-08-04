@@ -353,23 +353,61 @@ impl<S: Suite> Secret<S> {
 /// Public key generic over the cipher suite.
 ///
 /// Elliptic curve point representing the public component of a VRF key pair.
-#[derive(Debug, Copy, Clone, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, CanonicalSerialize)]
 pub struct Public<S: Suite>(pub AffinePoint<S>);
 
+impl<S: Suite> ark_serialize::Valid for Public<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        if self.is_identity() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        self.0.check()
+    }
+}
+
+impl<S: Suite> CanonicalDeserialize for Public<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let point =
+            AffinePoint::<S>::deserialize_with_mode(reader, compress, ark_serialize::Validate::No)?;
+        let public = Self(point);
+        if matches!(validate, ark_serialize::Validate::Yes) {
+            ark_serialize::Valid::check(&public)?;
+        }
+        Ok(public)
+    }
+}
+
 impl<S: Suite> Public<S> {
-    /// Construct from an affine point with subgroup validation.
+    /// Construct from an affine point with validation.
     ///
-    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    /// Returns `Error::InvalidData` if the point is not in the prime-order
+    /// subgroup or is the group identity.
     pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
-        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
-        Ok(Self(value))
+        let public = Self(value);
+        ark_serialize::Valid::check(&public).map_err(|_| Error::InvalidData)?;
+        Ok(public)
     }
 
-    /// Construct from an affine point without subgroup checks.
+    /// Construct from an affine point without validation.
     ///
-    /// The caller must ensure `value` is in the prime-order subgroup.
+    /// The caller must ensure `value` is in the prime-order subgroup and is not
+    /// the group identity.
     pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
+    }
+
+    /// Whether the key is the group identity.
+    ///
+    /// The identity is not a usable public key: its secret scalar is zero,
+    /// which everybody knows, so anyone can produce proofs that verify against
+    /// it. Verifiers reject it explicitly rather than relying on the caller
+    /// having gone through a checked constructor.
+    pub(crate) fn is_identity(&self) -> bool {
+        self.0.is_zero()
     }
 }
 
@@ -514,6 +552,26 @@ mod tests {
 
         let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
+    }
+
+    /// The identity is a well-formed subgroup element, so the subgroup check
+    /// alone lets it through. It must be rejected on every checked path, since
+    /// its secret scalar is zero and hence known to anybody.
+    #[test]
+    fn identity_public_key_construction_rejected() {
+        type S = TestSuite;
+
+        let identity = AffinePoint::<S>::zero();
+        assert!(ark_serialize::Valid::check(&identity).is_ok());
+        assert!(crate::Public::<S>::from_affine(identity).is_err());
+
+        let mut buf = Vec::new();
+        identity.serialize_compressed(&mut buf).unwrap();
+        assert!(crate::Public::<S>::deserialize_compressed(&buf[..]).is_err());
+
+        // Unchecked paths are documented as skipping validation.
+        assert!(crate::Public::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
+        assert!(crate::Public::<S>::from_affine_unchecked(identity).is_identity());
     }
 
     #[test]

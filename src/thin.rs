@@ -86,12 +86,16 @@ pub trait Prover<S: ThinVrfSuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
+///
+/// An identity public key is the one case checked unconditionally, as its
+/// secret scalar is publicly known.
 pub trait Verifier<S: ThinVrfSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
     ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// public key is the group identity, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -127,6 +131,12 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
+        // With Y = 0 the challenge term drops out of the equation below and
+        // anyone can pick s and set R = s * G.
+        if self.is_identity() {
+            return Err(Error::InvalidData);
+        }
+
         let Proof { r, s } = proof;
         let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
 
@@ -150,7 +160,7 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
 /// verification equation uses these directly in the batch MSM.
 pub struct BatchItem<S: ThinVrfSuite> {
     c: ScalarField<S>,
-    pk: AffinePoint<S>,
+    pk: Public<S>,
     ios: Vec<VrfIo<S>>,
     zs: Vec<ScalarField<S>>,
     r: AffinePoint<S>,
@@ -196,7 +206,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         let c = S::challenge(&[&proof.r], Some(t));
         BatchItem {
             c,
-            pk: public.0,
+            pk: *public,
             ios: ios.to_vec(),
             zs,
             r: proof.r,
@@ -230,7 +240,8 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     /// `(sum_j(2 + 2*M_j) + 1)`-point MSM (where M_j is the number of VRF
     /// pairs in proof j).
     ///
-    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
+    /// public key is the group identity, `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
         use ark_ec::VariableBaseMSM;
         use ark_ff::Zero;
@@ -238,6 +249,10 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
+        }
+        // Checked here rather than in `prepare`, which cannot fail.
+        if items.iter().any(|item| item.pk.is_identity()) {
+            return Err(Error::InvalidData);
         }
 
         // Deterministic random scalars derived from all (c, s) pairs.
@@ -266,7 +281,7 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
             scalars.push(w);
 
             // pk_j with scalar w_j*c_j*z0_j
-            bases.push(item.pk);
+            bases.push(item.pk.0);
             scalars.push(wc * item.zs[0]);
 
             // Accumulate G scalar: -w_j*s_j*z0_j
@@ -378,6 +393,30 @@ pub(crate) mod testing {
         assert!(public.verify([io], b"foo", &proof_single).is_ok());
     }
 
+    /// An identity public key must be rejected by both verifiers.
+    ///
+    /// With `Y = 0` the verification equation degenerates to `s * G == R`, which
+    /// anyone can satisfy without knowing any secret: no proving is involved
+    /// below, `s` is picked and `R` derived from it. Verification is handed a raw
+    /// `Public` to make sure the rejection does not depend on the key having gone
+    /// through a checked constructor.
+    pub fn identity_public_key_rejected<S: ThinVrfSuite>() {
+        use thin::{BatchVerifier, Verifier};
+
+        let identity = Public::<S>(AffinePoint::<S>::zero());
+        let s = ScalarField::<S>::from(0x5eed_u64);
+        let forged = Proof::<S> {
+            r: (S::generator() * s).into_affine(),
+            s,
+        };
+
+        assert!(identity.verify([], b"forgery", &forged).is_err());
+
+        let mut batch = BatchVerifier::new();
+        batch.push(&identity, [], b"forgery", &forged);
+        assert!(batch.verify().is_err());
+    }
+
     /// N=3 VRF pairs: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
@@ -452,6 +491,11 @@ pub(crate) mod testing {
                 #[test]
                 fn batch_verify() {
                     $crate::thin::testing::batch_verify::<$suite>();
+                }
+
+                #[test]
+                fn identity_public_key_rejected() {
+                    $crate::thin::testing::identity_public_key_rejected::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::thin::testing::TestVector<$suite>);
