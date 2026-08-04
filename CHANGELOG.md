@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.2] - Unreleased
 
 ### Added
 
@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `test-vectors` feature. Cargo features are additive: any crate in the
   dependency graph could enable it, silently disabling ring proof blinding
   for every other user of the same build.
+
+### Security
+
+- The group identity is now rejected as a public key: its secret scalar is
+  zero and publicly known, so anyone can forge proofs verifying against it.
+  `Public::from_affine`, checked deserialization, and the thin and tiny
+  verifiers (including batch verification) return `Error::InvalidData` for
+  identity keys.
 
 ## [0.5.1] - 2026-06-12
 

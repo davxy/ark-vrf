@@ -129,12 +129,16 @@ pub trait Prover<S: TinySuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
+///
+/// An identity public key is the one case checked unconditionally, as its
+/// secret scalar is publicly known.
 pub trait Verifier<S: TinySuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
     ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// public key is the group identity, `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -179,6 +183,12 @@ impl<S: TinySuite> Verifier<S> for Public<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
+        // With Y = 0 the challenge term drops out of the equation below and
+        // anyone can produce a matching (c, s) pair.
+        if self.is_identity() {
+            return Err(Error::InvalidData);
+        }
+
         let (t, io) = vrf_transcript::<S>(self.0, ios, ad);
 
         let Proof { c, s } = proof;
@@ -245,6 +255,20 @@ pub mod testing {
         assert!(public.verify([io], b"foo", &proof_single).is_ok());
     }
 
+    /// An identity public key must be rejected by the verifier.
+    ///
+    /// `Y = 0` is the public key of the zero secret key, which everybody knows,
+    /// so the proof built below is one any attacker can build. Verification is
+    /// handed a raw `Public` to make sure the rejection does not depend on the
+    /// key having gone through a checked constructor.
+    pub fn identity_public_key_rejected<S: TinySuite>() {
+        let identity = Public::<S>(AffinePoint::<S>::zero());
+        let zero_secret = Secret::<S>::from_scalar(ScalarField::<S>::zero());
+
+        let proof = zero_secret.prove([], b"forgery");
+        assert!(identity.verify([], b"forgery", &proof).is_err());
+    }
+
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
@@ -302,6 +326,11 @@ pub mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::tiny::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn identity_public_key_rejected() {
+                    $crate::tiny::testing::identity_public_key_rejected::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::tiny::testing::TestVector<$suite>);
