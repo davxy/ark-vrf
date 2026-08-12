@@ -413,8 +413,33 @@ impl<S: Suite> Public<S> {
 /// VRF input point generic over the cipher suite.
 ///
 /// Elliptic curve point representing the VRF input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
 pub struct Input<S: Suite>(pub AffinePoint<S>);
+
+impl<S: Suite> ark_serialize::Valid for Input<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        if self.is_identity() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        self.0.check()
+    }
+}
+
+impl<S: Suite> CanonicalDeserialize for Input<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let point =
+            AffinePoint::<S>::deserialize_with_mode(reader, compress, ark_serialize::Validate::No)?;
+        let input = Self(point);
+        if matches!(validate, ark_serialize::Validate::Yes) {
+            ark_serialize::Valid::check(&input)?;
+        }
+        Ok(input)
+    }
+}
 
 impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
@@ -426,53 +451,104 @@ impl<S: Suite> Input<S> {
 }
 
 impl<S: Suite> Input<S> {
-    /// Construct from an affine point with subgroup validation.
+    /// Construct from an affine point with validation.
     ///
-    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    /// Returns `Error::InvalidData` if the point is not in the prime-order
+    /// subgroup or is the group identity.
     ///
     /// Note: this only validates subgroup membership, not that the point was
     /// produced by hash-to-curve. The caller is still responsible for ensuring
     /// the point is not in a known discrete-log relation with the suite
     /// generator (required for Thin-VRF soundness).
     pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
-        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
-        Ok(Self(value))
+        let input = Self(value);
+        ark_serialize::Valid::check(&input).map_err(|_| Error::InvalidData)?;
+        Ok(input)
     }
 
-    /// Construct from an affine point without subgroup checks.
+    /// Construct from an affine point without validation.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that `value` is in the prime-order subgroup and
-    /// was produced by a hash-to-curve procedure (or is otherwise not in a
-    /// known discrete-log relation with the suite generator). The latter is
-    /// required for the soundness of schemes like Thin-VRF where the input
-    /// and generator are delinearized into a single check.
+    /// The caller must ensure that `value` is in the prime-order subgroup, is
+    /// not the group identity, and was produced by a hash-to-curve procedure
+    /// (or is otherwise not in a known discrete-log relation with the suite
+    /// generator). The latter is required for the soundness of schemes like
+    /// Thin-VRF where the input and generator are delinearized into a single
+    /// check.
     pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
+    }
+
+    /// Whether the point is the group identity.
+    ///
+    /// The identity is not a usable VRF input: its output is the identity for
+    /// every secret key, so the pair proves nothing about the signer. Verifiers
+    /// reject it explicitly rather than relying on the caller having gone
+    /// through a checked constructor.
+    pub(crate) fn is_identity(&self) -> bool {
+        self.0.is_zero()
     }
 }
 
 /// VRF output point generic over the cipher suite.
 ///
 /// Elliptic curve point representing the VRF output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
 pub struct Output<S: Suite>(pub AffinePoint<S>);
 
+impl<S: Suite> ark_serialize::Valid for Output<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        if self.is_identity() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        self.0.check()
+    }
+}
+
+impl<S: Suite> CanonicalDeserialize for Output<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let point =
+            AffinePoint::<S>::deserialize_with_mode(reader, compress, ark_serialize::Validate::No)?;
+        let output = Self(point);
+        if matches!(validate, ark_serialize::Validate::Yes) {
+            ark_serialize::Valid::check(&output)?;
+        }
+        Ok(output)
+    }
+}
+
 impl<S: Suite> Output<S> {
-    /// Construct from an affine point with subgroup validation.
+    /// Construct from an affine point with validation.
     ///
-    /// Returns `Error::InvalidData` if the point is not in the prime-order subgroup.
+    /// Returns `Error::InvalidData` if the point is not in the prime-order
+    /// subgroup or is the group identity.
     pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
-        ark_serialize::Valid::check(&value).map_err(|_| Error::InvalidData)?;
-        Ok(Self(value))
+        let output = Self(value);
+        ark_serialize::Valid::check(&output).map_err(|_| Error::InvalidData)?;
+        Ok(output)
     }
 
-    /// Construct from an affine point without subgroup checks.
+    /// Construct from an affine point without validation.
     ///
-    /// The caller must ensure `value` is in the prime-order subgroup.
+    /// The caller must ensure `value` is in the prime-order subgroup and is not
+    /// the group identity.
     pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
         Self(value)
+    }
+
+    /// Whether the point is the group identity.
+    ///
+    /// The identity is the VRF output of every secret key over the identity
+    /// input, so a pair holding it proves nothing about the signer. Verifiers
+    /// reject it explicitly rather than relying on the caller having gone
+    /// through a checked constructor.
+    pub(crate) fn is_identity(&self) -> bool {
+        self.0.is_zero()
     }
 }
 
@@ -493,6 +569,16 @@ pub struct VrfIo<S: Suite> {
 impl<S: Suite> AsRef<[VrfIo<S>]> for VrfIo<S> {
     fn as_ref(&self) -> &[VrfIo<S>] {
         core::slice::from_ref(self)
+    }
+}
+
+impl<S: Suite> VrfIo<S> {
+    /// Whether either point of the pair is the group identity.
+    ///
+    /// Such a pair is satisfied by every secret key, so it binds its VRF output
+    /// to no signer. Verifiers reject it before evaluating their equations.
+    pub(crate) fn has_identity(&self) -> bool {
+        self.input.is_identity() || self.output.is_identity()
     }
 }
 
@@ -571,6 +657,31 @@ mod tests {
         // Unchecked paths are documented as skipping validation.
         assert!(crate::Public::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
         assert!(crate::Public::<S>::from_affine_unchecked(identity).is_identity());
+    }
+
+    /// The pair `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key,
+    /// so it binds a VRF output to no key at all. Like the identity public key
+    /// it passes the subgroup check, so the checked constructors must reject it
+    /// on their own.
+    #[test]
+    fn identity_io_point_construction_rejected() {
+        type S = TestSuite;
+
+        let identity = AffinePoint::<S>::zero();
+
+        assert!(crate::Input::<S>::from_affine(identity).is_err());
+        assert!(crate::Output::<S>::from_affine(identity).is_err());
+
+        let mut buf = Vec::new();
+        identity.serialize_compressed(&mut buf).unwrap();
+        assert!(crate::Input::<S>::deserialize_compressed(&buf[..]).is_err());
+        assert!(crate::Output::<S>::deserialize_compressed(&buf[..]).is_err());
+
+        // Unchecked paths are documented as skipping validation.
+        assert!(crate::Input::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
+        assert!(crate::Output::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
+        assert!(crate::Input::<S>::from_affine_unchecked(identity).is_identity());
+        assert!(crate::Output::<S>::from_affine_unchecked(identity).is_identity());
     }
 
     #[test]

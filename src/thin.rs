@@ -87,15 +87,19 @@ pub trait Prover<S: ThinVrfSuite> {
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
 ///
-/// An identity public key is the one case checked unconditionally, as its
-/// secret scalar is publicly known.
+/// The group identity is checked unconditionally, for the public key and for
+/// every I/O pair. Neither binds the proof to a signer: the secret scalar of
+/// the identity key is publicly known, and a pair holding the identity is
+/// satisfied by every secret key. It stays a legal value for the nonce
+/// commitment `R`, which commits to nothing.
 pub trait Verifier<S: ThinVrfSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
     ///
     /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// public key is the group identity, `Err(Error::VerificationFailure)` otherwise.
+    /// public key or any I/O pair point is the group identity,
+    /// `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -134,6 +138,13 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
         // With Y = 0 the challenge term drops out of the equation below and
         // anyone can pick s and set R = s * G.
         if self.is_identity() {
+            return Err(Error::InvalidData);
+        }
+
+        // A pair holding the identity satisfies O = x*I for every x, so it
+        // binds its VRF output to no signer.
+        let ios = ios.as_ref();
+        if ios.iter().any(VrfIo::has_identity) {
             return Err(Error::InvalidData);
         }
 
@@ -241,7 +252,8 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
     /// pairs in proof j).
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
-    /// public key is the group identity, `Err(VerificationFailure)` otherwise.
+    /// public key or I/O pair point is the group identity,
+    /// `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
         use ark_ec::VariableBaseMSM;
         use ark_ff::Zero;
@@ -251,7 +263,10 @@ impl<S: ThinVrfSuite> BatchVerifier<S> {
             return Ok(());
         }
         // Checked here rather than in `prepare`, which cannot fail.
-        if items.iter().any(|item| item.pk.is_identity()) {
+        if items
+            .iter()
+            .any(|item| item.pk.is_identity() || item.ios.iter().any(VrfIo::has_identity))
+        {
             return Err(Error::InvalidData);
         }
 
@@ -417,6 +432,44 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// An I/O pair holding the identity must be rejected by both verifiers.
+    ///
+    /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so the
+    /// verification equation accepts it and two different keys produce two
+    /// valid proofs for the same pair. The pair therefore binds its VRF output
+    /// to nobody, and only an explicit check keeps it out. The second case
+    /// hides the bad pair behind a good one, where the merged pair alone is not
+    /// enough to catch it.
+    pub fn identity_io_pair_rejected<S: ThinVrfSuite>() {
+        use thin::{BatchVerifier, Prover, Verifier};
+
+        let identity_io = VrfIo::<S> {
+            input: Input(AffinePoint::<S>::zero()),
+            output: Output(AffinePoint::<S>::zero()),
+        };
+
+        for seed in [common::TEST_SEED, [0x11; 32]] {
+            let secret = Secret::<S>::from_seed(seed);
+            let public = secret.public();
+
+            let proof = secret.prove([identity_io], b"forgery");
+            assert!(public.verify([identity_io], b"forgery", &proof).is_err());
+
+            let mut batch = BatchVerifier::new();
+            batch.push(&public, [identity_io], b"forgery", &proof);
+            assert!(batch.verify().is_err());
+
+            let good_io = secret.vrf_io(Input::new(b"good").unwrap());
+            let ios = [good_io, identity_io];
+            let proof = secret.prove(ios, b"forgery");
+            assert!(public.verify(ios, b"forgery", &proof).is_err());
+
+            let mut batch = BatchVerifier::new();
+            batch.push(&public, ios, b"forgery", &proof);
+            assert!(batch.verify().is_err());
+        }
+    }
+
     /// N=3 VRF pairs: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: ThinVrfSuite>() {
         use thin::{Prover, Verifier};
@@ -496,6 +549,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_public_key_rejected() {
                     $crate::thin::testing::identity_public_key_rejected::<$suite>();
+                }
+
+                #[test]
+                fn identity_io_pair_rejected() {
+                    $crate::thin::testing::identity_io_pair_rejected::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::thin::testing::TestVector<$suite>);
