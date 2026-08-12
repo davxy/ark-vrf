@@ -111,12 +111,21 @@ pub trait Prover<S: PedersenSuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
+///
+/// The group identity is checked unconditionally, for the key commitment and
+/// for every I/O pair. Neither binds the proof to a signer: the opening of the
+/// identity commitment is the public `(0, 0)`, and a pair holding the identity
+/// is satisfied by every secret key. It stays a legal value for the nonce
+/// commitments `R` and `Ok`, which commit to nothing, and `Ok` is necessarily
+/// the identity when no I/O pair is supplied.
 pub trait Verifier<S: PedersenSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
     ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// key commitment or any I/O pair point is the group identity,
+    /// `Err(Error::VerificationFailure)` otherwise.
     fn verify(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -190,6 +199,19 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
             sb,
         } = proof;
 
+        // Yb = 0 is the commitment of the opening (0, 0), which is public, so
+        // anyone can satisfy Eq2 without knowing a secret.
+        if pk_com.is_zero() {
+            return Err(Error::InvalidData);
+        }
+
+        // A pair holding the identity satisfies O = x*I for every x, so it
+        // binds its VRF output to no signer.
+        let ios = ios.as_ref();
+        if ios.iter().any(VrfIo::has_identity) {
+            return Err(Error::InvalidData);
+        }
+
         let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
 
         // Absorb Yb into the transcript
@@ -239,6 +261,10 @@ pub struct BatchItem<S: PedersenSuite> {
     ok: AffinePoint<S>,
     s: ScalarField<S>,
     sb: ScalarField<S>,
+    /// Set when a supplied I/O pair held the identity. Recorded here because
+    /// only the merged pair survives, and that one is legitimately the identity
+    /// when no pair is supplied at all.
+    io_identity: bool,
 }
 
 impl<S: PedersenSuite> BatchItem<S> {
@@ -248,6 +274,8 @@ impl<S: PedersenSuite> BatchItem<S> {
     /// verification. This is cheap (one hash, no scalar multiplications)
     /// and can be done in parallel.
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
+        let ios = ios.as_ref();
+        let io_identity = ios.iter().any(VrfIo::has_identity);
         let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
         t.absorb_serialize(&proof.pk_com);
         let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
@@ -260,6 +288,7 @@ impl<S: PedersenSuite> BatchItem<S> {
             ok: proof.ok,
             s: proof.s,
             sb: proof.sb,
+            io_identity,
         }
     }
 }
@@ -306,11 +335,21 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ///
     /// The random linear combination yields a (5N + 2)-point MSM.
     ///
-    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
+    /// key commitment or I/O pair point is the group identity,
+    /// `Err(VerificationFailure)` otherwise.
     pub fn verify(&self) -> Result<(), Error> {
         let items = &self.items;
         if items.is_empty() {
             return Ok(());
+        }
+
+        // Checked here rather than in `BatchItem::new`, which cannot fail.
+        if items
+            .iter()
+            .any(|item| item.pk_com.is_zero() || item.io_identity)
+        {
+            return Err(Error::InvalidData);
         }
 
         let n = items.len();
@@ -522,6 +561,79 @@ pub(crate) mod testing {
         assert!(Public::verify(ios, b"baz", &proof).is_err());
     }
 
+    /// An I/O pair holding the identity must be rejected by both verifiers.
+    ///
+    /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so both
+    /// verification equations accept it and two different keys produce two
+    /// valid proofs for the same pair. The pair therefore binds its VRF output
+    /// to nobody, and only an explicit check keeps it out. The second case
+    /// hides the bad pair behind a good one, where the merged pair alone is not
+    /// enough to catch it.
+    pub fn identity_io_pair_rejected<S: PedersenSuite>() {
+        use pedersen::{BatchVerifier, Prover, Verifier};
+
+        let identity_io = VrfIo::<S> {
+            input: Input(AffinePoint::<S>::zero()),
+            output: Output(AffinePoint::<S>::zero()),
+        };
+
+        for seed in [TEST_SEED, [0x11; 32]] {
+            let secret = Secret::<S>::from_seed(seed);
+
+            let (proof, _) = secret.prove([identity_io], b"forgery");
+            assert!(Public::verify([identity_io], b"forgery", &proof).is_err());
+
+            let mut batch = BatchVerifier::new();
+            batch.push([identity_io], b"forgery", &proof);
+            assert!(batch.verify().is_err());
+
+            let good_io = secret.vrf_io(Input::new(b"good").unwrap());
+            let ios = [good_io, identity_io];
+            let (proof, _) = secret.prove(ios, b"forgery");
+            assert!(Public::verify(ios, b"forgery", &proof).is_err());
+
+            let mut batch = BatchVerifier::new();
+            batch.push(ios, b"forgery", &proof);
+            assert!(batch.verify().is_err());
+        }
+    }
+
+    /// An identity key commitment must be rejected by both verifiers.
+    ///
+    /// `Yb = 0` is the commitment of the opening `(x, b) = (0, 0)`, which is
+    /// public. The proof below is built without any secret: both responses are
+    /// the nonces themselves, since the challenge multiplies zero. Both
+    /// verification equations hold, so only an explicit check keeps it out.
+    pub fn identity_key_commitment_rejected<S: PedersenSuite>() {
+        use pedersen::{BatchVerifier, Verifier};
+
+        let ios: [VrfIo<S>; 0] = [];
+        let ad = b"forgery";
+
+        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let pk_com = AffinePoint::<S>::zero();
+        t.absorb_serialize(&pk_com);
+
+        let k = ScalarField::<S>::from(7u64);
+        let kb = ScalarField::<S>::from(11u64);
+        let r = (S::generator() * k + S::BLINDING_BASE * kb).into_affine();
+        let ok = (io.input.0 * k).into_affine();
+
+        let proof = Proof {
+            pk_com,
+            r,
+            ok,
+            s: k,
+            sb: kb,
+        };
+
+        assert!(Public::verify(ios, ad, &proof).is_err());
+
+        let mut batch = BatchVerifier::new();
+        batch.push(ios, ad, &proof);
+        assert!(batch.verify().is_err());
+    }
+
     pub fn blinding_base_check<S: PedersenSuite>()
     where
         AffinePoint<S>: CheckPoint,
@@ -564,6 +676,16 @@ pub(crate) mod testing {
                 #[test]
                 fn batch_verify() {
                     $crate::pedersen::testing::batch_verify::<$suite>();
+                }
+
+                #[test]
+                fn identity_io_pair_rejected() {
+                    $crate::pedersen::testing::identity_io_pair_rejected::<$suite>();
+                }
+
+                #[test]
+                fn identity_key_commitment_rejected() {
+                    $crate::pedersen::testing::identity_key_commitment_rejected::<$suite>();
                 }
 
                 #[test]

@@ -32,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Public::from_affine`, checked deserialization, and the thin and tiny
   verifiers (including batch verification) return `Error::InvalidData` for
   identity keys.
+- The group identity is now rejected as a VRF input or output point. The pair
+  `(0, 0)` satisfies `O = x * I` for every secret key, so it binds its VRF
+  output to no signer. `Input::from_affine`, `Output::from_affine`, checked
+  deserialization of both, and all four verifiers (including batch
+  verification) return `Error::InvalidData` for such a pair.
+- The group identity is now rejected as a Pedersen key commitment. Its opening
+  is the public `(0, 0)`, so anyone can build a proof that satisfies the
+  commitment equation without a secret.
+
+  The identity remains accepted for the nonce commitments `R` and `Ok`, which
+  commit to nothing and are not part of the extraction argument. `Ok` is
+  necessarily the identity when no I/O pair is supplied. This matches the
+  Bandersnatch VRF specification, section 3.2, 3.3, 4.2 and 4.4 step 1.
 
 ## [0.5.1] - 2026-06-12
 
