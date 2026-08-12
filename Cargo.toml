@@ -21,8 +21,7 @@ generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-# TODO: switch back to a crates.io version once `Domain::without_blinding` is released
-w3f-ring-proof = { git = "https://github.com/paritytech/ring-proof", rev = "501c18a58c383a8f38abe7f4ae0648a0a68583e9", default-features = false, optional = true }
+w3f-ring-proof = { version = "0.0.9", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
 ark-ed25519 = { version = "0.6", default-features = false, optional = true }

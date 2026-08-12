@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - arkworks dependencies bumped to 0.6.
+- Bump `w3f-ring-proof` dependency to 0.0.9.
 
 ### Removed
 
