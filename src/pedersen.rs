@@ -216,7 +216,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         let lhs2 = short_msm(
             &[S::generator(), S::BLINDING_BASE, *pk_com],
             &[*s, *sb, neg_c],
-            1,
+            2,
         );
         if lhs2 != r.into_group() {
             return Err(Error::VerificationFailure);
