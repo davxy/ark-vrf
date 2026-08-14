@@ -21,7 +21,7 @@ generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-w3f-ring-proof = { version = "0.0.9", default-features = false, optional = true }
+w3f-ring-proof = { git = "https://github.com/paritytech/ring-proof", rev = "9076a8327a73e1fb706c3dae156f8d010b38359a", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
 ark-ed25519 = { version = "0.6", default-features = false, optional = true }
@@ -73,7 +73,6 @@ std = [
   "ark-ec/std",
   "w3f-ring-proof?/std",
 ]
-secret-split = [ "ark-std/getrandom" ]
 full = [
   "secp256r1",
   "ed25519",
@@ -92,6 +91,7 @@ secp256r1 = [ "ark-secp256r1" ]
 ring = [ "w3f-ring-proof" ]
 shake128 = [ "sha3" ]
 print-trace = [ "ark-std/print-trace" ]
+secret-split = [ "ark-std/getrandom" ]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
