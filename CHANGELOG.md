@@ -5,11 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.3] - 2026-08-18
 
 ### Changed
 
 - Improved `Error` ergonomics and variants.
+- `Secret` hardening: `Debug` redacts the scalar, equality is evaluated in
+  constant time, and key derivation zeroizes its temporary seed and scalar
+  copies.
 - Bump `w3f-ring-proof` dependency to 0.0.10.
 - `RingSuite` now requires `BaseField: ring_proof::CondSelect`. The ring proof
   backend uses constant-time selection for the secret key bits during witness

@@ -252,13 +252,39 @@ pub trait Suite: Copy {
 /// Secret key for VRF operations.
 ///
 /// Contains the private scalar and cached public key.
-/// Implements automatic zeroization on drop.
-#[derive(Debug, Clone, PartialEq)]
+/// Implements automatic zeroization on drop. The `Debug` output redacts
+/// the scalar, and equality is evaluated in constant time.
+#[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
     pub(crate) scalar: ScalarField<S>,
     /// Cached public key.
     pub(crate) public: Public<S>,
+}
+
+impl<S: Suite> core::fmt::Debug for Secret<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Secret")
+            .field("scalar", &"<redacted>")
+            .field("public", &self.public.0)
+            .finish()
+    }
+}
+
+impl<S: Suite> PartialEq for Secret<S> {
+    /// Timing does not depend on the scalars content or on where they differ.
+    fn eq(&self, other: &Self) -> bool {
+        let mut lhs = self.scalar.into_bigint();
+        let mut rhs = other.scalar.into_bigint();
+        let diff = lhs
+            .as_ref()
+            .iter()
+            .zip(rhs.as_ref())
+            .fold(0u64, |acc, (a, b)| acc | (a ^ b));
+        lhs.as_mut().zeroize();
+        rhs.as_mut().zeroize();
+        diff == 0
+    }
 }
 
 impl<S: Suite> Drop for Secret<S> {
@@ -317,9 +343,9 @@ impl<S: Suite> Secret<S> {
     /// The caller is responsible for ensuring that the resulting scalar is
     /// used safely with respect to the target curve's cofactor and subgroup
     /// properties.
-    pub fn from_seed(seed: [u8; 32]) -> Self {
+    pub fn from_seed(mut seed: [u8; 32]) -> Self {
         let mut cnt = 0_u8;
-        let sk = ScalarField::<S>::from_le_bytes_mod_order(&seed);
+        let mut sk = ScalarField::<S>::from_le_bytes_mod_order(&seed);
         let scalar = loop {
             let mut transcript = S::Transcript::new(S::SUITE_ID);
             transcript.absorb_raw(&seed);
@@ -337,6 +363,8 @@ impl<S: Suite> Secret<S> {
                 .checked_add(1)
                 .expect("unreachable: transcript hash produced 256 consecutive zero scalars");
         };
+        seed.zeroize();
+        sk.zeroize();
         Self::from_scalar(scalar)
     }
 
@@ -344,7 +372,9 @@ impl<S: Suite> Secret<S> {
     pub fn from_rand(rng: &mut impl ark_std::rand::RngCore) -> Self {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
-        Self::from_seed(seed)
+        let secret = Self::from_seed(seed);
+        seed.zeroize();
+        secret
     }
 
     /// Get the secret scalar.
@@ -659,6 +689,23 @@ mod tests {
 
         let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
+    }
+
+    /// One `{:?}` on a secret in a downstream log must not leak the key.
+    #[test]
+    fn secret_debug_redacts_scalar() {
+        let secret = Secret::from_seed(TEST_SEED);
+        let out = std::format!("{:?}", secret);
+        let scalar_str = std::format!("{:?}", secret.scalar());
+        assert!(!out.contains(&scalar_str));
+    }
+
+    /// Equality semantics must survive the switch to the constant-time impl.
+    #[test]
+    fn secret_partial_eq() {
+        let secret = Secret::from_seed(TEST_SEED);
+        assert_eq!(secret, Secret::from_seed(TEST_SEED));
+        assert_ne!(secret, Secret::from_seed([0xff; 32]));
     }
 
     /// `Error` must stay usable downstream: kinds comparable in tests, and
