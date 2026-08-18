@@ -375,12 +375,12 @@ impl<S: RingSuite> RingSetup<S> {
 
     /// Construct ring proof params from existing KZG setup.
     ///
-    /// Truncates the setup if larger than needed, or returns an error if it is
-    /// insufficient for the specified ring size.
+    /// Truncates the setup if larger than needed, or returns
+    /// `Error::RingCapacityExceeded` if it is insufficient for the specified ring size.
     pub fn from_pcs_params(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
         let pcs_domain_size = pcs_domain_size::<S>(ring_size);
         if pcs_params.powers_in_g1.len() < pcs_domain_size || pcs_params.powers_in_g2.len() < 2 {
-            return Err(Error::InvalidData);
+            return Err(Error::RingCapacityExceeded);
         }
         // Keep only the required powers of tau
         pcs_params.powers_in_g1.truncate(pcs_domain_size);
@@ -394,10 +394,11 @@ impl<S: RingSuite> RingSetup<S> {
 
     /// Create a prover key for the given ring of public keys.
     ///
-    /// Returns `Error::InvalidData` if `pks` exceeds the max ring size.
+    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
+    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
         if pks.len() > self.piop_params.keyset_part_size {
-            return Err(Error::InvalidData);
+            return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0)
@@ -405,10 +406,11 @@ impl<S: RingSuite> RingSetup<S> {
 
     /// Create a verifier key for the given ring of public keys.
     ///
-    /// Returns `Error::InvalidData` if `pks` exceeds the max ring size.
+    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
+    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
         if pks.len() > self.piop_params.keyset_part_size {
-            return Err(Error::InvalidData);
+            return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1)
@@ -602,27 +604,28 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 
     /// Add public keys to the ring being built.
     ///
-    /// Returns `Err(available_slots)` if there's not enough space, or
-    /// `Err(usize::MAX)` if the SRS lookup fails.
+    /// On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
+    /// keys do not fit in the ring ([`Self::free_slots`] gives the remaining
+    /// capacity), `Error::SrsLookupFailed` if the SRS lookup fails,
+    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn append(
         &mut self,
         pks: &[AffinePoint<S>],
         lookup: impl SrsLookup<S>,
-    ) -> Result<(), usize> {
-        let avail_slots = self.free_slots();
-        if avail_slots < pks.len() {
-            return Err(avail_slots);
+    ) -> Result<(), Error> {
+        if self.free_slots() < pks.len() {
+            return Err(Error::RingCapacityExceeded);
         }
         // Currently `ring-proof` backend panics if lookup fails.
         // This workaround makes lookup failures a bit less harsh.
         let segment = lookup
             .lookup(self.partial.curr_keys..self.partial.curr_keys + pks.len())
-            .ok_or(usize::MAX)?;
+            .ok_or(Error::SrsLookupFailed)?;
         let lookup = |range: Range<usize>| {
             debug_assert_eq!(segment.len(), range.len());
             Ok(segment.clone())
         };
-        let pks = TEMapping::to_te_slice(pks).ok_or(usize::MAX)?;
+        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
         self.partial.append(&pks, lookup);
         Ok(())
     }
@@ -1136,6 +1139,32 @@ pub(crate) mod testing {
         );
     }
 
+    /// Ring size violations must be told apart from malformed data: the
+    /// caller fixes them with larger parameters, not by rejecting the input.
+    #[allow(unused)]
+    pub fn ring_size_exceeded<S: RingSuite>() {
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let max_ring_size = ring_setup.max_ring_size();
+        let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
+        assert!(matches!(
+            ring_setup.prover_key(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
+        assert!(matches!(
+            ring_setup.verifier_key(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
+
+        // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity.
+        let pcs_params = ring_setup.pcs_params.clone();
+        assert!(matches!(
+            RingSetup::<S>::from_pcs_params(max_ring_size + 1, pcs_params),
+            Err(Error::RingCapacityExceeded)
+        ));
+    }
+
     #[allow(unused)]
     pub fn padding_check<S: RingSuite>()
     where
@@ -1233,7 +1262,7 @@ pub(crate) mod testing {
         let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
         assert_eq!(
             vk_builder.append(&[extra_pk], |_| None).unwrap_err(),
-            usize::MAX
+            Error::SrsLookupFailed
         );
 
         while !pks.is_empty() {
@@ -1242,9 +1271,13 @@ pub(crate) mod testing {
             vk_builder.append(&chunk[..], &lookup).unwrap();
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
-        // No more space left
+        // No more space left; `free_slots` reports the remaining capacity.
         let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
-        assert_eq!(vk_builder.append(&[extra_pk], &lookup).unwrap_err(), 0);
+        assert_eq!(
+            vk_builder.append(&[extra_pk], &lookup).unwrap_err(),
+            Error::RingCapacityExceeded
+        );
+        assert_eq!(vk_builder.free_slots(), 0);
         let verifier_key = vk_builder.finalize();
         let verifier = ring_ctx.ring_verifier(verifier_key);
         let result = Public::verify(io, b"foo", &proof, &verifier);
@@ -1333,6 +1366,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify_batch() {
                     $crate::ring::testing::prove_verify_batch::<$suite>()
+                }
+
+                #[test]
+                fn ring_size_exceeded() {
+                    $crate::ring::testing::ring_size_exceeded::<$suite>()
                 }
 
                 #[test]

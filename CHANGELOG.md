@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improved `Error` ergonomics and variants.
 - Bump `w3f-ring-proof` dependency to 0.0.10.
 - `RingSuite` now requires `BaseField: ring_proof::CondSelect`. The ring proof
   backend uses constant-time selection for the secret key bits during witness

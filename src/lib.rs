@@ -132,14 +132,33 @@ pub type ScalarField<S> = <AffinePoint<S> as AffineRepr>::ScalarField;
 pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
 /// Crate error type.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Proof verification failed.
     VerificationFailure,
     /// Invalid input data (e.g. point not in the prime-order subgroup,
-    /// deserialization failure, ring size exceeding parameters).
+    /// forbidden identity point, deserialization failure).
     InvalidData,
+    /// Ring capacity exceeded (requested ring size beyond the parameters
+    /// capacity, SRS too short, or no free slots left in the builder).
+    RingCapacityExceeded,
+    /// SRS lookup failed during incremental ring construction.
+    SrsLookupFailed,
 }
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let msg = match self {
+            Error::VerificationFailure => "proof verification failed",
+            Error::InvalidData => "invalid data",
+            Error::RingCapacityExceeded => "ring capacity exceeded",
+            Error::SrsLookupFailed => "SRS lookup failed",
+        };
+        f.write_str(msg)
+    }
+}
+
+impl core::error::Error for Error {}
 
 impl From<ark_serialize::SerializationError> for Error {
     fn from(_err: ark_serialize::SerializationError) -> Self {
@@ -640,6 +659,20 @@ mod tests {
 
         let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
+    }
+
+    /// `Error` must stay usable downstream: kinds comparable in tests, and
+    /// values convertible into `dyn Error` chains (`anyhow`, `thiserror`).
+    /// The exact messages are not part of the contract; the impls are.
+    #[test]
+    fn error_type_ergonomics() {
+        let err: &dyn core::error::Error = &Error::VerificationFailure;
+        assert!(!err.to_string().is_empty());
+        assert_eq!(
+            Error::from(ark_serialize::SerializationError::InvalidData),
+            Error::InvalidData
+        );
+        assert_ne!(Error::InvalidData, Error::RingCapacityExceeded);
     }
 
     /// The identity is a well-formed subgroup element, so the subgroup check
