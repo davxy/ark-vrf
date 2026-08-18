@@ -27,9 +27,9 @@ use crate::{utils::challenge_scalar, utils::common::DomSep, utils::straus::short
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
 /// Blanket-implemented for all types implementing [`Suite`].
-pub trait ThinVrfSuite: Suite {}
+pub trait ThinSuite: Suite {}
 
-impl<T> ThinVrfSuite for T where T: Suite {}
+impl<T> ThinSuite for T where T: Suite {}
 
 /// Thin VRF proof.
 ///
@@ -40,7 +40,7 @@ impl<T> ThinVrfSuite for T where T: Suite {}
 /// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
 /// curve points, so deserialized proofs are guaranteed to contain valid points.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Proof<S: ThinVrfSuite> {
+pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
     pub r: AffinePoint<S>,
     /// Response scalar.
@@ -48,7 +48,7 @@ pub struct Proof<S: ThinVrfSuite> {
 }
 
 #[inline(always)]
-fn vrf_transcript<S: ThinVrfSuite>(
+fn vrf_transcript<S: ThinSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
@@ -57,7 +57,7 @@ fn vrf_transcript<S: ThinVrfSuite>(
 }
 
 #[inline(always)]
-fn vrf_transcript_scalars<S: ThinVrfSuite>(
+fn vrf_transcript_scalars<S: ThinSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
@@ -66,7 +66,7 @@ fn vrf_transcript_scalars<S: ThinVrfSuite>(
 }
 
 /// Trait for types that can generate Thin VRF proofs.
-pub trait Prover<S: ThinVrfSuite> {
+pub trait Prover<S: ThinSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
@@ -92,7 +92,7 @@ pub trait Prover<S: ThinVrfSuite> {
 /// the identity key is publicly known, and a pair holding the identity is
 /// satisfied by every secret key. It stays a legal value for the nonce
 /// commitment `R`, which commits to nothing.
-pub trait Verifier<S: ThinVrfSuite> {
+pub trait Verifier<S: ThinSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
@@ -108,7 +108,7 @@ pub trait Verifier<S: ThinVrfSuite> {
     ) -> Result<(), Error>;
 }
 
-impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
+impl<S: ThinSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
 
@@ -128,7 +128,7 @@ impl<S: ThinVrfSuite> Prover<S> for Secret<S> {
     }
 }
 
-impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
+impl<S: ThinSuite> Verifier<S> for Public<S> {
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -169,7 +169,7 @@ impl<S: ThinVrfSuite> Verifier<S> for Public<S> {
 /// Stores raw points and delinearization scalars instead of the merged pair,
 /// so that `prepare` requires no EC ops (just hashing). The expanded
 /// verification equation uses these directly in the batch MSM.
-pub struct BatchItem<S: ThinVrfSuite> {
+pub struct BatchItem<S: ThinSuite> {
     c: ScalarField<S>,
     pk: Public<S>,
     ios: Vec<VrfIo<S>>,
@@ -185,17 +185,17 @@ pub struct BatchItem<S: ThinVrfSuite> {
 ///
 /// The same subgroup membership assumptions as [`Verifier`] apply to all
 /// points fed into the batch (public keys, I/O pairs, and proof points).
-pub struct BatchVerifier<S: ThinVrfSuite> {
+pub struct BatchVerifier<S: ThinSuite> {
     items: Vec<BatchItem<S>>,
 }
 
-impl<S: ThinVrfSuite> Default for BatchVerifier<S> {
+impl<S: ThinSuite> Default for BatchVerifier<S> {
     fn default() -> Self {
         Self { items: Vec::new() }
     }
 }
 
-impl<S: ThinVrfSuite> BatchVerifier<S> {
+impl<S: ThinSuite> BatchVerifier<S> {
     /// Create a new empty batch verifier.
     pub fn new() -> Self {
         Self::default()
@@ -330,7 +330,7 @@ pub(crate) mod testing {
     use super::*;
     use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
 
-    pub fn prove_verify<S: ThinVrfSuite>() {
+    pub fn prove_verify<S: ThinSuite>() {
         use thin::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -343,7 +343,7 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
-    pub fn batch_verify<S: ThinVrfSuite>() {
+    pub fn batch_verify<S: ThinSuite>() {
         use thin::{BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -384,7 +384,7 @@ pub(crate) mod testing {
     }
 
     /// N=1 slice produces same proof as passing a single `VrfIo`.
-    pub fn prove_verify_multi_single<S: ThinVrfSuite>() {
+    pub fn prove_verify_multi_single<S: ThinSuite>() {
         use thin::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -415,7 +415,7 @@ pub(crate) mod testing {
     /// below, `s` is picked and `R` derived from it. Verification is handed a raw
     /// `Public` to make sure the rejection does not depend on the key having gone
     /// through a checked constructor.
-    pub fn identity_public_key_rejected<S: ThinVrfSuite>() {
+    pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::{BatchVerifier, Verifier};
 
         let identity = Public::<S>(AffinePoint::<S>::zero());
@@ -440,7 +440,7 @@ pub(crate) mod testing {
     /// to nobody, and only an explicit check keeps it out. The second case
     /// hides the bad pair behind a good one, where the merged pair alone is not
     /// enough to catch it.
-    pub fn identity_io_pair_rejected<S: ThinVrfSuite>() {
+    pub fn identity_io_pair_rejected<S: ThinSuite>() {
         use thin::{BatchVerifier, Prover, Verifier};
 
         let identity_io = VrfIo::<S> {
@@ -471,7 +471,7 @@ pub(crate) mod testing {
     }
 
     /// N=3 VRF pairs: verify succeeds; tampered output/input/ad fails.
-    pub fn prove_verify_multi<S: ThinVrfSuite>() {
+    pub fn prove_verify_multi<S: ThinSuite>() {
         use thin::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -502,7 +502,7 @@ pub(crate) mod testing {
     }
 
     /// N=0 VRF pairs degenerates to Schnorr signature over ad.
-    pub fn prove_verify_multi_empty<S: ThinVrfSuite>() {
+    pub fn prove_verify_multi_empty<S: ThinSuite>() {
         use thin::{Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -561,13 +561,13 @@ pub(crate) mod testing {
         };
     }
 
-    pub struct TestVector<S: ThinVrfSuite> {
+    pub struct TestVector<S: ThinSuite> {
         pub base: common::TestVector<S>,
         pub proof_r: AffinePoint<S>,
         pub proof_s: ScalarField<S>,
     }
 
-    impl<S: ThinVrfSuite> core::fmt::Debug for TestVector<S> {
+    impl<S: ThinSuite> core::fmt::Debug for TestVector<S> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             let r = hex::encode(common::point_encode::<S>(&self.proof_r));
             let s = hex::encode(common::scalar_encode::<S>(&self.proof_s));
@@ -581,7 +581,7 @@ pub(crate) mod testing {
 
     impl<S> common::TestVectorTrait for TestVector<S>
     where
-        S: ThinVrfSuite + SuiteExt + std::fmt::Debug,
+        S: ThinSuite + SuiteExt + std::fmt::Debug,
     {
         fn name() -> String {
             S::SUITE_NAME.to_string() + "_thin"
