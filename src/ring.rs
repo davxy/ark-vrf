@@ -74,8 +74,10 @@ pub const PADDING_SEED: &[u8] = b"ring-padding";
 /// All required bounds are expressed directly on the associated type for better ergonomics.
 pub trait RingSuite:
     PedersenSuite<
-    Affine: AffineRepr<BaseField: ark_ff::PrimeField, Config: TECurveConfig + Clone>
-                + TEMapping<<Self::Affine as AffineRepr>::Config>,
+    Affine: AffineRepr<
+        BaseField: ark_ff::PrimeField + ring_proof::CondSelect,
+        Config: TECurveConfig + Clone,
+    > + TEMapping<<Self::Affine as AffineRepr>::Config>,
 >
 {
     /// Pairing type.
