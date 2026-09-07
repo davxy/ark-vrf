@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking**: `Public`, `Input` and `Output` are now aliases of the generic
+  `PointWrapper<S, K>` with a private point field. Construct them with
+  `from_affine`, `from_affine_unchecked`, `Input::new` or deserialization.
+
+### Fixed
+
+- `Suite::Affine` docs claimed that the `AffineRepr` bound guarantees
+  prime-order subgroup membership. It does not; the checked constructors and
+  checked deserialization of the point wrappers do.
+
 ## [0.5.3] - 2026-08-18
 
 ### Changed

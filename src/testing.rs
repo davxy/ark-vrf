@@ -351,3 +351,94 @@ macro_rules! test_vectors {
         }
     };
 }
+
+/// A nonzero point outside the prime-order subgroup, `None` when the cofactor
+/// is one.
+pub trait TorsionPoint: Sized {
+    fn torsion_point() -> Option<Self>;
+}
+
+/// `(0, -1)` has order two on every twisted Edwards curve. Other torsion
+/// points may lie at infinity, where the affine conversion panics.
+impl<C: TECurveConfig> TorsionPoint for TEAffine<C> {
+    fn torsion_point() -> Option<Self> {
+        use ark_ff::One;
+        Some(Self::new_unchecked(
+            C::BaseField::zero(),
+            -C::BaseField::one(),
+        ))
+    }
+}
+
+/// Samples curve points from deterministic bytes and keeps the torsion
+/// component `P - h^-1 * (h * P)` of the first sample outside the subgroup.
+impl<C: SWCurveConfig> TorsionPoint for SWAffine<C> {
+    fn torsion_point() -> Option<Self> {
+        if C::cofactor_is_one() {
+            return None;
+        }
+        let base_len = C::BaseField::default().serialized_size(ark_serialize::Compress::Yes);
+        let mut rng = ark_std::test_rng();
+        let mut bytes = vec![0u8; base_len];
+        for _ in 0..1000 {
+            rng.fill_bytes(&mut bytes);
+            let Some(point) = Self::from_random_bytes(&bytes) else {
+                continue;
+            };
+            let prime_order_part = point.mul_by_cofactor().mul_by_cofactor_inv();
+            let torsion = (point.into_group() - prime_order_part.into_group()).into_affine();
+            if !torsion.is_zero() {
+                return Some(torsion);
+            }
+        }
+        panic!("no torsion point found");
+    }
+}
+
+/// Points outside the prime-order subgroup must not pass any checked path.
+///
+/// A key holder can add a torsion point `T` to the honest output `O`. The
+/// verifiers accept `O + T` for about half of the additional data values,
+/// while `O` and `O + T` hash to different VRF outputs. The checked
+/// constructors and checked deserialization are the only barrier
+/// (Cure53 PAR-03-010).
+pub fn low_order_point_rejected<S: Suite>()
+where
+    AffinePoint<S>: TorsionPoint,
+{
+    let Some(torsion) = AffinePoint::<S>::torsion_point() else {
+        return;
+    };
+    let secret = Secret::<S>::from_seed(TEST_SEED);
+    let input = Input::<S>::new(b"low order").unwrap();
+    let output = secret.output(input);
+
+    assert_torsion_rejected(secret.public(), torsion);
+    assert_torsion_rejected(input, torsion);
+    let bad_output = assert_torsion_rejected(output, torsion);
+    assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
+}
+
+/// Checked paths reject `honest + torsion`; unchecked paths let it through.
+fn assert_torsion_rejected<S: Suite, K: Sync>(
+    honest: PointWrapper<S, K>,
+    torsion: AffinePoint<S>,
+) -> PointWrapper<S, K> {
+    let bad = (honest.0 + torsion).into_affine();
+    assert!(PointWrapper::<S, K>::from_affine(bad).is_err());
+    let buf = point_encode::<S>(&bad);
+    assert!(PointWrapper::<S, K>::deserialize_compressed(&buf[..]).is_err());
+    let unchecked = PointWrapper::<S, K>::deserialize_compressed_unchecked(&buf[..]).unwrap();
+    assert_eq!(unchecked.0, bad);
+    unchecked
+}
+
+#[macro_export]
+macro_rules! suite_tests {
+    ($suite:ty) => {
+        #[test]
+        fn low_order_point_rejected() {
+            $crate::testing::low_order_point_rejected::<$suite>();
+        }
+    };
+}

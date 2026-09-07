@@ -122,6 +122,7 @@ mod tests {
         const SUITE_NAME: &str = "bandersnatch_sw_sha-512_tai";
     }
 
+    suite_tests!(ThisSuite);
     tiny_suite_tests!(ThisSuite);
     pedersen_suite_tests!(ThisSuite);
     thin_suite_tests!(ThisSuite);

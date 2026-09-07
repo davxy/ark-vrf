@@ -126,6 +126,10 @@ pub trait Verifier<S: PedersenSuite> {
     /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
     /// key commitment or any I/O pair point is the group identity,
     /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     fn verify(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -338,6 +342,10 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
     /// key commitment or I/O pair point is the group identity,
     /// `Err(VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         let items = &self.items;
         if items.is_empty() {
@@ -525,8 +533,8 @@ pub(crate) mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input(S::Affine::generator()),
-            output: Output(secret.public().0),
+            input: Input::from_affine_unchecked(S::Affine::generator()),
+            output: Output::from_affine_unchecked(secret.public().0),
         });
 
         let (proof, _) = secret.prove(&ios[..], b"bar");
@@ -573,8 +581,8 @@ pub(crate) mod testing {
         use pedersen::{BatchVerifier, Prover, Verifier};
 
         let identity_io = VrfIo::<S> {
-            input: Input(AffinePoint::<S>::zero()),
-            output: Output(AffinePoint::<S>::zero()),
+            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [TEST_SEED, [0x11; 32]] {

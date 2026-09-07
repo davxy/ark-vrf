@@ -726,6 +726,10 @@ impl<S: RingSuite> BatchVerifier<S> {
     ///
     /// Checks both the Pedersen proofs (via MSM) and the ring proofs (via pairing).
     /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         self.pedersen_batch.verify()?;
         self.ring_batch
@@ -997,8 +1001,8 @@ pub(crate) mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input(S::Affine::generator()),
-            output: Output(public.0),
+            input: Input::from_affine_unchecked(S::Affine::generator()),
+            output: Output::from_affine_unchecked(public.0),
         });
 
         let proof = secret.prove(&ios[..], b"bar", &prover);

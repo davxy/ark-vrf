@@ -189,8 +189,8 @@ pub(crate) fn vrf_transcript_from_iter<S: Suite>(
     let zero = AffinePoint::<S>::zero();
     let io = if n == 0 {
         VrfIo {
-            input: Input(zero),
-            output: Output(zero),
+            input: Input::from_affine_unchecked(zero),
+            output: Output::from_affine_unchecked(zero),
         }
     } else if n == 1 {
         ios.clone().next().expect("len is 1 but iterator is empty")
@@ -233,8 +233,8 @@ fn chain_ios<'a, S: Suite>(
     ios: &'a [VrfIo<S>],
 ) -> impl ExactSizeIterator<Item = VrfIo<S>> + Clone + 'a {
     let schnorr = core::iter::once(VrfIo {
-        input: Input(S::generator()),
-        output: Output(public),
+        input: Input::from_affine_unchecked(S::generator()),
+        output: Output::from_affine_unchecked(public),
     });
     ExactChain::new(schnorr, ios.iter().copied())
 }
@@ -413,8 +413,8 @@ fn merge_ios<S: Suite>(
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);
     VrfIo {
-        input: Input(norms[0]),
-        output: Output(norms[1]),
+        input: Input::from_affine_unchecked(norms[0]),
+        output: Output::from_affine_unchecked(norms[1]),
     }
 }
 
@@ -434,8 +434,8 @@ mod tests {
                 let input = TestSuite::data_to_point(&[i]).unwrap();
                 let output = (input * sk).into_affine();
                 VrfIo {
-                    input: Input(input),
-                    output: Output(output),
+                    input: Input::from_affine_unchecked(input),
+                    output: Output::from_affine_unchecked(output),
                 }
             })
             .collect();

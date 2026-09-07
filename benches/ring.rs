@@ -31,7 +31,7 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let mut ring: Vec<AffinePoint<S>> = (0..ring_size)
         .map(|_| AffinePoint::<S>::rand(&mut rng))
         .collect();
-    ring[prover_idx] = public.0;
+    ring[prover_idx] = *public;
 
     let ring_setup = ring::RingSetup::<S>::from_rand(ring_size, &mut rng);
 
