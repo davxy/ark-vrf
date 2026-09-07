@@ -54,13 +54,7 @@ fn bench_challenge<S: Suite>(c: &mut Criterion) {
     c.bench_function(&name, |b| {
         b.iter(|| {
             S::challenge(
-                black_box(&[
-                    &secret.public().0,
-                    &input.0,
-                    &output.0,
-                    &generator,
-                    &generator,
-                ]),
+                black_box(&[&*secret.public(), &*input, &*output, &generator, &generator]),
                 None,
             )
         });

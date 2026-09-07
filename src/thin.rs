@@ -100,6 +100,10 @@ pub trait Verifier<S: ThinSuite> {
     /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
     /// public key or any I/O pair point is the group identity,
     /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -254,6 +258,10 @@ impl<S: ThinSuite> BatchVerifier<S> {
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
     /// public key or I/O pair point is the group identity,
     /// `Err(VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         use ark_ec::VariableBaseMSM;
         use ark_ff::Zero;
@@ -418,7 +426,7 @@ pub(crate) mod testing {
     pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::{BatchVerifier, Verifier};
 
-        let identity = Public::<S>(AffinePoint::<S>::zero());
+        let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let s = ScalarField::<S>::from(0x5eed_u64);
         let forged = Proof::<S> {
             r: (S::generator() * s).into_affine(),
@@ -444,8 +452,8 @@ pub(crate) mod testing {
         use thin::{BatchVerifier, Prover, Verifier};
 
         let identity_io = VrfIo::<S> {
-            input: Input(AffinePoint::<S>::zero()),
-            output: Output(AffinePoint::<S>::zero()),
+            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
@@ -643,7 +651,7 @@ pub(crate) mod testing {
             assert_eq!(self.proof_r, proof.r, "Thin VRF proof R mismatch");
             assert_eq!(self.proof_s, proof.s, "Thin VRF proof s mismatch");
 
-            let pk = Public(self.base.pk);
+            let pk = Public::<S>::from_affine_unchecked(self.base.pk);
             assert!(pk.verify(io, &self.base.ad, &proof).is_ok());
         }
     }
@@ -725,7 +733,7 @@ pub(crate) mod testing {
         //       = k*(z0 + z1*d)*G + c * [(z0*sk + z1*t) / (z0 + z1*d)] * (z0 + z1*d) * G
         //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
         //       = RHS
-        let public = Public::<S>(pk);
+        let public = Public::<S>::from_affine_unchecked(pk);
         assert!(
             public.verify(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"

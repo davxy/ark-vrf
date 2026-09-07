@@ -142,6 +142,10 @@ pub trait Verifier<S: TinySuite> {
     /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
     /// public key or any I/O pair point is the group identity,
     /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -272,7 +276,7 @@ pub mod testing {
     /// handed a raw `Public` to make sure the rejection does not depend on the
     /// key having gone through a checked constructor.
     pub fn identity_public_key_rejected<S: TinySuite>() {
-        let identity = Public::<S>(AffinePoint::<S>::zero());
+        let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let zero_secret = Secret::<S>::from_scalar(ScalarField::<S>::zero());
 
         let proof = zero_secret.prove([], b"forgery");
@@ -289,8 +293,8 @@ pub mod testing {
     /// enough to catch it.
     pub fn identity_io_pair_rejected<S: TinySuite>() {
         let identity_io = VrfIo::<S> {
-            input: Input(AffinePoint::<S>::zero()),
-            output: Output(AffinePoint::<S>::zero()),
+            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
@@ -319,8 +323,8 @@ pub mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input(S::Affine::generator()),
-            output: Output(public.0),
+            input: Input::from_affine_unchecked(S::Affine::generator()),
+            output: Output::from_affine_unchecked(public.0),
         });
 
         let proof = secret.prove(&ios[..], b"bar");
@@ -455,7 +459,7 @@ pub mod testing {
             assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
             assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
 
-            let pk = Public(self.base.pk);
+            let pk = Public::<S>::from_affine_unchecked(self.base.pk);
             assert!(pk.verify(io, &self.base.ad, &proof).is_ok());
         }
     }
