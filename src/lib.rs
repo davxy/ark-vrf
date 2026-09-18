@@ -260,7 +260,9 @@ pub trait Suite: Copy {
 /// Implements automatic zeroization on drop. The `Debug` output redacts
 /// the scalar, and equality is evaluated in constant time. Key derivation
 /// and the provers zeroize their secret temporaries: seeds, nonces, the
-/// challenge products and, with `secret-split`, the split scalars.
+/// challenge products and, with `secret-split`, the split scalars. The
+/// Pedersen prover returns the blinding factor to the caller, who owns it
+/// from then on (see [`pedersen::Prover::prove`]).
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.

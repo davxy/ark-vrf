@@ -359,16 +359,18 @@ fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
     }
 }
 
+/// Pair count at which [`merge_ios`] switches from a fold to an MSM.
+///
+/// MSM has bucket-setup overhead that dominates for small N.
+/// Fold is faster below this threshold; MSM wins above it.
+pub(crate) const MSM_THRESHOLD: usize = 16;
+
 /// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
 /// Caller must ensure `ios.len() >= 2` and that `scalars` yields at least
 /// `n` values.
 fn merge_ios<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> VrfIo<S> {
     let n = ios.len();
-
-    // MSM has bucket-setup overhead that dominates for small N.
-    // Fold is faster below this threshold; MSM wins above it.
-    const MSM_THRESHOLD: usize = 16;
 
     let zero = AffinePoint::<S>::zero().into_group();
     let (input, output) = if n < MSM_THRESHOLD {
@@ -423,5 +425,45 @@ mod tests {
         assert_ne!(io_tiny, io_thin);
         assert_ne!(io_tiny, io_ped);
         assert_ne!(io_thin, io_ped);
+    }
+
+    /// `merge_ios` folds below `MSM_THRESHOLD` pairs and switches to an MSM
+    /// at the threshold. Prover and verifier share the function, so a scalar
+    /// misalignment in one branch would round-trip unnoticed. Each branch is
+    /// compared with the plain sum `sum(z_i * P_i)` over scalars drawn from
+    /// the same transcript fork.
+    #[test]
+    fn merge_ios_branches_match_plain_sum() {
+        type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
+
+        let sk = ScalarField::<TestSuite>::from(42u64);
+        for n in [MSM_THRESHOLD - 1, MSM_THRESHOLD] {
+            let ios: Vec<VrfIo<TestSuite>> = (0..n as u8)
+                .map(|i| {
+                    let input = TestSuite::data_to_point(&[i]).unwrap();
+                    VrfIo {
+                        input: Input::from_affine_unchecked(input),
+                        output: Output::from_affine_unchecked((input * sk).into_affine()),
+                    }
+                })
+                .collect();
+
+            let (t, scalars) = vrf_transcript_base(DomSep::ThinVrf, Ios::plain(&ios), b"ad");
+            let merged = merge_ios(Ios::plain(&ios), scalars);
+
+            let zs = DelinearizeScalars::<TestSuite>::new(t).take(n);
+            let plain_sum = |points: Vec<AffinePoint<TestSuite>>| {
+                points
+                    .iter()
+                    .zip(&zs)
+                    .map(|(point, z)| *point * z)
+                    .sum::<Group>()
+                    .into_affine()
+            };
+            let inputs = ios.iter().map(|io| io.input.0).collect();
+            let outputs = ios.iter().map(|io| io.output.0).collect();
+            assert_eq!(merged.input.0, plain_sum(inputs), "input, n={n}");
+            assert_eq!(merged.output.0, plain_sum(outputs), "output, n={n}");
+        }
     }
 }

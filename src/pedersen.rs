@@ -93,7 +93,11 @@ pub trait Prover<S: PedersenSuite> {
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
     ///
-    /// Returns the proof together with the associated blinding factor.
+    /// Returns the proof together with the associated blinding factor. The
+    /// blinding factor is secret material: whoever knows it can open the key
+    /// commitment `Yb` to the public key, which is what the scheme hides. The
+    /// caller must keep it private and zeroize it after use. The prover
+    /// zeroizes its other secret temporaries but not this returned value.
     fn prove(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -582,6 +586,34 @@ pub(crate) mod testing {
         assert!(Public::verify(ios, b"baz", &proof).is_err());
     }
 
+    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. Both
+    /// verifiers merge like the prover does, so this runs the branch through
+    /// prove, verify and batch verify; the branch itself is checked against a
+    /// plain sum in `utils::common`.
+    pub fn prove_verify_multi_msm<S: PedersenSuite>() {
+        use crate::utils::common::MSM_THRESHOLD;
+        use pedersen::{BatchVerifier, Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+            .collect();
+
+        let (proof, _) = secret.prove(&ios[..], b"msm");
+        assert!(Public::verify(&ios[..], b"msm", &proof).is_ok());
+        let mut batch = BatchVerifier::new();
+        batch.push(&ios[..], b"msm", &proof);
+        assert!(batch.verify().is_ok());
+
+        // Tamper: wrong output on the last pair
+        let mut bad_ios = ios.clone();
+        bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
+        assert!(Public::verify(&bad_ios[..], b"msm", &proof).is_err());
+        let mut batch = BatchVerifier::new();
+        batch.push(&bad_ios[..], b"msm", &proof);
+        assert!(batch.verify().is_err());
+    }
+
     /// An I/O pair holding the identity must be rejected by both verifiers.
     ///
     /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so both
@@ -692,6 +724,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::pedersen::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_msm() {
+                    $crate::pedersen::testing::prove_verify_multi_msm::<$suite>();
                 }
 
                 #[test]

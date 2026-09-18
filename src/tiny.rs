@@ -340,6 +340,27 @@ pub mod testing {
         assert!(public.verify(&ios[..], b"baz", &proof).is_err());
     }
 
+    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. This
+    /// runs the branch through prove and verify; the branch itself is checked
+    /// against a plain sum in `utils::common`.
+    pub fn prove_verify_multi_msm<S: TinySuite>() {
+        use crate::utils::common::MSM_THRESHOLD;
+
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+            .collect();
+
+        let proof = secret.prove(&ios[..], b"msm");
+        assert!(public.verify(&ios[..], b"msm", &proof).is_ok());
+
+        // Tamper: wrong output on the last pair
+        let mut bad_ios = ios.clone();
+        bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
+        assert!(public.verify(&bad_ios[..], b"msm", &proof).is_err());
+    }
+
     #[macro_export]
     macro_rules! tiny_suite_tests {
         ($suite:ty) => {
@@ -364,6 +385,11 @@ pub mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::tiny::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_msm() {
+                    $crate::tiny::testing::prove_verify_multi_msm::<$suite>();
                 }
 
                 #[test]

@@ -533,6 +533,35 @@ pub(crate) mod testing {
         assert!(public.verify([], b"baz", &proof).is_err());
     }
 
+    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs, and
+    /// the prover and the plain verifier share that merge. The batch verifier
+    /// expands the equation with the raw `z` scalars and never merges, so it
+    /// is the independent check that the prover merged correctly.
+    pub fn prove_verify_multi_msm<S: ThinSuite>() {
+        use crate::utils::common::MSM_THRESHOLD;
+        use thin::{BatchVerifier, Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+            .collect();
+
+        let proof = secret.prove(&ios[..], b"msm");
+        assert!(public.verify(&ios[..], b"msm", &proof).is_ok());
+        let mut batch = BatchVerifier::new();
+        batch.push(&public, &ios[..], b"msm", &proof);
+        assert!(batch.verify().is_ok());
+
+        // Tamper: wrong output on the last pair
+        let mut bad_ios = ios.clone();
+        bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
+        assert!(public.verify(&bad_ios[..], b"msm", &proof).is_err());
+        let mut batch = BatchVerifier::new();
+        batch.push(&public, &bad_ios[..], b"msm", &proof);
+        assert!(batch.verify().is_err());
+    }
+
     #[macro_export]
     macro_rules! thin_suite_tests {
         ($suite:ty) => {
@@ -557,6 +586,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::thin::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_msm() {
+                    $crate::thin::testing::prove_verify_multi_msm::<$suite>();
                 }
 
                 #[test]
