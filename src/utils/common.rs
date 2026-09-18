@@ -80,7 +80,7 @@ pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
 ///
 /// Each variant is absorbed as a single byte after `SUITE_ID` to make every
 /// distinct hashing context produce independent transcript states. Values are
-/// grouped by purpose so future additions can slot into the relevant range:
+/// grouped by purpose in blocks of sixteen.
 #[repr(u8)]
 pub(crate) enum DomSep {
     /// Tiny VRF scheme tag.

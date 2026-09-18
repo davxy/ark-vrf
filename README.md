@@ -233,7 +233,7 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 ## Features
 
 - `default`: `std`
-- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`.
+- `full`: All the curves below plus `ring`.
 - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
    secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
@@ -242,6 +242,9 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
    branch-free handling of the secret bits
    implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
 - `ring`: Ring-VRF for the curves supporting it.
+- `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
+- `print-trace`: Forwards to `ark-std/print-trace`. The ring proof backend prints
+  the timers of its phases.
 
 ### Curves
 

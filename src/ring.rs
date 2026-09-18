@@ -85,10 +85,11 @@ pub trait RingSuite:
 
     /// Accumulator base.
     ///
-    /// Point with unknown discrete log relative to the generator. In order for
-    /// the ring-proof backend to work correctly, this is required to be in the
-    /// prime order subgroup. Built-in suites derive it from
-    /// [`ACCUMULATOR_BASE_SEED`].
+    /// Point with unknown discrete log relative to the generator. It must not
+    /// be the identity. Membership in the prime order subgroup is not
+    /// required: built-in Twisted Edwards suites hash [`ACCUMULATOR_BASE_SEED`]
+    /// to the curve, while the Short Weierstrass Bandersnatch suite adds a
+    /// fixed point outside the prime order subgroup to the hashed point.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
     /// Padding point.
@@ -815,10 +816,10 @@ macro_rules! ring_suite_types {
 
 /// Domain size conversion utilities
 ///
-/// The ring proof system operates with three related size parameters:
+/// The ring proof system operates with four related size parameters:
 ///
-/// 1. `min_ring_size`: Number of keys that the ring should accomodate (user-facing parameter)
-/// 2. `max_ring_size`: Max number of keys that the ring can accomodate
+/// 1. `min_ring_size`: Number of keys that the ring should accommodate (user-facing parameter)
+/// 2. `max_ring_size`: Max number of keys that the ring can accommodate
 /// 3. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
 /// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
 ///
@@ -856,7 +857,7 @@ pub mod dom_utils {
 
     /// PIOP domain size required to support the given ring size.
     ///
-    /// Returns the smallest power of 2 that can accommodate `min_ring_capactity` members.
+    /// Returns the smallest power of 2 that can accommodate `min_ring_capacity` members.
     /// This is the domain size used for polynomial operations in the ring proof and
     /// already accounts for the PIOP overhead.
     pub const fn piop_domain_size<S: Suite>(min_ring_capacity: usize) -> usize {
@@ -1231,8 +1232,8 @@ pub(crate) mod testing {
             AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap()
         );
 
-        // SW form requires accumulator seed to be outside prime order subgroup.
-        // TE form requires accumulator seed to be in prime order subgroup.
+        // Built-in SW suites place the base outside the prime order subgroup,
+        // built-in TE suites inside it.
         let in_prime_subgroup = <AffinePoint<S> as FindAccumulatorBase<S>>::IN_PRIME_ORDER_SUBGROUP;
         assert!(S::ACCUMULATOR_BASE.check(in_prime_subgroup).is_ok());
     }
