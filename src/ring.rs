@@ -418,6 +418,11 @@ impl<S: RingSuite> RingContext<S> {
 /// proving and verification:
 /// - `pcs_params`: Polynomial Commitment Scheme parameters (KZG setup)
 /// - `ring_ctx`: Ring context containing the PIOP parameters
+///
+/// The serialized form is the SRS followed by the ring capacity, so a restored
+/// setup has the domain that was encoded and not the largest domain its SRS
+/// could back. A raw SRS is not a setup: decode it as [`PcsParams`] and call
+/// [`Self::from_pcs_params`] with the ring size of the protocol.
 #[derive(Clone)]
 pub struct RingSetup<S: RingSuite> {
     /// PCS parameters.
@@ -578,11 +583,13 @@ impl<S: RingSuite> CanonicalSerialize for RingSetup<S> {
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.pcs_params.serialize_with_mode(&mut writer, compress)
+        self.pcs_params.serialize_with_mode(&mut writer, compress)?;
+        (self.ring_ctx.max_ring_size() as u64).serialize_with_mode(&mut writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
         self.pcs_params.serialized_size(compress)
+            + (self.ring_ctx.max_ring_size() as u64).serialized_size(compress)
     }
 }
 
@@ -597,15 +604,11 @@ impl<S: RingSuite> CanonicalDeserialize for RingSetup<S> {
             compress,
             validate,
         )?;
-        if pcs_params.powers_in_g2.len() < 2 {
-            return Err(ark_serialize::SerializationError::InvalidData);
-        }
-        let max_ring_size = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len())
-            .ok_or(ark_serialize::SerializationError::InvalidData)?;
-        Ok(Self {
-            pcs_params,
-            ring_ctx: RingContext::new(max_ring_size),
-        })
+        let max_ring_size = u64::deserialize_with_mode(&mut reader, compress, validate)?;
+        let max_ring_size = usize::try_from(max_ring_size)
+            .map_err(|_| ark_serialize::SerializationError::InvalidData)?;
+        Self::from_pcs_params(max_ring_size, pcs_params)
+            .map_err(|_| ark_serialize::SerializationError::InvalidData)
     }
 }
 
@@ -1373,49 +1376,79 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), free_slots);
     }
 
-    /// The bytes of a `RingSetup` may come from a file or from a peer. A
-    /// restored setup must serialize to the same bytes and keep its ring
-    /// capacity, and an SRS too short for the smallest domain must be a
-    /// decode error, not a panic in the domain size arithmetic.
+    /// The bytes of a `RingSetup` may come from a file or from a peer. They
+    /// carry the ring capacity, so a restored setup has the domain that was
+    /// encoded and never the largest domain its SRS could back: two nodes that
+    /// load the same bytes agree. A raw SRS is not a setup, and an SRS too
+    /// short for the stored capacity is a decode error, not a panic.
     pub fn ring_setup_serialization<S: RingSuite>() {
         use ark_serialize::SerializationError;
 
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let capacity = ring_setup.ring_context().max_ring_size();
 
         let mut bytes = Vec::new();
         ring_setup.serialize_uncompressed(&mut bytes).unwrap();
+        assert_eq!(bytes.len(), ring_setup.uncompressed_size());
         let restored = RingSetup::<S>::deserialize_uncompressed_unchecked(&bytes[..]).unwrap();
         let mut restored_bytes = Vec::new();
         restored
             .serialize_uncompressed(&mut restored_bytes)
             .unwrap();
         assert_eq!(bytes, restored_bytes);
-        assert_eq!(
-            restored.ring_context().max_ring_size(),
-            ring_setup.ring_context().max_ring_size()
-        );
+        assert_eq!(restored.ring_context().max_ring_size(), capacity);
 
-        let decode = |pcs_params: &PcsParams<S>| {
+        // An SRS followed by a capacity, as the encoder writes them.
+        let decode = |pcs_params: &PcsParams<S>, capacity: u64| {
             let mut buf = Vec::new();
             pcs_params.serialize_uncompressed(&mut buf).unwrap();
+            capacity.serialize_uncompressed(&mut buf).unwrap();
             RingSetup::<S>::deserialize_uncompressed_unchecked(&buf[..])
         };
 
-        let min_g1_powers = pcs_domain_size::<S>(0);
-        for g1_powers in [0, 1, 3, 4, 100, min_g1_powers - 1] {
+        // An SRS larger than the capacity needs, as a raw SRS file may be:
+        // the stored capacity wins and the setup equals the original.
+        let mut large = ring_setup.pcs_params.clone();
+        large.powers_in_g1.extend_from_within(..);
+        let from_large = decode(&large, capacity as u64).unwrap();
+        let mut from_large_bytes = Vec::new();
+        from_large
+            .serialize_uncompressed(&mut from_large_bytes)
+            .unwrap();
+        assert_eq!(from_large_bytes, bytes);
+
+        // A raw SRS carries no capacity and is not a setup.
+        let mut raw_srs = Vec::new();
+        ring_setup
+            .pcs_params
+            .serialize_uncompressed(&mut raw_srs)
+            .unwrap();
+        assert!(RingSetup::<S>::deserialize_uncompressed_unchecked(&raw_srs[..]).is_err());
+
+        // Too short for the stored capacity, in G1 or in G2.
+        let g1_powers = ring_setup.pcs_params.powers_in_g1.len();
+        for short_len in [0, 1, 3, 4, 100, g1_powers - 1] {
             let mut short = ring_setup.pcs_params.clone();
-            short.powers_in_g1.truncate(g1_powers);
+            short.powers_in_g1.truncate(short_len);
             assert!(
-                matches!(decode(&short), Err(SerializationError::InvalidData)),
-                "g1 powers = {g1_powers}"
+                matches!(
+                    decode(&short, capacity as u64),
+                    Err(SerializationError::InvalidData)
+                ),
+                "g1 powers = {short_len}"
             );
         }
-
         let mut short = ring_setup.pcs_params.clone();
         short.powers_in_g2.truncate(1);
         assert!(matches!(
-            decode(&short),
+            decode(&short, capacity as u64),
+            Err(SerializationError::InvalidData)
+        ));
+
+        // A capacity the SRS cannot back.
+        assert!(matches!(
+            decode(&ring_setup.pcs_params, capacity as u64 + 1),
             Err(SerializationError::InvalidData)
         ));
     }

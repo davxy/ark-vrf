@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like `PedersenSuite::blinding`.
 - **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
   Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
+- **Breaking**: `RingSetup` serialization appends the ring capacity, a `u64`,
+  to the SRS, and deserialization rebuilds the setup from that value through
+  `from_pcs_params`. Bytes written by earlier versions do not decode. Before,
+  the encoding was identical to a bare SRS and the domain came from its
+  length, so a raw SRS file decoded as a setup with the largest domain it
+  could back, and a node that loaded it that way built keys on a different
+  domain than a node that called `from_pcs_params`, without any error.
 - **Breaking**: `ring::max_ring_size_from_piop_domain_size`,
   `ring::piop_domain_size_from_pcs_domain_size` and
   `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`
@@ -59,8 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equal to the identity. On Twisted Edwards suites the identity reached an
   assertion in the ring proof backend and panicked.
 - `RingSetup` deserialization returns `SerializationError::InvalidData` for an
-  SRS with fewer G1 powers than the smallest domain needs, or with fewer than
-  two G2 powers. It panicked in the domain size arithmetic before.
+  SRS that cannot back the stored ring capacity, or with fewer than two G2
+  powers. It panicked in the domain size arithmetic before.
 - Checked deserialization of `Public`, `Input`, `Output` and of the Thin,
   Pedersen and Ring proofs accepts one encoding per value; the unchecked
   methods trust their bytes. Arkworks decodes the identity
