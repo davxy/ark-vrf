@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like `PedersenSuite::blinding`.
 - **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
   Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
+- **Breaking**: `ring::max_ring_size_from_piop_domain_size`,
+  `ring::piop_domain_size_from_pcs_domain_size` and
+  `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`
+  means that no valid domain fits the given size. Before, such inputs
+  panicked or wrapped.
 - The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
 - `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
   nonces and challenge products, the ring prover zeroizes its copy of the
@@ -53,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VerifierKeyBuilder::append` return `Error::InvalidData` for a member key
   equal to the identity. On Twisted Edwards suites the identity reached an
   assertion in the ring proof backend and panicked.
+- `RingSetup` deserialization returns `SerializationError::InvalidData` for an
+  SRS with fewer G1 powers than the smallest domain needs, or with fewer than
+  two G2 powers. It panicked in the domain size arithmetic before.
 
 ## [0.5.3] - 2026-08-18
 

@@ -549,7 +549,11 @@ impl<S: RingSuite> CanonicalDeserialize for RingSetup<S> {
             compress,
             validate,
         )?;
-        let ring_size = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len());
+        if pcs_params.powers_in_g2.len() < 2 {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        let ring_size = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len())
+            .ok_or(ark_serialize::SerializationError::InvalidData)?;
         Ok(Self {
             pcs_params,
             ring_ctx: RingContext::new(ring_size),
@@ -860,7 +864,7 @@ pub mod dom_utils {
     ///
     /// Always returns a value `>= min_ring_size`.
     pub const fn max_ring_size<S: Suite>(min_ring_size: usize) -> usize {
-        max_ring_size_from_piop_domain_size::<S>(piop_domain_size::<S>(min_ring_size))
+        piop_domain_size::<S>(min_ring_size) - piop_overhead::<S>()
     }
 
     /// PIOP overhead: accounts for 3 ZK blinding points + 1 internal point + scalar field bits.
@@ -879,9 +883,12 @@ pub mod dom_utils {
 
     /// Maximum ring size supported by a given PIOP domain size.
     ///
-    /// Returns the largest ring that fits in the domain.
-    pub const fn max_ring_size_from_piop_domain_size<S: Suite>(piop_domain_size: usize) -> usize {
-        piop_domain_size - piop_overhead::<S>()
+    /// Returns the largest ring that fits in the domain, or `None` when the
+    /// domain is smaller than the PIOP overhead and fits no ring at all.
+    pub const fn max_ring_size_from_piop_domain_size<S: Suite>(
+        piop_domain_size: usize,
+    ) -> Option<usize> {
+        piop_domain_size.checked_sub(piop_overhead::<S>())
     }
 
     /// PCS domain size required to support the given ring size.
@@ -901,18 +908,29 @@ pub mod dom_utils {
 
     /// PIOP domain size extracted from a PCS domain size.
     ///
-    /// Recovers the PIOP domain size from a PCS domain size. The ilog2 ensures we get
-    /// a valid power of 2 even if the input wasn't properly constructed.
-    pub const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> usize {
-        1 << ((pcs_domain_size - 1) / 3).ilog2()
+    /// Recovers the PIOP domain size from a PCS domain size. Rounds down to a
+    /// power of two, so an SRS larger than needed maps to the largest domain it
+    /// can back. Returns `None` when `pcs_domain_size` is below 4, the PCS size
+    /// of a domain with one point.
+    pub const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> Option<usize> {
+        match (pcs_domain_size.saturating_sub(1) / 3).checked_ilog2() {
+            Some(log2) => Some(1 << log2),
+            None => None,
+        }
     }
 
     /// Maximum ring size supported by a given PCS domain size.
     ///
-    /// Composes `piop_domain_size_from_pcs_domain_size` and `max_ring_size_from_piop_domain_size`.
-    pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(pcs_domain_size: usize) -> usize {
-        let piop_domain_size = piop_domain_size_from_pcs_domain_size(pcs_domain_size);
-        max_ring_size_from_piop_domain_size::<S>(piop_domain_size)
+    /// Composes `piop_domain_size_from_pcs_domain_size` and
+    /// `max_ring_size_from_piop_domain_size`. Returns `None` when no valid domain
+    /// fits, that is when `pcs_domain_size` is below `pcs_domain_size::<S>(0)`.
+    pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(
+        pcs_domain_size: usize,
+    ) -> Option<usize> {
+        match piop_domain_size_from_pcs_domain_size(pcs_domain_size) {
+            Some(piop_domain_size) => max_ring_size_from_piop_domain_size::<S>(piop_domain_size),
+            None => None,
+        }
     }
 }
 pub use dom_utils::*;
@@ -1251,6 +1269,53 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), free_slots);
     }
 
+    /// The bytes of a `RingSetup` may come from a file or from a peer. A
+    /// restored setup must serialize to the same bytes and keep its ring
+    /// capacity, and an SRS too short for the smallest domain must be a
+    /// decode error, not a panic in the domain size arithmetic.
+    pub fn ring_setup_serialization<S: RingSuite>() {
+        use ark_serialize::SerializationError;
+
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let mut bytes = Vec::new();
+        ring_setup.serialize_uncompressed(&mut bytes).unwrap();
+        let restored = RingSetup::<S>::deserialize_uncompressed_unchecked(&bytes[..]).unwrap();
+        let mut restored_bytes = Vec::new();
+        restored
+            .serialize_uncompressed(&mut restored_bytes)
+            .unwrap();
+        assert_eq!(bytes, restored_bytes);
+        assert_eq!(
+            restored.ring_context().max_ring_size(),
+            ring_setup.ring_context().max_ring_size()
+        );
+
+        let decode = |pcs_params: &PcsParams<S>| {
+            let mut buf = Vec::new();
+            pcs_params.serialize_uncompressed(&mut buf).unwrap();
+            RingSetup::<S>::deserialize_uncompressed_unchecked(&buf[..])
+        };
+
+        let min_g1_powers = pcs_domain_size::<S>(0);
+        for g1_powers in [0, 1, 3, 4, 100, min_g1_powers - 1] {
+            let mut short = ring_setup.pcs_params.clone();
+            short.powers_in_g1.truncate(g1_powers);
+            assert!(
+                matches!(decode(&short), Err(SerializationError::InvalidData)),
+                "g1 powers = {g1_powers}"
+            );
+        }
+
+        let mut short = ring_setup.pcs_params.clone();
+        short.powers_in_g2.truncate(1);
+        assert!(matches!(
+            decode(&short),
+            Err(SerializationError::InvalidData)
+        ));
+    }
+
     #[allow(unused)]
     pub fn padding_check<S: RingSuite>()
     where
@@ -1385,7 +1450,7 @@ pub(crate) mod testing {
         for ring_size in [1, 10, 200, 300, 500, 1000, 2000, 10000] {
             let piop_dom_size = piop_domain_size::<S>(ring_size);
             let pcs_dom_size = pcs_domain_size::<S>(ring_size);
-            let max_ring_size = max_ring_size_from_piop_domain_size::<S>(piop_dom_size);
+            let max_ring_size = max_ring_size_from_piop_domain_size::<S>(piop_dom_size).unwrap();
 
             assert!(piop_dom_size.is_power_of_two());
             assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
@@ -1405,12 +1470,12 @@ pub(crate) mod testing {
             assert_eq!(dom_utils::max_ring_size::<S>(max_ring_size), max_ring_size);
 
             // Round-trip
-            let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
+            let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom_size).unwrap();
             assert_eq!(piop_dom_size, piop_dom_rt);
             let pcs_dom_rt = pcs_domain_size_from_piop_domain_size(piop_dom_rt);
             assert_eq!(pcs_dom_size, pcs_dom_rt);
 
-            let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
+            let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size).unwrap();
             assert_eq!(max_ring_size, max_ring_from_pcs);
 
             // max_ring + 1 should require a larger piop domain
@@ -1422,8 +1487,8 @@ pub(crate) mod testing {
         // Test inverse with arbitrary PCS values (not necessarily properly constructed)
         // The inverse function should recover the largest valid piop that fits
         for pcs_dom_size in [1 << 11, 1 << 12, 1 << 14, 1 << 16] {
-            let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom_size);
-            let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size);
+            let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom_size).unwrap();
+            let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size).unwrap();
 
             assert!(piop_dom.is_power_of_two());
             // piop should satisfy: 3 * piop + 1 <= pcs
@@ -1435,6 +1500,24 @@ pub(crate) mod testing {
             // max_ring + 1 should require larger piop
             assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
         }
+
+        // Below the smallest domain nothing fits: `None`, which differs from a
+        // domain that fits a ring of zero members.
+        assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead - 1), None);
+        assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead), Some(0));
+        for pcs_dom_size in [0, 1, 2, 3] {
+            assert_eq!(piop_domain_size_from_pcs_domain_size(pcs_dom_size), None);
+        }
+        assert_eq!(piop_domain_size_from_pcs_domain_size(4), Some(1));
+        let min_pcs_dom_size = pcs_domain_size::<S>(0);
+        assert_eq!(
+            max_ring_size_from_pcs_domain_size::<S>(min_pcs_dom_size - 1),
+            None
+        );
+        assert_eq!(
+            max_ring_size_from_pcs_domain_size::<S>(min_pcs_dom_size),
+            Some(dom_utils::max_ring_size::<S>(0))
+        );
 
         // Edge case: ring_size = 0 (degenerate but shouldn't panic)
         let piop_zero = piop_domain_size::<S>(0);
@@ -1471,6 +1554,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_in_ring_rejected() {
                     $crate::ring::testing::identity_in_ring_rejected::<$suite>()
+                }
+
+                #[test]
+                fn ring_setup_serialization() {
+                    $crate::ring::testing::ring_setup_serialization::<$suite>()
                 }
 
                 #[test]
