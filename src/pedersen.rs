@@ -24,7 +24,7 @@
 //! let result = Public::verify(io, b"aux data", &proof);
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (public.0 + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! let expected = (*public + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -43,6 +43,9 @@ pub const PEDERSEN_BLINDING_BASE_SEED: &[u8] = b"pedersen-blinding";
 /// Provides the additional cryptographic parameters required by the Pedersen VRF scheme.
 pub trait PedersenSuite: Suite {
     /// Blinding base.
+    ///
+    /// Point with unknown discrete log relative to the generator. Built-in
+    /// suites derive it by hashing [`PEDERSEN_BLINDING_BASE_SEED`] to the curve.
     const BLINDING_BASE: AffinePoint<Self>;
 
     /// Pedersen blinding factor.
@@ -56,12 +59,13 @@ pub trait PedersenSuite: Suite {
 
 /// Pedersen VRF proof.
 ///
-/// Zero-knowledge proof with key-hiding properties:
-/// - `pk_com`: Commitment to the public key (Y_b = x·G + b·B)
-/// - `r`: Nonce commitment for the generator (R = k·G + k_b·B)
-/// - `ok`: Nonce commitment for the input point (O_k = k·I)
-/// - `s`: Response scalar for the secret key
-/// - `sb`: Response scalar for the blinding factor
+/// Schnorr-like proof over the delinearized merged DLEQ relation, with the
+/// public key replaced by a Pedersen commitment:
+/// - `pk_com`: Public key commitment (`Yb = x * G + b * B`)
+/// - `r`: Nonce commitment on `G` and `B` (`R = k * G + kb * B`)
+/// - `ok`: Nonce commitment on the merged input (`Ok = k * I_m`)
+/// - `s`: Response scalar for the secret key (`s = k + c * x`)
+/// - `sb`: Response scalar for the blinding factor (`sb = kb + c * b`)
 ///
 /// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
 /// curve points, so deserialized proofs are guaranteed to contain valid points.
@@ -75,7 +79,7 @@ pub struct Proof<S: PedersenSuite> {
 }
 
 impl<S: PedersenSuite> Proof<S> {
-    /// Get public key commitment from proof.
+    /// Get the public key commitment `Yb`.
     pub fn key_commitment(&self) -> AffinePoint<S> {
         self.pk_com
     }
@@ -95,7 +99,7 @@ pub trait Prover<S: PedersenSuite> {
     ) -> (Proof<S>, ScalarField<S>);
 }
 
-/// Trait for entities that can verify Pedersen VRF proofs.
+/// Trait for types that can verify Pedersen VRF proofs.
 ///
 /// Verifies that a VRF output is correctly derived from an input using a
 /// committed public key, without revealing which specific public key was used.
@@ -252,10 +256,10 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
     }
 }
 
-/// Deferred Pedersen verification data for batch verification.
+/// Deferred Pedersen VRF verification data for batch verification.
 ///
-/// Captures all the information needed to verify a single Pedersen proof,
-/// allowing multiple proofs to be verified together via a single MSM.
+/// Stores the merged pair, the proof points and scalars, and the challenge.
+/// The two verification equations use these directly in the batch MSM.
 pub struct BatchItem<S: PedersenSuite> {
     c: ScalarField<S>,
     input: AffinePoint<S>,
@@ -275,8 +279,9 @@ impl<S: PedersenSuite> BatchItem<S> {
     /// Prepare a proof for batch verification.
     ///
     /// Computes the challenge and packages all data needed for deferred
-    /// verification. This is cheap (one hash, no scalar multiplications)
-    /// and can be done in parallel.
+    /// verification in [`BatchVerifier::verify`]. For a single I/O pair this
+    /// is hashing only. With several pairs it also computes the merged pair.
+    /// This is cheap and can be done in parallel.
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
         let io_identity = ios.iter().any(VrfIo::has_identity);
@@ -320,9 +325,9 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         Self::default()
     }
 
-    /// Push a previously prepared entry into the batch.
-    pub fn push_prepared(&mut self, entry: BatchItem<S>) {
-        self.items.push(entry);
+    /// Push a previously prepared item into the batch.
+    pub fn push_prepared(&mut self, item: BatchItem<S>) {
+        self.items.push(item);
     }
 
     /// Prepare and push a proof in one step.
@@ -330,7 +335,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         self.push_prepared(BatchItem::new(ios, ad, proof));
     }
 
-    /// Batch-verify multiple Pedersen proofs using a single multi-scalar multiplication.
+    /// Batch-verify all collected proofs using a single multi-scalar multiplication.
     ///
     /// For each proof i, two equations are checked with independent random scalars
     /// t_i (eq1) and u_i (eq2):
@@ -341,7 +346,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
     /// key commitment or I/O pair point is the group identity,
-    /// `Err(VerificationFailure)` otherwise.
+    /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
     /// guaranteed by the checked constructors and checked deserialization of

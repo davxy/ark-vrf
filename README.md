@@ -22,7 +22,7 @@ configurable cryptographic parameters and `no_std` support.
   ring signatures.
 
 - **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof scheme
-  derived from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that a single
+  derived from [CSSV22](https://eprint.iacr.org/2022/1205). Proves that a single
   blinded key is a member of a committed ring without revealing which one.
 
 ### Specifications

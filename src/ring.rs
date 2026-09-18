@@ -10,7 +10,7 @@
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::ring::Prover;
+//! use ark_vrf::ring::{Prover, Verifier};
 //!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
@@ -20,10 +20,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         Secret::from_seed(seed).public().0
+//!         *Secret::from_seed(seed).public()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = public.0;
+//! ring[prover_key_index] = *public;
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed(RING_SIZE, [0x42; 32]);
@@ -36,7 +36,6 @@
 //! let proof = secret.prove(io, b"aux data", &prover);
 //!
 //! // Verification
-//! use ark_vrf::ring::Verifier;
 //! let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 //! let verifier = ring_ctx.ring_verifier(verifier_key);
 //! let result = Public::verify(io, b"aux data", &proof, &verifier);
@@ -68,10 +67,11 @@ pub const ACCUMULATOR_BASE_SEED: &[u8] = b"ring-accumulator";
 /// Seed hashed to curve to produce [`RingSuite::PADDING`] in built-in suites.
 pub const PADDING_SEED: &[u8] = b"ring-padding";
 
-/// Ring suite.
+/// Suite extension for Ring VRF support.
 ///
-/// This trait provides the cryptographic primitives needed for ring VRF signatures.
-/// All required bounds are expressed directly on the associated type for better ergonomics.
+/// Provides the additional cryptographic parameters required by the Ring VRF
+/// scheme. The bounds on the associated type are the ones the ring proof
+/// backend requires.
 pub trait RingSuite:
     PedersenSuite<
     Affine: AffineRepr<
@@ -85,11 +85,17 @@ pub trait RingSuite:
 
     /// Accumulator base.
     ///
-    /// In order for the ring-proof backend to work correctly, this is required to be
-    /// in the prime order subgroup.
+    /// Point with unknown discrete log relative to the generator. In order for
+    /// the ring-proof backend to work correctly, this is required to be in the
+    /// prime order subgroup. Built-in suites derive it from
+    /// [`ACCUMULATOR_BASE_SEED`].
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
-    /// Padding point with unknown discrete log.
+    /// Padding point.
+    ///
+    /// Point with unknown discrete log relative to the generator, usable in
+    /// place of any key during ring construction. Built-in suites derive it by
+    /// hashing [`PADDING_SEED`] to the curve.
     const PADDING: AffinePoint<Self>;
 }
 
@@ -151,9 +157,9 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 
 /// Ring VRF proof.
 ///
-/// Two-part zero-knowledge proof with signer anonymity:
+/// Pedersen VRF proof combined with a ring membership proof:
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
-/// - `ring_proof`: Membership proof binding the commitment to the ring
+/// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
 ///
 /// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
 /// curve points, so deserialized proofs are guaranteed to contain valid points.
@@ -170,6 +176,8 @@ pub trait Prover<S: RingSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    /// `prover` must be built for the ring and for the position of this key in
+    /// it (see [`RingContext::ring_prover`]).
     fn prove(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -178,7 +186,7 @@ pub trait Prover<S: RingSuite> {
     ) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Ring VRF proofs.
+/// Trait for types that can verify Ring VRF proofs.
 ///
 /// Verifies that a VRF output was correctly derived using a secret key
 /// belonging to one of the ring's public keys, without revealing which one.
@@ -194,16 +202,29 @@ pub trait Prover<S: RingSuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
+///
+/// The group identity is checked unconditionally, for the key commitment and
+/// for every I/O pair, by the embedded Pedersen verification (see
+/// [`pedersen::Verifier`]).
 pub trait Verifier<S: RingSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
+    /// `verifier` must be built for the ring the proof claims membership in
+    /// (see [`RingContext::ring_verifier`]).
     ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// key commitment or any I/O pair point is the group identity or the key
+    /// commitment cannot be mapped to Twisted Edwards form,
+    /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     fn verify(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        sig: &Proof<S>,
+        proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error>;
 }
@@ -639,21 +660,25 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 type RingProofBatchItem<S> =
     ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
-/// Pre-processed data for a single ring proof awaiting batch verification.
+/// Deferred Ring VRF verification data for batch verification.
+///
+/// Holds the prepared Pedersen VRF item and the prepared ring proof item.
 pub struct BatchItem<S: RingSuite> {
     ring: RingProofBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
 }
 
 impl<S: RingSuite> BatchItem<S> {
-    /// Prepare a proof for deferred batch verification.
+    /// Prepare a proof for batch verification.
     ///
     /// Performs the cheap per-proof work (hashing, transcript setup) without
-    /// the expensive pairing and MSM checks. `verifier` must be the ring
-    /// verifier the proof was produced against.
+    /// the expensive pairing and MSM checks, and packages all data needed for
+    /// deferred verification in [`BatchVerifier::verify`]. This can be done in
+    /// parallel. `verifier` must be the ring verifier the proof was produced
+    /// against.
     ///
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// converted (e.g. identity point on SW-form suites).
+    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn new(
         verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -671,7 +696,7 @@ impl<S: RingSuite> BatchItem<S> {
     }
 }
 
-/// Batch verifier for ring VRF proofs.
+/// Batch verifier for Ring VRF proofs.
 ///
 /// Collects ring proofs from one or more rings (sharing the same KZG SRS)
 /// and verifies them together, amortizing the cost of pairing checks and
@@ -685,8 +710,9 @@ pub struct BatchVerifier<S: RingSuite> {
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
-    /// Create a new batch verifier seeded with the KZG SRS taken from `ring_verifier`.
+    /// Create a new empty batch verifier.
     ///
+    /// The KZG verifier key is taken from `ring_verifier`.
     /// Any ring verifier sharing the same SRS can later be passed to
     /// [`Self::push`] or [`BatchItem::new`]; the verifier supplied here is
     /// only used to extract the KZG verifier key.
@@ -709,7 +735,7 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// Prepare and push a proof in one step.
     ///
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// converted (e.g. identity point on SW-form suites).
+    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn push(
         &mut self,
         verifier: &RingVerifier<S>,
@@ -722,10 +748,14 @@ impl<S: RingSuite> BatchVerifier<S> {
         Ok(())
     }
 
-    /// Verify all collected proofs in a single batch.
+    /// Batch-verify all collected proofs.
     ///
-    /// Checks both the Pedersen proofs (via MSM) and the ring proofs (via pairing).
-    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    /// Checks the Pedersen proofs with a single multi-scalar multiplication
+    /// and the ring proofs with a single batched pairing check.
+    ///
+    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
+    /// key commitment or I/O pair point is the group identity,
+    /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
     /// guaranteed by the checked constructors and checked deserialization of

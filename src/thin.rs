@@ -34,8 +34,8 @@ impl<T> ThinSuite for T where T: Suite {}
 /// Thin VRF proof.
 ///
 /// Schnorr-like proof over the delinearized merged DLEQ relation:
-/// - `r`: Nonce commitment R = k * I_m
-/// - `s`: Response scalar s = k + c * sk
+/// - `r`: Nonce commitment on the merged input (`R = k * I_m`)
+/// - `s`: Response scalar (`s = k + c * x`)
 ///
 /// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
 /// curve points, so deserialized proofs are guaranteed to contain valid points.
@@ -73,7 +73,10 @@ pub trait Prover<S: ThinSuite> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Thin VRF proofs.
+/// Trait for types that can verify Thin VRF proofs.
+///
+/// Verifies that a VRF output is correctly derived from an input using the
+/// secret key of the given public key.
 ///
 /// All curve points involved in verification (public key, I/O pairs, and proof
 /// points) are assumed to be in the prime-order subgroup. This is guaranteed
@@ -232,9 +235,9 @@ impl<S: ThinSuite> BatchVerifier<S> {
         Self::default()
     }
 
-    /// Push a previously prepared entry into the batch.
-    pub fn push_prepared(&mut self, entry: BatchItem<S>) {
-        self.items.push(entry);
+    /// Push a previously prepared item into the batch.
+    pub fn push_prepared(&mut self, item: BatchItem<S>) {
+        self.items.push(item);
     }
 
     /// Prepare and push a proof in one step.
@@ -259,7 +262,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
     /// public key or I/O pair point is the group identity,
-    /// `Err(VerificationFailure)` otherwise.
+    /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
     /// guaranteed by the checked constructors and checked deserialization of

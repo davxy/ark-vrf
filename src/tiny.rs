@@ -45,14 +45,18 @@ fn vrf_transcript<S: TinySuite>(
 
 /// Tiny VRF proof.
 ///
-/// Schnorr-based proof of correctness for a VRF evaluation:
-/// - `c`: Challenge scalar derived from public parameters
-/// - `s`: Response scalar satisfying the verification equation
+/// Schnorr-like proof over the delinearized merged DLEQ relation:
+/// - `c`: Challenge scalar
+/// - `s`: Response scalar (`s = k + c * x`)
+///
+/// Serialization encodes `c` on [`utils::CHALLENGE_LEN`] bytes and `s` as a
+/// full scalar. The proof holds no curve points, so deserialization involves
+/// no subgroup checks.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
-    /// Challenge scalar derived from public parameters.
+    /// Challenge scalar.
     pub c: ScalarField<S>,
-    /// Response scalar satisfying the verification equation.
+    /// Response scalar.
     pub s: ScalarField<S>,
 }
 
@@ -118,7 +122,10 @@ pub trait Prover<S: TinySuite> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Tiny VRF proofs.
+/// Trait for types that can verify Tiny VRF proofs.
+///
+/// Verifies that a VRF output is correctly derived from an input using the
+/// secret key of the given public key.
 ///
 /// All curve points involved in verification (public key and I/O pairs)
 /// are assumed to be in the prime-order subgroup. This is guaranteed
@@ -149,21 +156,12 @@ pub trait Verifier<S: TinySuite> {
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
-        aux: impl AsRef<[u8]>,
+        ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
 }
 
 impl<S: TinySuite> Prover<S> for Secret<S> {
-    /// Tiny VRF proving algorithm.
-    ///
-    /// Prepends the Schnorr pair (G, Y) to the I/O list and proves a single
-    /// DLEQ on the delinearized merged pair:
-    ///
-    /// 1. Generate a deterministic nonce `k`
-    /// 2. Compute nonce commitment `R = k * I_m`
-    /// 3. Compute the challenge `c`
-    /// 4. Compute the response `s = k + c * x`
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
@@ -179,11 +177,6 @@ impl<S: TinySuite> Prover<S> for Secret<S> {
 }
 
 impl<S: TinySuite> Verifier<S> for Public<S> {
-    /// Tiny VRF verification algorithm.
-    ///
-    /// 1. Compute `R = s * I_m - c * O_m`
-    /// 2. Recompute the expected challenge `c_exp`
-    /// 3. Verify that `c_exp == c`
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
