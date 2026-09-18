@@ -299,9 +299,12 @@ pub struct RingContext<S: RingSuite> {
 }
 
 impl<S: RingSuite> RingContext<S> {
-    /// Construct context for the given ring size.
-    pub fn new(ring_size: usize) -> Self {
-        Self::construct(ring_size, true)
+    /// Construct a context for a ring of at least `min_ring_size` keys.
+    ///
+    /// The domain rounds up to a power of two, so the context usually holds
+    /// more keys. [`Self::max_ring_size`] reports the exact capacity.
+    pub fn new(min_ring_size: usize) -> Self {
+        Self::construct(min_ring_size, true)
     }
 
     /// Construct a context whose provers generate deterministic proofs.
@@ -309,12 +312,12 @@ impl<S: RingSuite> RingContext<S> {
     /// Column blinding is disabled: proofs are reproducible, thus NOT zero-knowledge,
     /// but remain valid for verifiers using a regular context for the same ring size.
     /// Useful for reproducible test vectors generation.
-    pub fn new_without_blinding(ring_size: usize) -> Self {
-        Self::construct(ring_size, false)
+    pub fn new_without_blinding(min_ring_size: usize) -> Self {
+        Self::construct(min_ring_size, false)
     }
 
-    fn construct(ring_size: usize, blinding: bool) -> Self {
-        let domain_size = piop_domain_size::<S>(ring_size);
+    fn construct(min_ring_size: usize, blinding: bool) -> Self {
+        let domain_size = piop_domain_size::<S>(min_ring_size);
         let mut domain =
             ring_proof::Domain::with_zk_rows(domain_size, ring_proof::piop::params::ZK_ROWS);
         if !blinding {
@@ -394,32 +397,37 @@ fn ring_members_te<S: RingSuite>(
 }
 
 impl<S: RingSuite> RingSetup<S> {
-    /// Construct deterministic ring proof params for the given ring size.
+    /// Construct deterministic ring proof params for a ring of at least
+    /// `min_ring_size` keys.
     ///
     /// Creates parameters using a transcript-based RNG seeded with `seed`.
-    pub fn from_seed(ring_size: usize, seed: [u8; 32]) -> Self {
+    pub fn from_seed(min_ring_size: usize, seed: [u8; 32]) -> Self {
         let mut t = S::Transcript::new(S::SUITE_ID);
         t.absorb_raw(&seed);
         let mut rng = t.to_rng();
-        Self::from_rand(ring_size, &mut rng)
+        Self::from_rand(min_ring_size, &mut rng)
     }
 
-    /// Construct random ring proof params for the given ring size.
+    /// Construct random ring proof params for a ring of at least `min_ring_size`
+    /// keys.
     ///
-    /// Generates a new KZG setup with sufficient degree to support the specified ring size.
-    pub fn from_rand(ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
+    /// Generates a new KZG setup with sufficient degree for that ring size.
+    pub fn from_rand(min_ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
-        let max_degree = pcs_domain_size::<S>(ring_size) - 1;
+        let max_degree = pcs_domain_size::<S>(min_ring_size) - 1;
         let pcs_params = Kzg::<S>::setup(max_degree, rng);
-        Self::from_pcs_params(ring_size, pcs_params).expect("PCS params is correct")
+        Self::from_pcs_params(min_ring_size, pcs_params).expect("PCS params is correct")
     }
 
     /// Construct ring proof params from existing KZG setup.
     ///
     /// Truncates the setup if larger than needed, or returns
-    /// `Error::RingCapacityExceeded` if it is insufficient for the specified ring size.
-    pub fn from_pcs_params(ring_size: usize, mut pcs_params: PcsParams<S>) -> Result<Self, Error> {
-        let pcs_domain_size = pcs_domain_size::<S>(ring_size);
+    /// `Error::RingCapacityExceeded` if it is insufficient for `min_ring_size` keys.
+    pub fn from_pcs_params(
+        min_ring_size: usize,
+        mut pcs_params: PcsParams<S>,
+    ) -> Result<Self, Error> {
+        let pcs_domain_size = pcs_domain_size::<S>(min_ring_size);
         if pcs_params.powers_in_g1.len() < pcs_domain_size || pcs_params.powers_in_g2.len() < 2 {
             return Err(Error::RingCapacityExceeded);
         }
@@ -429,7 +437,7 @@ impl<S: RingSuite> RingSetup<S> {
 
         Ok(Self {
             pcs_params,
-            ring_ctx: RingContext::new(ring_size),
+            ring_ctx: RingContext::new(min_ring_size),
         })
     }
 
@@ -552,11 +560,11 @@ impl<S: RingSuite> CanonicalDeserialize for RingSetup<S> {
         if pcs_params.powers_in_g2.len() < 2 {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let ring_size = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len())
+        let max_ring_size = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len())
             .ok_or(ark_serialize::SerializationError::InvalidData)?;
         Ok(Self {
             pcs_params,
-            ring_ctx: RingContext::new(ring_size),
+            ring_ctx: RingContext::new(max_ring_size),
         })
     }
 }
@@ -841,7 +849,7 @@ macro_rules! ring_suite_types {
 /// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
 ///
 /// Relationships:
-///   piop_domain_size = (ring_size + PIOP_OVERHEAD).next_power_of_two()
+///   piop_domain_size = (min_ring_size + PIOP_OVERHEAD).next_power_of_two()
 ///   pcs_domain_size  = 3 * piop_domain_size + 1
 ///   max_ring_size    = piop_domain_size - PIOP_OVERHEAD
 ///
@@ -874,11 +882,11 @@ pub mod dom_utils {
 
     /// PIOP domain size required to support the given ring size.
     ///
-    /// Returns the smallest power of 2 that can accommodate `min_ring_capacity` members.
+    /// Returns the smallest power of 2 that can accommodate `min_ring_size` members.
     /// This is the domain size used for polynomial operations in the ring proof and
     /// already accounts for the PIOP overhead.
-    pub const fn piop_domain_size<S: Suite>(min_ring_capacity: usize) -> usize {
-        (min_ring_capacity + piop_overhead::<S>()).next_power_of_two()
+    pub const fn piop_domain_size<S: Suite>(min_ring_size: usize) -> usize {
+        (min_ring_size + piop_overhead::<S>()).next_power_of_two()
     }
 
     /// Maximum ring size supported by a given PIOP domain size.
