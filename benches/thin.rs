@@ -41,7 +41,7 @@ fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
-    use ark_vrf::thin::{BatchVerifier, Prover};
+    use ark_vrf::thin::{BatchItem, BatchVerifier, Prover};
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
@@ -70,7 +70,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| BatchVerifier::<S>::prepare(&public, *io, ad, proof))
+                        .map(|(io, ad, proof)| BatchItem::<S>::new(&public, *io, ad, proof))
                         .collect();
                 });
             });

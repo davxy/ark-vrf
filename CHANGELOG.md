@@ -12,12 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking**: `Public`, `Input` and `Output` are now aliases of the generic
   `PointWrapper<S, K>` with a private point field. Construct them with
   `from_affine`, `from_affine_unchecked`, `Input::new` or deserialization.
+- **Breaking**: `thin::BatchVerifier::prepare` replaced by
+  `thin::BatchItem::new(public, ios, ad, proof)`, matching the Pedersen and
+  ring batch APIs.
+- **Breaking**: proof types are opaque. The fields of `tiny::Proof`,
+  `thin::Proof` and `ring::Proof` are no longer public, matching
+  `pedersen::Proof`. Construct proofs with `prove` or by deserialization, so
+  every proof holds subgroup-checked points unless built with a
+  `deserialize_*_unchecked` method.
+- **Breaking**: `Input::new` returns `Result<Self, Error>` instead of
+  `Option<Self>`, like the other checked constructors. A failed hash-to-curve
+  is `Error::InvalidData`.
+- **Breaking**: `PointWrapper` no longer implements `Deref` to the affine
+  point. Read it with the new `point()` method. The wrappers are role types,
+  not smart pointers.
+- **Breaking**: `Suite::nonce`, `Suite::challenge`, `utils::nonce` and
+  `utils::challenge` take the transcript directly instead of an `Option`,
+  like `PedersenSuite::blinding`.
+- **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
+  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
+- The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
+- `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
+  nonces and challenge products, the ring prover zeroizes its copy of the
+  blinding factor, and `secret-split` zeroizes the split scalars. Key
+  derivation already did this since 0.5.3.
+- `secret-split` also covers public key derivation in `Secret::from_scalar`,
+  which runs on every `Secret` deserialization.
+- The counter-mode XOF reader behind `HashTranscript` zeroizes its seed and
+  output block on drop, and the nonce reduction buffer is zeroized. The
+  `digest` 0.10 hasher state cannot be zeroized; see the `DigestXof` docs.
 
 ### Fixed
 
 - `Suite::Affine` docs claimed that the `AffineRepr` bound guarantees
   prime-order subgroup membership. It does not; the checked constructors and
   checked deserialization of the point wrappers do.
+- `utils::nonce` docs said the upper half of the expanded key is absorbed.
+  All 64 bytes are.
 
 ## [0.5.3] - 2026-08-18
 

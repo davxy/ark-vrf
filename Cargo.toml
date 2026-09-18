@@ -107,4 +107,4 @@ asm = [
   "sha3?/asm"
 ]
 [package.metadata.docs.rs]
-features = [ "full" ]
+features = [ "full", "shake128" ]

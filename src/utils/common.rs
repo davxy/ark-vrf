@@ -8,7 +8,6 @@ use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::AffineRepr;
 use ark_ff::PrimeField;
-use core::iter::Chain;
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
@@ -66,7 +65,9 @@ pub const fn expanded_scalar_len<S: Suite>(sec_bits: usize) -> usize {
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     stack_buf!(buf, expanded_scalar_len::<S>(SECURITY_PARAMETER));
     t.squeeze_raw(buf);
-    ScalarField::<S>::from_le_bytes_mod_order(buf)
+    let scalar = ScalarField::<S>::from_le_bytes_mod_order(buf);
+    buf.zeroize();
+    scalar
 }
 
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
@@ -75,56 +76,11 @@ pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     ScalarField::<S>::from_le_bytes_mod_order(&buf)
 }
 
-/// Wrapper around [`Chain`] that implements [`ExactSizeIterator`].
-///
-/// Safe because the constituent iterators are both `ExactSizeIterator`
-/// with small lengths (VRF I/O pairs), so overflow is not a concern.
-#[derive(Clone)]
-pub struct ExactChain<A, B>(Chain<A, B>, usize);
-
-impl<A, B> ExactChain<A, B>
-where
-    A: ExactSizeIterator,
-    B: ExactSizeIterator<Item = A::Item>,
-{
-    pub fn new(a: A, b: B) -> Self {
-        let len = a.len() + b.len();
-        Self(a.chain(b), len)
-    }
-}
-
-impl<A, B> Iterator for ExactChain<A, B>
-where
-    A: Iterator,
-    B: Iterator<Item = A::Item>,
-{
-    type Item = A::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.0.next();
-        if item.is_some() {
-            self.1 -= 1;
-        }
-        item
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.1, Some(self.1))
-    }
-}
-
-impl<A, B> ExactSizeIterator for ExactChain<A, B>
-where
-    A: Iterator,
-    B: Iterator<Item = A::Item>,
-{
-}
-
 /// Internal domain separation tags for protocol hashing.
 ///
 /// Each variant is absorbed as a single byte after `SUITE_ID` to make every
 /// distinct hashing context produce independent transcript states. Values are
-/// grouped by purpose so future additions can slot into the relevant range:
+/// grouped by purpose in blocks of sixteen.
 #[repr(u8)]
 pub(crate) enum DomSep {
     /// Tiny VRF scheme tag.
@@ -151,25 +107,62 @@ pub(crate) enum DomSep {
     HashToCurve = 0x60,
 }
 
+/// I/O pairs fed to a VRF transcript: an optional Schnorr pair `(G, Y)`
+/// followed by the user pairs.
+///
+/// Tiny and Thin VRF prepend the Schnorr pair, so the public key DLEQ
+/// relation is folded into the delinearized I/O pairs.
+#[derive(Clone, Copy)]
+struct Ios<'a, S: Suite> {
+    schnorr: Option<VrfIo<S>>,
+    user: &'a [VrfIo<S>],
+}
+
+impl<'a, S: Suite> Ios<'a, S> {
+    fn plain(user: &'a [VrfIo<S>]) -> Self {
+        Self {
+            schnorr: None,
+            user,
+        }
+    }
+
+    fn with_schnorr(public: AffinePoint<S>, user: &'a [VrfIo<S>]) -> Self {
+        let schnorr = VrfIo {
+            input: Input::from_affine_unchecked(S::generator()),
+            output: Output::from_affine_unchecked(public),
+        };
+        Self {
+            schnorr: Some(schnorr),
+            user,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.schnorr.is_some() as usize + self.user.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = VrfIo<S>> + '_ {
+        self.schnorr.iter().chain(self.user).copied()
+    }
+}
+
 /// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
 /// delinearization scalars, absorb additional data.
 ///
-/// Returns the transcript (with ad absorbed), the delinearization scalar
-/// stream, and the number of I/O pairs.
+/// Returns the transcript (with ad absorbed) and the delinearization scalar
+/// stream.
 fn vrf_transcript_base<S: Suite>(
     scheme: DomSep,
-    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    ad: impl AsRef<[u8]>,
-) -> (S::Transcript, DelinearizeScalars<S>, usize) {
-    let n = ios.len();
+    ios: Ios<'_, S>,
+    ad: &[u8],
+) -> (S::Transcript, DelinearizeScalars<S>) {
     let mut t = S::Transcript::new(S::SUITE_ID);
     t.absorb_raw(&[scheme as u8]);
-    absorb_ios::<S>(&mut t, ios);
-    let ad = ad.as_ref();
+    absorb_ios(&mut t, ios);
     t.absorb_raw(&(ad.len() as u64).to_le_bytes());
     t.absorb_raw(ad);
     let scalars = DelinearizeScalars::new(t.clone());
-    (t, scalars, n)
+    (t, scalars)
 }
 
 /// Build a shared VRF transcript from I/O pairs and additional data.
@@ -178,42 +171,39 @@ fn vrf_transcript_base<S: Suite>(
 /// delinearization scalars from a fork (so pairs are absorbed only once),
 /// merges the pairs into a single I/O, then absorbs the length-prefixed
 /// additional data.
-pub(crate) fn vrf_transcript_from_iter<S: Suite>(
+fn vrf_transcript_merged<S: Suite>(
     scheme: DomSep,
-    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    ad: impl AsRef<[u8]>,
+    ios: Ios<'_, S>,
+    ad: &[u8],
 ) -> (S::Transcript, VrfIo<S>) {
-    let n = ios.len();
-    let (t, scalars, _) = vrf_transcript_base(scheme, ios.clone(), ad);
-
-    let zero = AffinePoint::<S>::zero();
-    let io = if n == 0 {
-        VrfIo {
-            input: Input::from_affine_unchecked(zero),
-            output: Output::from_affine_unchecked(zero),
+    let (t, scalars) = vrf_transcript_base(scheme, ios, ad);
+    let io = match ios.len() {
+        0 => {
+            let zero = AffinePoint::<S>::zero();
+            VrfIo {
+                input: Input::from_affine_unchecked(zero),
+                output: Output::from_affine_unchecked(zero),
+            }
         }
-    } else if n == 1 {
-        ios.clone().next().expect("len is 1 but iterator is empty")
-    } else {
-        merge_ios(ios, scalars)
+        1 => ios.iter().next().expect("one pair"),
+        _ => merge_ios(ios, scalars),
     };
-
     (t, io)
 }
 
 /// Build a VRF transcript returning raw delinearization scalars.
 ///
-/// Same transcript construction as [`vrf_transcript_from_iter`] but returns
+/// Same transcript construction as [`vrf_transcript_merged`] but returns
 /// the z scalars instead of the merged I/O pair. Used by batch verification
 /// which needs the individual points and z scalars to build an expanded MSM
 /// without computing the merged pair.
-pub(crate) fn vrf_transcript_scalars_from_iter<S: Suite>(
+fn vrf_transcript_scalars<S: Suite>(
     scheme: DomSep,
-    ios: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    ad: impl AsRef<[u8]>,
+    ios: Ios<'_, S>,
+    ad: &[u8],
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    let (t, mut scalars, n) = vrf_transcript_base(scheme, ios, ad);
-    (t, scalars.take(n))
+    let (t, mut scalars) = vrf_transcript_base(scheme, ios, ad);
+    (t, scalars.take(ios.len()))
 }
 
 pub(crate) fn vrf_transcript<S: Suite>(
@@ -221,40 +211,28 @@ pub(crate) fn vrf_transcript<S: Suite>(
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    vrf_transcript_from_iter(scheme, ios.as_ref().iter().copied(), ad)
+    vrf_transcript_merged(scheme, Ios::plain(ios.as_ref()), ad.as_ref())
 }
 
 /// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF transcript.
-///
-/// Used by Tiny and Thin VRF where the public key DLEQ relation is folded
-/// into the delinearized I/O pairs.
-fn chain_ios<'a, S: Suite>(
-    public: AffinePoint<S>,
-    ios: &'a [VrfIo<S>],
-) -> impl ExactSizeIterator<Item = VrfIo<S>> + Clone + 'a {
-    let schnorr = core::iter::once(VrfIo {
-        input: Input::from_affine_unchecked(S::generator()),
-        output: Output::from_affine_unchecked(public),
-    });
-    ExactChain::new(schnorr, ios.iter().copied())
-}
-
 pub(crate) fn vrf_transcript_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
-    vrf_transcript_from_iter(scheme, chain_ios(public, ios.as_ref()), ad)
+    vrf_transcript_merged(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
 }
 
+/// Same as [`vrf_transcript_with_schnorr`] but returns the raw
+/// delinearization scalars instead of the merged pair.
 pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    vrf_transcript_scalars_from_iter(scheme, chain_ios(public, ios.as_ref()), ad)
+    vrf_transcript_scalars(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
 }
 
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
@@ -262,21 +240,18 @@ pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
 /// Generates a challenge scalar by absorbing curve points into the transcript
 /// and squeezing. Used in the Schnorr-like proofs for VRF schemes.
 ///
-/// When `transcript` is `Some`, uses the pre-built transcript (which typically
-/// carries shared state from `vrf_transcript`). When `None`, creates a fresh
-/// transcript from `SUITE_ID`.
+/// The transcript typically carries shared state from `vrf_transcript`.
 ///
 /// Returns a scalar field element derived from the hash of the inputs.
 pub fn challenge<S: Suite>(
     pts: &[&AffinePoint<S>],
-    transcript: Option<S::Transcript>,
+    mut transcript: S::Transcript,
 ) -> ScalarField<S> {
-    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
-    t.absorb_raw(&[DomSep::Challenge as u8]);
+    transcript.absorb_raw(&[DomSep::Challenge as u8]);
     for p in pts {
-        t.absorb_serialize(*p);
+        transcript.absorb_serialize(*p);
     }
-    challenge_scalar::<S>(&mut t)
+    challenge_scalar::<S>(&mut transcript)
 }
 
 /// Point-to-hash inspired by RFC-9381 section 5.2.
@@ -306,25 +281,27 @@ pub fn point_to_hash<S: Suite, const N: usize>(
 
 /// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
 ///
-/// Hashes the secret key to derive a 64-byte expanded key, then absorbs the
-/// upper half into the transcript and squeezes a nonce. The transcript typically
+/// Hashes the secret key to derive a 64-byte expanded key, then absorbs it
+/// into the transcript and squeezes a nonce. The transcript typically
 /// carries shared state from `vrf_transcript`, binding the nonce to the I/O
 /// pairs and additional data.
-pub fn nonce<S: Suite>(sk: &ScalarField<S>, transcript: Option<S::Transcript>) -> ScalarField<S> {
-    let mut t = transcript.unwrap_or_else(|| S::Transcript::new(S::SUITE_ID));
-
+///
+/// The expanded key copy and the nonce reduction buffer are zeroized. The
+/// hasher states that absorbed the secret scalar and the expanded key are
+/// not: see [`crate::utils::DigestXof`].
+pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> ScalarField<S> {
     // Expand sk: H(transcript_state || NonceExpand || sk)
-    let mut t_exp = t.clone();
+    let mut t_exp = transcript.clone();
     t_exp.absorb_raw(&[DomSep::NonceExpand as u8]);
     t_exp.absorb_serialize(sk);
     let mut sk_hash = [0u8; 64];
     t_exp.squeeze_raw(&mut sk_hash);
 
     // Derive nonce: H(transcript_state || Nonce || sk_hash)
-    t.absorb_raw(&[DomSep::Nonce as u8]);
-    t.absorb_raw(&sk_hash);
+    transcript.absorb_raw(&[DomSep::Nonce as u8]);
+    transcript.absorb_raw(&sk_hash);
     sk_hash.zeroize();
-    nonce_scalar::<S>(&mut t)
+    nonce_scalar::<S>(&mut transcript)
 }
 
 /// Stateful stream of delinearization scalars backed by a transcript's
@@ -374,37 +351,37 @@ impl<S: Suite> DelinearizeScalars<S> {
 /// framing is unambiguous even though each `VrfIo` already has a
 /// fixed-size serialization. This is cheap and avoids any implicit
 /// dependency on the serialization being fixed-length.
-fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: impl ExactSizeIterator<Item = VrfIo<S>>) {
+fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
     let n = ios.len() as u64;
     t.absorb_raw(&n.to_le_bytes());
-    for io in ios {
+    for io in ios.iter() {
         t.absorb_serialize(&io);
     }
 }
 
+/// Pair count at which [`merge_ios`] switches from a fold to an MSM.
+///
+/// MSM has bucket-setup overhead that dominates for small N.
+/// Fold is faster below this threshold; MSM wins above it.
+pub(crate) const MSM_THRESHOLD: usize = 16;
+
 /// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
-/// Caller must ensure `iter.len() >= 2` and that `scalars` yields at least
+/// Caller must ensure `ios.len() >= 2` and that `scalars` yields at least
 /// `n` values.
-fn merge_ios<S: Suite>(
-    iter: impl ExactSizeIterator<Item = VrfIo<S>> + Clone,
-    mut scalars: DelinearizeScalars<S>,
-) -> VrfIo<S> {
-    let n = iter.len();
-
-    // MSM has bucket-setup overhead that dominates for small N.
-    // Fold is faster below this threshold; MSM wins above it.
-    const MSM_THRESHOLD: usize = 16;
+fn merge_ios<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> VrfIo<S> {
+    let n = ios.len();
 
     let zero = AffinePoint::<S>::zero().into_group();
     let (input, output) = if n < MSM_THRESHOLD {
-        iter.fold((zero, zero), |(h_acc, g_acc), io| {
+        ios.iter().fold((zero, zero), |(h_acc, g_acc), io| {
             let z = scalars.next();
             (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
         })
     } else {
         let zs = scalars.take(n);
-        let (inputs, outputs): (Vec<_>, Vec<_>) = iter.map(|io| (io.input.0, io.output.0)).unzip();
+        let (inputs, outputs): (Vec<_>, Vec<_>) =
+            ios.iter().map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
         let input = Group::<S>::msm_unchecked(&inputs, &zs);
@@ -448,5 +425,45 @@ mod tests {
         assert_ne!(io_tiny, io_thin);
         assert_ne!(io_tiny, io_ped);
         assert_ne!(io_thin, io_ped);
+    }
+
+    /// `merge_ios` folds below `MSM_THRESHOLD` pairs and switches to an MSM
+    /// at the threshold. Prover and verifier share the function, so a scalar
+    /// misalignment in one branch would round-trip unnoticed. Each branch is
+    /// compared with the plain sum `sum(z_i * P_i)` over scalars drawn from
+    /// the same transcript fork.
+    #[test]
+    fn merge_ios_branches_match_plain_sum() {
+        type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
+
+        let sk = ScalarField::<TestSuite>::from(42u64);
+        for n in [MSM_THRESHOLD - 1, MSM_THRESHOLD] {
+            let ios: Vec<VrfIo<TestSuite>> = (0..n as u8)
+                .map(|i| {
+                    let input = TestSuite::data_to_point(&[i]).unwrap();
+                    VrfIo {
+                        input: Input::from_affine_unchecked(input),
+                        output: Output::from_affine_unchecked((input * sk).into_affine()),
+                    }
+                })
+                .collect();
+
+            let (t, scalars) = vrf_transcript_base(DomSep::ThinVrf, Ios::plain(&ios), b"ad");
+            let merged = merge_ios(Ios::plain(&ios), scalars);
+
+            let zs = DelinearizeScalars::<TestSuite>::new(t).take(n);
+            let plain_sum = |points: Vec<AffinePoint<TestSuite>>| {
+                points
+                    .iter()
+                    .zip(&zs)
+                    .map(|(point, z)| *point * z)
+                    .sum::<Group>()
+                    .into_affine()
+            };
+            let inputs = ios.iter().map(|io| io.input.0).collect();
+            let outputs = ios.iter().map(|io| io.output.0).collect();
+            assert_eq!(merged.input.0, plain_sum(inputs), "input, n={n}");
+            assert_eq!(merged.output.0, plain_sum(outputs), "output, n={n}");
+        }
     }
 }

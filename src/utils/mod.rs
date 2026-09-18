@@ -37,26 +37,28 @@ pub use transcript::*;
 /// Without the feature enabled, it performs a standard scalar multiplication.
 mod secret_split {
     #[cfg(feature = "secret-split")]
-    #[doc(hidden)]
-    #[macro_export]
     macro_rules! smul {
         ($p:expr, $s:expr) => {{
             #[inline(always)]
             fn get_rand<T: ark_std::UniformRand>(_: &T) -> T {
                 T::rand(&mut ark_std::rand::rngs::OsRng)
             }
-            let x1 = get_rand(&$s);
-            let x2 = $s - x1;
-            $p * x1 + $p * x2
+            let mut x1 = get_rand(&$s);
+            let mut x2 = $s - x1;
+            let result = $p * x1 + $p * x2;
+            zeroize::Zeroize::zeroize(&mut x1);
+            zeroize::Zeroize::zeroize(&mut x2);
+            result
         }};
     }
 
     #[cfg(not(feature = "secret-split"))]
-    #[doc(hidden)]
-    #[macro_export]
     macro_rules! smul {
         ($p:expr, $s:expr) => {
             $p * $s
         };
     }
+
+    pub(crate) use smul;
 }
+pub(crate) use secret_split::smul;

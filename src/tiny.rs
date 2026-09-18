@@ -45,15 +45,19 @@ fn vrf_transcript<S: TinySuite>(
 
 /// Tiny VRF proof.
 ///
-/// Schnorr-based proof of correctness for a VRF evaluation:
-/// - `c`: Challenge scalar derived from public parameters
-/// - `s`: Response scalar satisfying the verification equation
+/// Schnorr-like proof over the delinearized merged DLEQ relation:
+/// - `c`: Challenge scalar
+/// - `s`: Response scalar (`s = k + c * x`)
+///
+/// Construct it with [`Prover::prove`] or by deserialization. Serialization
+/// encodes `c` on [`utils::CHALLENGE_LEN`] bytes and `s` as a full scalar. The
+/// proof holds no curve points, so deserialization involves no subgroup checks.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
-    /// Challenge scalar derived from public parameters.
-    pub c: ScalarField<S>,
-    /// Response scalar satisfying the verification equation.
-    pub s: ScalarField<S>,
+    /// Challenge scalar.
+    pub(crate) c: ScalarField<S>,
+    /// Response scalar.
+    pub(crate) s: ScalarField<S>,
 }
 
 impl<S: TinySuite> CanonicalSerialize for Proof<S> {
@@ -118,7 +122,10 @@ pub trait Prover<S: TinySuite> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Tiny VRF proofs.
+/// Trait for types that can verify Tiny VRF proofs.
+///
+/// Verifies that a VRF output is correctly derived from an input using the
+/// secret key of the given public key.
 ///
 /// All curve points involved in verification (public key and I/O pairs)
 /// are assumed to be in the prime-order subgroup. This is guaranteed
@@ -149,41 +156,30 @@ pub trait Verifier<S: TinySuite> {
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
-        aux: impl AsRef<[u8]>,
+        ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error>;
 }
 
 impl<S: TinySuite> Prover<S> for Secret<S> {
-    /// Tiny VRF proving algorithm.
-    ///
-    /// Prepends the Schnorr pair (G, Y) to the I/O list and proves a single
-    /// DLEQ on the delinearized merged pair:
-    ///
-    /// 1. Generate a deterministic nonce `k`
-    /// 2. Compute nonce commitment `R = k * I_m`
-    /// 3. Compute the challenge `c`
-    /// 4. Compute the response `s = k + c * x`
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
-        let k = S::nonce(&self.scalar, Some(t.clone()));
+        let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m
         let r = smul!(io.input.0, k).into_affine();
 
-        let c = S::challenge(&[&r], Some(t));
-        let s = k + c * self.scalar;
+        let c = S::challenge(&[&r], t);
+        let mut cx = c * self.scalar;
+        let s = k + cx;
+        k.zeroize();
+        cx.zeroize();
         Proof { c, s }
     }
 }
 
 impl<S: TinySuite> Verifier<S> for Public<S> {
-    /// Tiny VRF verification algorithm.
-    ///
-    /// 1. Compute `R = s * I_m - c * O_m`
-    /// 2. Recompute the expected challenge `c_exp`
-    /// 3. Verify that `c_exp == c`
     fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -210,7 +206,7 @@ impl<S: TinySuite> Verifier<S> for Public<S> {
         // R = s * I_m - c * O_m
         let r = short_msm(&[io.input.0, io.output.0], &[*s, -*c], 2).into_affine();
 
-        let c_exp = S::challenge(&[&r], Some(t));
+        let c_exp = S::challenge(&[&r], t);
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)
@@ -344,6 +340,27 @@ pub mod testing {
         assert!(public.verify(&ios[..], b"baz", &proof).is_err());
     }
 
+    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. This
+    /// runs the branch through prove and verify; the branch itself is checked
+    /// against a plain sum in `utils::common`.
+    pub fn prove_verify_multi_msm<S: TinySuite>() {
+        use crate::utils::common::MSM_THRESHOLD;
+
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+            .collect();
+
+        let proof = secret.prove(&ios[..], b"msm");
+        assert!(public.verify(&ios[..], b"msm", &proof).is_ok());
+
+        // Tamper: wrong output on the last pair
+        let mut bad_ios = ios.clone();
+        bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
+        assert!(public.verify(&bad_ios[..], b"msm", &proof).is_err());
+    }
+
     #[macro_export]
     macro_rules! tiny_suite_tests {
         ($suite:ty) => {
@@ -368,6 +385,11 @@ pub mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::tiny::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_msm() {
+                    $crate::tiny::testing::prove_verify_multi_msm::<$suite>();
                 }
 
                 #[test]

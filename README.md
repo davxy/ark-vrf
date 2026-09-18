@@ -22,7 +22,7 @@ configurable cryptographic parameters and `no_std` support.
   ring signatures.
 
 - **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof scheme
-  derived from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that a single
+  derived from [CSSV22](https://eprint.iacr.org/2022/1205). Proves that a single
   blinded key is a member of a committed ring without revealing which one.
 
 ### Specifications
@@ -58,7 +58,7 @@ let input = Input::new(b"example input").unwrap();
 let output = secret.output(input);
 
 // Get a deterministic hash from the VRF output point
-let hash_bytes = output.hash();
+let hash_bytes: [u8; 32] = output.hash();
 ```
 
 ### Tiny VRF
@@ -148,7 +148,7 @@ assert!(result.is_ok());
 
 // Verify the proof was created using a specific public key.
 // This requires knowledge of the blinding factor.
-let expected = (*public + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+let expected = (public.point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 assert_eq!(proof.key_commitment(), expected);
 ```
 
@@ -166,12 +166,12 @@ let mut ring = (0..RING_SIZE)
     .map(|i| {
         let mut seed = [0u8; 32];
         seed[..8].copy_from_slice(&i.to_le_bytes());
-        *Secret::from_seed(seed).public()
+        Secret::from_seed(seed).public().point()
     })
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover
-ring[prover_key_index] = *public;
+ring[prover_key_index] = public.point();
 
 // Any key can be replaced with the padding point
 ring[0] = RingSetup::padding_point();
@@ -233,14 +233,18 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 ## Features
 
 - `default`: `std`
-- `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`.
+- `full`: All the curves below plus `ring`.
 - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
-   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (output, nonce and
-   blinding), but provides side channel defenses for them. Ring proof witness generation is
-   not covered by this feature: it relies on the branch-free handling of the secret bits
+   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
+   derivation, output, nonce and blinding), but provides side channel defenses for them.
+   Ring proof witness generation is not covered by this feature: it relies on the
+   branch-free handling of the secret bits
    implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
 - `ring`: Ring-VRF for the curves supporting it.
+- `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
+- `print-trace`: Forwards to `ark-std/print-trace`. The ring proof backend prints
+  the timers of its phases.
 
 ### Curves
 

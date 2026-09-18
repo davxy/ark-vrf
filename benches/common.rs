@@ -4,7 +4,7 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo};
+use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo, utils::Transcript};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -46,16 +46,18 @@ where
 
 fn bench_challenge<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
+    let public = secret.public().point();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input);
+    let output = secret.output(input).point();
+    let input = input.point();
     let generator = S::generator();
 
     let name = format!("{}/challenge", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
             S::challenge(
-                black_box(&[&*secret.public(), &*input, &*output, &generator, &generator]),
-                None,
+                black_box(&[&public, &input, &output, &generator, &generator]),
+                S::Transcript::new(S::SUITE_ID),
             )
         });
     });
@@ -77,7 +79,7 @@ fn bench_nonce<S: Suite>(c: &mut Criterion) {
 
     let name = format!("{}/nonce", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| S::nonce(black_box(secret.scalar()), None));
+        b.iter(|| S::nonce(black_box(secret.scalar()), S::Transcript::new(S::SUITE_ID)));
     });
 }
 

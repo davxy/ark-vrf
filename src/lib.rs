@@ -32,7 +32,7 @@
 //!   anonymized ring signatures.
 //!
 //! - **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof
-//!   scheme derived from [CSSV22](https://eprint.iacr.org/2022/1362). Proves that
+//!   scheme derived from [CSSV22](https://eprint.iacr.org/2022/1205). Proves that
 //!   a single blinded key is a member of a committed ring without revealing which one.
 //!
 //! ### Specifications
@@ -65,14 +65,18 @@
 //! ## Features
 //!
 //! - `default`: `std`
-//! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`.
+//! - `full`: All the curves below plus `ring`.
 //! - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
-//!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (output, nonce and
-//!   blinding), but provides side channel defenses for them. Ring proof witness generation is
-//!   not covered by this feature: it relies on the branch-free handling of the secret bits
+//!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
+//!   derivation, output, nonce and blinding), but provides side channel defenses for them.
+//!   Ring proof witness generation is not covered by this feature: it relies on the
+//!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
 //! - `ring`: Ring-VRF for the curves supporting it.
+//! - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
+//! - `print-trace`: Forwards to `ark-std/print-trace`. The ring proof backend prints
+//!   the timers of its phases.
 //!
 //! ### Curves
 //!
@@ -100,6 +104,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
@@ -138,7 +143,8 @@ pub enum Error {
     /// Proof verification failed.
     VerificationFailure,
     /// Invalid input data (e.g. point not in the prime-order subgroup,
-    /// forbidden identity point, deserialization failure).
+    /// forbidden identity point, deserialization failure, hash-to-curve
+    /// found no point).
     InvalidData,
     /// Ring capacity exceeded (requested ring size beyond the parameters
     /// capacity, SRS too short, or no free slots left in the builder).
@@ -212,7 +218,7 @@ pub trait Suite: Copy {
     ///
     /// Defaults to [`utils::nonce`] (deterministic, inspired by RFC-8032 section 5.1.6).
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, transcript: Option<Self::Transcript>) -> ScalarField<Self> {
+    fn nonce(sk: &ScalarField<Self>, transcript: Self::Transcript) -> ScalarField<Self> {
         utils::nonce::<Self>(sk, transcript)
     }
 
@@ -223,10 +229,7 @@ pub trait Suite: Copy {
     ///
     /// Defaults to [`utils::challenge`] (inspired by RFC-9381 section 5.4.3).
     #[inline(always)]
-    fn challenge(
-        pts: &[&AffinePoint<Self>],
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField<Self> {
+    fn challenge(pts: &[&AffinePoint<Self>], transcript: Self::Transcript) -> ScalarField<Self> {
         utils::challenge::<Self>(pts, transcript)
     }
 
@@ -255,7 +258,11 @@ pub trait Suite: Copy {
 ///
 /// Contains the private scalar and cached public key.
 /// Implements automatic zeroization on drop. The `Debug` output redacts
-/// the scalar, and equality is evaluated in constant time.
+/// the scalar, and equality is evaluated in constant time. Key derivation
+/// and the provers zeroize their secret temporaries: seeds, nonces, the
+/// challenge products and, with `secret-split`, the split scalars. The
+/// Pedersen prover returns the blinding factor to the caller, who owns it
+/// from then on (see [`pedersen::Prover::prove`]).
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
@@ -331,7 +338,7 @@ impl<S: Suite> ark_serialize::Valid for Secret<S> {
 impl<S: Suite> Secret<S> {
     /// Construct a `Secret` from the given scalar.
     pub fn from_scalar(scalar: ScalarField<S>) -> Self {
-        let public = Public::from_affine_unchecked((S::generator() * scalar).into_affine());
+        let public = Public::from_affine_unchecked(smul!(S::generator(), scalar).into_affine());
         Self { scalar, public }
     }
 
@@ -354,7 +361,7 @@ impl<S: Suite> Secret<S> {
             if cnt > 0 {
                 transcript.absorb_raw(&[cnt]);
             }
-            let scalar = utils::nonce::<S>(&sk, Some(transcript.clone()));
+            let scalar = utils::nonce::<S>(&sk, transcript);
             if !scalar.is_zero() {
                 break scalar;
             }
@@ -418,7 +425,7 @@ impl<S: Suite> Secret<S> {
 /// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
 /// skip validation and leave this responsibility to the caller.
 ///
-/// The wrapper dereferences to the affine point for read access.
+/// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
 
@@ -478,14 +485,6 @@ impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
     }
 }
 
-impl<S: Suite, K> core::ops::Deref for PointWrapper<S, K> {
-    type Target = AffinePoint<S>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl<S: Suite, K: Sync> PointWrapper<S, K> {
     /// Construct from an affine point with validation.
     ///
@@ -505,6 +504,11 @@ impl<S: Suite, K: Sync> PointWrapper<S, K> {
         Self(value, PhantomData)
     }
 
+    /// Get the affine point.
+    pub fn point(&self) -> AffinePoint<S> {
+        self.0
+    }
+
     /// Whether the point is the group identity.
     ///
     /// The identity passes the subgroup check but is never a usable point: as a
@@ -519,9 +523,12 @@ impl<S: Suite, K: Sync> PointWrapper<S, K> {
 impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
     ///
-    /// Maps arbitrary data to a curve point via hash-to-curve.
-    pub fn new(data: &[u8]) -> Option<Self> {
-        S::data_to_point(data).map(Self::from_affine_unchecked)
+    /// Maps arbitrary data to a curve point via hash-to-curve. Returns
+    /// `Error::InvalidData` if no point is found.
+    pub fn new(data: &[u8]) -> Result<Self, Error> {
+        S::data_to_point(data)
+            .map(Self::from_affine_unchecked)
+            .ok_or(Error::InvalidData)
     }
 }
 
@@ -643,6 +650,43 @@ mod tests {
         assert_ne!(Error::InvalidData, Error::RingCapacityExceeded);
     }
 
+    /// `Input::new` must compose with `?` in functions returning the crate
+    /// error, like the other checked constructors. A suite whose hash-to-curve
+    /// finds no point must surface that as `Error::InvalidData`.
+    #[test]
+    fn input_new_returns_crate_error() {
+        #[derive(Debug, Copy, Clone)]
+        struct NeverSuite;
+
+        impl Suite for NeverSuite {
+            const SUITE_ID: &'static [u8] = b"Never";
+            type Affine = <TestSuite as Suite>::Affine;
+            type Transcript = <TestSuite as Suite>::Transcript;
+
+            fn data_to_point(_data: &[u8]) -> Option<AffinePoint<Self>> {
+                None
+            }
+        }
+
+        fn build() -> Result<Input, Error> {
+            let input = Input::new(b"data")?;
+            Ok(input)
+        }
+        assert!(build().is_ok());
+        assert_eq!(
+            crate::Input::<NeverSuite>::new(b"data").unwrap_err(),
+            Error::InvalidData
+        );
+    }
+
+    /// The wrapper does not dereference to the affine point. `point()` is the
+    /// one read path, so the role types stay distinct.
+    #[test]
+    fn point_wrapper_point_accessor() {
+        let public = Secret::from_seed(TEST_SEED).public();
+        assert_eq!(public.point(), public.0);
+    }
+
     /// The identity is a well-formed subgroup element, so the subgroup check
     /// alone lets it through. It must be rejected on every checked path, since
     /// its secret scalar is zero and hence known to anybody.
@@ -692,7 +736,7 @@ mod tests {
     fn prove_uniqueness_vulnerability() {
         use ark_ff::BigInteger;
         use ark_std::{One, Zero};
-        use utils::common::{DomSep, ExactChain};
+        use utils::common::DomSep;
 
         type S = TestSuite;
         type Sc = ScalarField<S>;
@@ -734,13 +778,12 @@ mod tests {
         let mut ad_ctr = 0u32;
         let (ad, t, merged_input) = loop {
             let ad = format!("ad-{ad_ctr}");
-            let schnorr = core::iter::once(VrfIo {
-                input: Input::from_affine_unchecked(S::generator()),
-                output: Output::from_affine_unchecked(public.0),
-            });
-            let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
-            let (t, zs) =
-                utils::vrf_transcript_scalars_from_iter(DomSep::TinyVrf, chain, ad.as_bytes());
+            let (t, zs) = utils::vrf_transcript_scalars_with_schnorr(
+                DomSep::TinyVrf,
+                public.0,
+                mal_ios,
+                ad.as_bytes(),
+            );
             // z_1 is the delinearization scalar for the VRF pair
             if zs[1].into_bigint().is_even() {
                 // Compute merged input: I_m = z_0*G + z_1*I
@@ -761,7 +804,7 @@ mod tests {
             // R = k * I_m (merged input including Schnorr pair)
             let r = (merged_input * k).into_affine();
 
-            let c = S::challenge(&[&r], Some(t.clone()));
+            let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
                 let s = k + c * secret.scalar;

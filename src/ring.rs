@@ -10,7 +10,7 @@
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::ring::Prover;
+//! use ark_vrf::ring::{Prover, Verifier};
 //!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
@@ -20,10 +20,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         Secret::from_seed(seed).public().0
+//!         Secret::from_seed(seed).public().point()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = public.0;
+//! ring[prover_key_index] = public.point();
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed(RING_SIZE, [0x42; 32]);
@@ -36,7 +36,6 @@
 //! let proof = secret.prove(io, b"aux data", &prover);
 //!
 //! // Verification
-//! use ark_vrf::ring::Verifier;
 //! let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 //! let verifier = ring_ctx.ring_verifier(verifier_key);
 //! let result = Public::verify(io, b"aux data", &proof, &verifier);
@@ -68,10 +67,11 @@ pub const ACCUMULATOR_BASE_SEED: &[u8] = b"ring-accumulator";
 /// Seed hashed to curve to produce [`RingSuite::PADDING`] in built-in suites.
 pub const PADDING_SEED: &[u8] = b"ring-padding";
 
-/// Ring suite.
+/// Suite extension for Ring VRF support.
 ///
-/// This trait provides the cryptographic primitives needed for ring VRF signatures.
-/// All required bounds are expressed directly on the associated type for better ergonomics.
+/// Provides the additional cryptographic parameters required by the Ring VRF
+/// scheme. The bounds on the associated type are the ones the ring proof
+/// backend requires.
 pub trait RingSuite:
     PedersenSuite<
     Affine: AffineRepr<
@@ -85,11 +85,18 @@ pub trait RingSuite:
 
     /// Accumulator base.
     ///
-    /// In order for the ring-proof backend to work correctly, this is required to be
-    /// in the prime order subgroup.
+    /// Point with unknown discrete log relative to the generator. It must not
+    /// be the identity. Membership in the prime order subgroup is not
+    /// required: built-in Twisted Edwards suites hash [`ACCUMULATOR_BASE_SEED`]
+    /// to the curve, while the Short Weierstrass Bandersnatch suite adds a
+    /// fixed point outside the prime order subgroup to the hashed point.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
-    /// Padding point with unknown discrete log.
+    /// Padding point.
+    ///
+    /// Point with unknown discrete log relative to the generator, usable in
+    /// place of any key during ring construction. Built-in suites derive it by
+    /// hashing [`PADDING_SEED`] to the curve.
     const PADDING: AffinePoint<Self>;
 }
 
@@ -151,18 +158,33 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 
 /// Ring VRF proof.
 ///
-/// Two-part zero-knowledge proof with signer anonymity:
+/// Pedersen VRF proof combined with a ring membership proof:
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
-/// - `ring_proof`: Membership proof binding the commitment to the ring
+/// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
 ///
-/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
-/// curve points, so deserialized proofs are guaranteed to contain valid points.
+/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
+/// every proof holds valid points unless built with a `deserialize_*_unchecked`
+/// method.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
-    pub pedersen_proof: PedersenProof<S>,
+    pub(crate) pedersen_proof: PedersenProof<S>,
     /// Ring membership proof binding the key commitment to the ring.
-    pub ring_proof: RingBareProof<S>,
+    pub(crate) ring_proof: RingBareProof<S>,
+}
+
+impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
+    /// The backend ring proof type has no `Debug`; its serialized size stands in.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Proof")
+            .field("pedersen_proof", &self.pedersen_proof)
+            .field(
+                "ring_proof",
+                &format_args!("<{} bytes>", self.ring_proof.compressed_size()),
+            )
+            .finish()
+    }
 }
 
 /// Trait for types that can generate Ring VRF proofs.
@@ -170,6 +192,8 @@ pub trait Prover<S: RingSuite> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    /// `prover` must be built for the ring and for the position of this key in
+    /// it (see [`RingContext::ring_prover`]).
     fn prove(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -178,7 +202,7 @@ pub trait Prover<S: RingSuite> {
     ) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Ring VRF proofs.
+/// Trait for types that can verify Ring VRF proofs.
 ///
 /// Verifies that a VRF output was correctly derived using a secret key
 /// belonging to one of the ring's public keys, without revealing which one.
@@ -194,16 +218,29 @@ pub trait Prover<S: RingSuite> {
 /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
 /// the burden of subgroup validation on the caller. Passing points with
 /// cofactor components leads to undefined verification behavior.
+///
+/// The group identity is checked unconditionally, for the key commitment and
+/// for every I/O pair, by the embedded Pedersen verification (see
+/// [`pedersen::Verifier`]).
 pub trait Verifier<S: RingSuite> {
     /// Verify a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
+    /// `verifier` must be built for the ring the proof claims membership in
+    /// (see [`RingContext::ring_verifier`]).
     ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::VerificationFailure)` otherwise.
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// key commitment or any I/O pair point is the group identity or the key
+    /// commitment cannot be mapped to Twisted Edwards form,
+    /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// Subgroup membership of the points is not re-checked here. It is
+    /// guaranteed by the checked constructors and checked deserialization of
+    /// the point wrappers (see [`PointWrapper`]).
     fn verify(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        sig: &Proof<S>,
+        proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error>;
 }
@@ -216,8 +253,10 @@ impl<S: RingSuite> Prover<S> for Secret<S> {
         ring_prover: &RingProver<S>,
     ) -> Proof<S> {
         use pedersen::Prover as PedersenProver;
-        let (pedersen_proof, secret_blinding) = <Self as PedersenProver<S>>::prove(self, ios, ad);
+        let (pedersen_proof, mut secret_blinding) =
+            <Self as PedersenProver<S>>::prove(self, ios, ad);
         let ring_proof = ring_prover.prove(secret_blinding);
+        secret_blinding.zeroize();
         Proof {
             pedersen_proof,
             ring_proof,
@@ -344,14 +383,6 @@ pub struct RingSetup<S: RingSuite> {
     pub ring_ctx: RingContext<S>,
 }
 
-impl<S: RingSuite> core::ops::Deref for RingSetup<S> {
-    type Target = RingContext<S>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ring_ctx
-    }
-}
-
 impl<S: RingSuite> RingSetup<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
@@ -397,11 +428,11 @@ impl<S: RingSuite> RingSetup<S> {
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
-        if pks.len() > self.piop_params.keyset_part_size {
+        if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0)
+        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).0)
     }
 
     /// Create a verifier key for the given ring of public keys.
@@ -409,11 +440,11 @@ impl<S: RingSuite> RingSetup<S> {
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
-        if pks.len() > self.piop_params.keyset_part_size {
+        if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1)
+        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).1)
     }
 
     /// Create a verifier key from a precomputed ring commitment.
@@ -441,7 +472,7 @@ impl<S: RingSuite> RingSetup<S> {
     pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
-        let piop_domain_size = piop_domain_size::<S>(self.piop_params.keyset_part_size);
+        let piop_domain_size = piop_domain_size::<S>(self.ring_ctx.max_ring_size());
         let builder_key = RingBuilderKey::<S>::from_srs(&self.pcs_params, piop_domain_size);
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
         let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
@@ -578,7 +609,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
         let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
-            &ring_setup.piop_params,
+            &ring_setup.ring_ctx.piop_params,
             lookup,
             pcs_params.g1.into_group(),
         );
@@ -639,21 +670,25 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 type RingProofBatchItem<S> =
     ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
 
-/// Pre-processed data for a single ring proof awaiting batch verification.
+/// Deferred Ring VRF verification data for batch verification.
+///
+/// Holds the prepared Pedersen VRF item and the prepared ring proof item.
 pub struct BatchItem<S: RingSuite> {
     ring: RingProofBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
 }
 
 impl<S: RingSuite> BatchItem<S> {
-    /// Prepare a proof for deferred batch verification.
+    /// Prepare a proof for batch verification.
     ///
     /// Performs the cheap per-proof work (hashing, transcript setup) without
-    /// the expensive pairing and MSM checks. `verifier` must be the ring
-    /// verifier the proof was produced against.
+    /// the expensive pairing and MSM checks, and packages all data needed for
+    /// deferred verification in [`BatchVerifier::verify`]. This can be done in
+    /// parallel. `verifier` must be the ring verifier the proof was produced
+    /// against.
     ///
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// converted (e.g. identity point on SW-form suites).
+    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn new(
         verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -671,7 +706,7 @@ impl<S: RingSuite> BatchItem<S> {
     }
 }
 
-/// Batch verifier for ring VRF proofs.
+/// Batch verifier for Ring VRF proofs.
 ///
 /// Collects ring proofs from one or more rings (sharing the same KZG SRS)
 /// and verifies them together, amortizing the cost of pairing checks and
@@ -685,8 +720,9 @@ pub struct BatchVerifier<S: RingSuite> {
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
-    /// Create a new batch verifier seeded with the KZG SRS taken from `ring_verifier`.
+    /// Create a new empty batch verifier.
     ///
+    /// The KZG verifier key is taken from `ring_verifier`.
     /// Any ring verifier sharing the same SRS can later be passed to
     /// [`Self::push`] or [`BatchItem::new`]; the verifier supplied here is
     /// only used to extract the KZG verifier key.
@@ -709,7 +745,7 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// Prepare and push a proof in one step.
     ///
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// converted (e.g. identity point on SW-form suites).
+    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn push(
         &mut self,
         verifier: &RingVerifier<S>,
@@ -722,10 +758,14 @@ impl<S: RingSuite> BatchVerifier<S> {
         Ok(())
     }
 
-    /// Verify all collected proofs in a single batch.
+    /// Batch-verify all collected proofs.
     ///
-    /// Checks both the Pedersen proofs (via MSM) and the ring proofs (via pairing).
-    /// Returns `Ok(())` if all proofs verify, `Err(VerificationFailure)` otherwise.
+    /// Checks the Pedersen proofs with a single multi-scalar multiplication
+    /// and the ring proofs with a single batched pairing check.
+    ///
+    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
+    /// key commitment or I/O pair point is the group identity,
+    /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
     /// guaranteed by the checked constructors and checked deserialization of
@@ -776,10 +816,10 @@ macro_rules! ring_suite_types {
 
 /// Domain size conversion utilities
 ///
-/// The ring proof system operates with three related size parameters:
+/// The ring proof system operates with four related size parameters:
 ///
-/// 1. `min_ring_size`: Number of keys that the ring should accomodate (user-facing parameter)
-/// 2. `max_ring_size`: Max number of keys that the ring can accomodate
+/// 1. `min_ring_size`: Number of keys that the ring should accommodate (user-facing parameter)
+/// 2. `max_ring_size`: Max number of keys that the ring can accommodate
 /// 3. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
 /// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
 ///
@@ -817,7 +857,7 @@ pub mod dom_utils {
 
     /// PIOP domain size required to support the given ring size.
     ///
-    /// Returns the smallest power of 2 that can accommodate `min_ring_capactity` members.
+    /// Returns the smallest power of 2 that can accommodate `min_ring_capacity` members.
     /// This is the domain size used for polynomial operations in the ring proof and
     /// already accounts for the PIOP overhead.
     pub const fn piop_domain_size<S: Suite>(min_ring_capacity: usize) -> usize {
@@ -1150,7 +1190,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
 
-        let max_ring_size = ring_setup.max_ring_size();
+        let max_ring_size = ring_setup.ring_context().max_ring_size();
         let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
         assert!(matches!(
             ring_setup.prover_key(&pks),
@@ -1192,8 +1232,8 @@ pub(crate) mod testing {
             AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap()
         );
 
-        // SW form requires accumulator seed to be outside prime order subgroup.
-        // TE form requires accumulator seed to be in prime order subgroup.
+        // Built-in SW suites place the base outside the prime order subgroup,
+        // built-in TE suites inside it.
         let in_prime_subgroup = <AffinePoint<S> as FindAccumulatorBase<S>>::IN_PRIME_ORDER_SUBGROUP;
         assert!(S::ACCUMULATOR_BASE.check(in_prime_subgroup).is_ok());
     }
@@ -1286,6 +1326,15 @@ pub(crate) mod testing {
         let verifier = ring_ctx.ring_verifier(verifier_key);
         let result = Public::verify(io, b"foo", &proof, &verifier);
         assert!(result.is_ok());
+    }
+
+    /// Downstream types that derive `Debug` need `Proof<S>: Debug`. The
+    /// backend ring proof type has no `Debug`, so the impl is manual and a
+    /// refactor can drop it without any other test noticing.
+    #[allow(unused)]
+    pub fn proof_is_debug<S: RingSuite + core::fmt::Debug>() {
+        fn assert_debug<T: core::fmt::Debug>() {}
+        assert_debug::<Proof<S>>();
     }
 
     pub fn domain_size_conversions<S: RingSuite>() {
@@ -1400,6 +1449,11 @@ pub(crate) mod testing {
                 #[test]
                 fn domain_size_conversions() {
                     $crate::ring::testing::domain_size_conversions::<$suite>()
+                }
+
+                #[test]
+                fn proof_is_debug() {
+                    $crate::ring::testing::proof_is_debug::<$suite>()
                 }
 
                 $crate::test_vectors!($crate::ring::testing::TestVector<$suite>);

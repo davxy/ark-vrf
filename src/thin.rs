@@ -34,17 +34,19 @@ impl<T> ThinSuite for T where T: Suite {}
 /// Thin VRF proof.
 ///
 /// Schnorr-like proof over the delinearized merged DLEQ relation:
-/// - `r`: Nonce commitment R = k * I_m
-/// - `s`: Response scalar s = k + c * sk
+/// - `r`: Nonce commitment on the merged input (`R = k * I_m`)
+/// - `s`: Response scalar (`s = k + c * x`)
 ///
-/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
-/// curve points, so deserialized proofs are guaranteed to contain valid points.
+/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
+/// every proof holds valid points unless built with a `deserialize_*_unchecked`
+/// method.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
-    pub r: AffinePoint<S>,
+    pub(crate) r: AffinePoint<S>,
     /// Response scalar.
-    pub s: ScalarField<S>,
+    pub(crate) s: ScalarField<S>,
 }
 
 #[inline(always)]
@@ -73,7 +75,10 @@ pub trait Prover<S: ThinSuite> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S>;
 }
 
-/// Trait for entities that can verify Thin VRF proofs.
+/// Trait for types that can verify Thin VRF proofs.
+///
+/// Verifies that a VRF output is correctly derived from an input using the
+/// secret key of the given public key.
 ///
 /// All curve points involved in verification (public key, I/O pairs, and proof
 /// points) are assumed to be in the prime-order subgroup. This is guaranteed
@@ -117,16 +122,19 @@ impl<S: ThinSuite> Prover<S> for Secret<S> {
         let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, Some(t.clone()));
+        let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m (secret nonce on merged input)
         let r = smul!(merged.input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&r], Some(t));
+        let c = S::challenge(&[&r], t);
 
         // Response
-        let s = k + c * self.scalar;
+        let mut cx = c * self.scalar;
+        let s = k + cx;
+        k.zeroize();
+        cx.zeroize();
 
         Proof { r, s }
     }
@@ -156,7 +164,7 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
         let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[r], Some(t));
+        let c = S::challenge(&[r], t);
 
         // Verification: s * I_m - c * O_m == R
         let lhs = short_msm(&[merged.input.0, merged.output.0], &[*s, -c], 2);
@@ -171,7 +179,7 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
 /// Deferred Thin VRF verification data for batch verification.
 ///
 /// Stores raw points and delinearization scalars instead of the merged pair,
-/// so that `prepare` requires no EC ops (just hashing). The expanded
+/// so that [`Self::new`] requires no EC ops (just hashing). The expanded
 /// verification equation uses these directly in the batch MSM.
 pub struct BatchItem<S: ThinSuite> {
     c: ScalarField<S>,
@@ -180,6 +188,33 @@ pub struct BatchItem<S: ThinSuite> {
     zs: Vec<ScalarField<S>>,
     r: AffinePoint<S>,
     s: ScalarField<S>,
+}
+
+impl<S: ThinSuite> BatchItem<S> {
+    /// Prepare a proof for batch verification.
+    ///
+    /// Computes delinearization scalars and challenge via hashing only (no EC
+    /// ops). Stores the raw points and z scalars for the expanded verification
+    /// equation in [`BatchVerifier::verify`]. This is cheap and can be done in
+    /// parallel.
+    pub fn new(
+        public: &Public<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Self {
+        let ios = ios.as_ref();
+        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let c = S::challenge(&[&proof.r], t);
+        Self {
+            c,
+            pk: *public,
+            ios: ios.to_vec(),
+            zs,
+            r: proof.r,
+            s: proof.s,
+        }
+    }
 }
 
 /// Batch verifier for Thin VRF proofs.
@@ -205,33 +240,9 @@ impl<S: ThinSuite> BatchVerifier<S> {
         Self::default()
     }
 
-    /// Prepare a proof for batch verification.
-    ///
-    /// Computes delinearization scalars and challenge via hashing only (no EC
-    /// ops). Stores the raw points and z scalars for the expanded verification
-    /// equation in [`Self::verify`].
-    pub fn prepare(
-        public: &Public<S>,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> BatchItem<S> {
-        let ios = ios.as_ref();
-        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
-        let c = S::challenge(&[&proof.r], Some(t));
-        BatchItem {
-            c,
-            pk: *public,
-            ios: ios.to_vec(),
-            zs,
-            r: proof.r,
-            s: proof.s,
-        }
-    }
-
-    /// Push a previously prepared entry into the batch.
-    pub fn push_prepared(&mut self, entry: BatchItem<S>) {
-        self.items.push(entry);
+    /// Push a previously prepared item into the batch.
+    pub fn push_prepared(&mut self, item: BatchItem<S>) {
+        self.items.push(item);
     }
 
     /// Prepare and push a proof in one step.
@@ -242,8 +253,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) {
-        let entry = Self::prepare(public, ios, ad, proof);
-        self.push_prepared(entry);
+        self.push_prepared(BatchItem::new(public, ios, ad, proof));
     }
 
     /// Batch-verify all collected proofs using a single multi-scalar multiplication.
@@ -257,7 +267,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
     ///
     /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
     /// public key or I/O pair point is the group identity,
-    /// `Err(VerificationFailure)` otherwise.
+    /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
     /// guaranteed by the checked constructors and checked deserialization of
@@ -270,7 +280,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         if items.is_empty() {
             return Ok(());
         }
-        // Checked here rather than in `prepare`, which cannot fail.
+        // Checked here rather than in `BatchItem::new`, which cannot fail.
         if items
             .iter()
             .any(|item| item.pk.is_identity() || item.ios.iter().any(VrfIo::has_identity))
@@ -352,7 +362,7 @@ pub(crate) mod testing {
     }
 
     pub fn batch_verify<S: ThinSuite>() {
-        use thin::{BatchVerifier, Prover, Verifier};
+        use thin::{BatchItem, BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -372,10 +382,10 @@ pub(crate) mod testing {
         batch.push(&public, io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
-        // Batch using prepare + push_prepared.
+        // Batch using BatchItem::new + push_prepared.
         let mut batch = BatchVerifier::new();
-        let entry1 = BatchVerifier::prepare(&public, io, b"foo", &proof1);
-        let entry2 = BatchVerifier::prepare(&public, io, b"bar", &proof2);
+        let entry1 = BatchItem::new(&public, io, b"foo", &proof1);
+        let entry2 = BatchItem::new(&public, io, b"bar", &proof2);
         batch.push_prepared(entry1);
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());
@@ -523,6 +533,35 @@ pub(crate) mod testing {
         assert!(public.verify([], b"baz", &proof).is_err());
     }
 
+    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs, and
+    /// the prover and the plain verifier share that merge. The batch verifier
+    /// expands the equation with the raw `z` scalars and never merges, so it
+    /// is the independent check that the prover merged correctly.
+    pub fn prove_verify_multi_msm<S: ThinSuite>() {
+        use crate::utils::common::MSM_THRESHOLD;
+        use thin::{BatchVerifier, Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+            .collect();
+
+        let proof = secret.prove(&ios[..], b"msm");
+        assert!(public.verify(&ios[..], b"msm", &proof).is_ok());
+        let mut batch = BatchVerifier::new();
+        batch.push(&public, &ios[..], b"msm", &proof);
+        assert!(batch.verify().is_ok());
+
+        // Tamper: wrong output on the last pair
+        let mut bad_ios = ios.clone();
+        bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
+        assert!(public.verify(&bad_ios[..], b"msm", &proof).is_err());
+        let mut batch = BatchVerifier::new();
+        batch.push(&public, &bad_ios[..], b"msm", &proof);
+        assert!(batch.verify().is_err());
+    }
+
     #[macro_export]
     macro_rules! thin_suite_tests {
         ($suite:ty) => {
@@ -547,6 +586,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify_multi_empty() {
                     $crate::thin::testing::prove_verify_multi_empty::<$suite>();
+                }
+
+                #[test]
+                fn prove_verify_multi_msm() {
+                    $crate::thin::testing::prove_verify_multi_msm::<$suite>();
                 }
 
                 #[test]
@@ -712,7 +756,7 @@ pub(crate) mod testing {
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (merged_input * k).into_affine();
-        let c = S::challenge(&[&r], Some(transcript));
+        let c = S::challenge(&[&r], transcript);
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };
