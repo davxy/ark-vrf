@@ -22,7 +22,12 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::{utils::challenge_scalar, utils::common::DomSep, utils::straus::short_msm, *};
+use crate::{
+    utils::challenge_scalar,
+    utils::common::{DomSep, deserialize_point},
+    utils::straus::short_msm,
+    *,
+};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -41,12 +46,40 @@ impl<T> ThinSuite for T where T: Suite {}
 /// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// Checked deserialization accepts one encoding per proof: bytes that decode
+/// to a point but differ from that point's own encoding are rejected. The
+/// unchecked methods trust the bytes as they are. The decoder reads one proof
+/// and stops; the caller frames the bytes and rejects trailing data.
+#[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
     pub(crate) r: AffinePoint<S>,
     /// Response scalar.
     pub(crate) s: ScalarField<S>,
+}
+
+impl<S: ThinSuite> CanonicalDeserialize for Proof<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let r = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            validate,
+        )?;
+        Ok(Proof { r, s })
+    }
+}
+
+impl<S: ThinSuite> ark_serialize::Valid for Proof<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.r.check()?;
+        self.s.check()
+    }
 }
 
 #[inline(always)]
@@ -533,6 +566,43 @@ pub(crate) mod testing {
         assert!(public.verify([], b"baz", &proof).is_err());
     }
 
+    /// One proof, one encoding. `R` is the identity only for a zero nonce, so
+    /// that proof is built by hand; arkworks reads the identity from several
+    /// byte strings, and the decoder must accept the canonical one only.
+    pub fn proof_encoding_is_canonical<S: ThinSuite>() {
+        use ark_serialize::Compress;
+        use thin::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let public = secret.public();
+        let input = Input::from_affine_unchecked(random_val(None));
+        let io = secret.vrf_io(input);
+        let proof = secret.prove(io, b"foo");
+
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).unwrap();
+        let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
+        assert!(public.verify(io, b"foo", &decoded).is_ok());
+        let mut reencoded = Vec::new();
+        decoded.serialize_compressed(&mut reencoded).unwrap();
+        assert_eq!(bytes, reencoded);
+
+        let identity_r = Proof::<S> {
+            r: AffinePoint::<S>::zero(),
+            s: proof.s,
+        };
+        let mut bytes = Vec::new();
+        identity_r.serialize_compressed(&mut bytes).unwrap();
+        let r_range = 0..identity_r.r.compressed_size();
+        let aliases = common::assert_aliases_rejected::<AffinePoint<S>>(
+            &bytes,
+            r_range,
+            Compress::Yes,
+            |bytes| Proof::<S>::deserialize_compressed(bytes).is_ok(),
+        );
+        assert!(!aliases.is_empty());
+    }
+
     /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs, and
     /// the prover and the plain verifier share that merge. The batch verifier
     /// expands the equation with the raw `z` scalars and never merges, so it
@@ -567,6 +637,11 @@ pub(crate) mod testing {
         ($suite:ty) => {
             mod thin {
                 use super::*;
+
+                #[test]
+                fn proof_encoding_is_canonical() {
+                    $crate::thin::testing::proof_encoding_is_canonical::<$suite>()
+                }
 
                 #[test]
                 fn prove_verify() {

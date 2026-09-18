@@ -104,6 +104,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+use utils::common::deserialize_point;
 use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
@@ -423,7 +424,9 @@ impl<S: Suite> Secret<S> {
 /// reject the group identity. The verifiers trust this invariant: they reject
 /// the identity, which is cheap, but they do not repeat the subgroup check.
 /// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
-/// skip validation and leave this responsibility to the caller.
+/// skip validation and leave this responsibility to the caller. Checked
+/// deserialization also accepts only the canonical encoding of the point;
+/// the unchecked methods trust the bytes as they are.
 ///
 /// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
@@ -475,11 +478,11 @@ impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let point =
-            AffinePoint::<S>::deserialize_with_mode(reader, compress, ark_serialize::Validate::No)?;
+        let point = deserialize_point::<S>(reader, compress, validate)?;
         let wrapper = Self::from_affine_unchecked(point);
-        if matches!(validate, ark_serialize::Validate::Yes) {
-            ark_serialize::Valid::check(&wrapper)?;
+        // The point decoder ran the subgroup check; the identity rule remains.
+        if matches!(validate, ark_serialize::Validate::Yes) && wrapper.is_identity() {
+            return Err(ark_serialize::SerializationError::InvalidData);
         }
         Ok(wrapper)
     }

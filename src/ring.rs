@@ -58,6 +58,7 @@ use ark_ec::{
 };
 use ark_std::{borrow::Cow, ops::Range};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
+use utils::common::deserialize_canonical;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -166,12 +167,51 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
-#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// Checked deserialization accepts one encoding per proof: bytes that decode
+/// to a point but differ from that point's own encoding are rejected. The
+/// unchecked methods trust the bytes as they are. The decoder reads one proof
+/// and stops; the caller frames the bytes and rejects trailing data.
+#[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
     pub(crate) pedersen_proof: PedersenProof<S>,
     /// Ring membership proof binding the key commitment to the ring.
     pub(crate) ring_proof: RingBareProof<S>,
+}
+
+/// Stack buffer for the canonical decode of a backend ring proof.
+///
+/// BLS12-381 needs 928 bytes uncompressed and BN254 704. A pairing curve with
+/// larger points needs a larger value, or its proofs fail to decode with
+/// `NotEnoughSpace`.
+const RING_PROOF_BUF_SIZE: usize = 1024;
+
+impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let pedersen_proof =
+            PedersenProof::<S>::deserialize_with_mode(&mut reader, compress, validate)?;
+        let ring_proof = deserialize_canonical::<RingBareProof<S>, RING_PROOF_BUF_SIZE>(
+            &mut reader,
+            compress,
+            validate,
+        )?;
+        Ok(Proof {
+            pedersen_proof,
+            ring_proof,
+        })
+    }
+}
+
+impl<S: RingSuite> ark_serialize::Valid for Proof<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        ark_serialize::Valid::check(&self.pedersen_proof)?;
+        ark_serialize::Valid::check(&self.ring_proof)
+    }
 }
 
 impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
@@ -1051,6 +1091,62 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
+    /// One proof, one encoding. With an empty I/O list `Ok` is the identity,
+    /// which arkworks reads from several byte strings; a relay could turn one
+    /// valid proof into different bytes that also verify. The ring part goes
+    /// through the same canonical check.
+    pub fn proof_encoding_is_canonical<S: RingSuite>() {
+        use ark_serialize::Compress;
+        use ring::{Prover, Verifier};
+
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx = 3;
+        pks[prover_idx] = secret.public().0;
+        let ring_ctx = ring_setup.ring_context();
+        let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
+        let verifier = ring_ctx.ring_verifier(ring_setup.verifier_key(&pks).unwrap());
+
+        let ios: [VrfIo<S>; 0] = [];
+        let proof = secret.prove(ios, b"foo", &prover);
+        assert!(proof.pedersen_proof.ok.is_zero());
+
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).unwrap();
+        let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
+        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
+        let mut reencoded = Vec::new();
+        decoded.serialize_compressed(&mut reencoded).unwrap();
+        assert_eq!(bytes, reencoded);
+
+        let point_len = proof.pedersen_proof.pk_com.compressed_size();
+        let ok_range = 2 * point_len..3 * point_len;
+        let aliases = common::assert_aliases_rejected::<AffinePoint<S>>(
+            &bytes,
+            ok_range,
+            Compress::Yes,
+            |bytes| Proof::<S>::deserialize_compressed(bytes).is_ok(),
+        );
+        assert!(!aliases.is_empty());
+
+        // The ring part: the pairing curve decides whether aliases exist. The
+        // generic arkworks encoding (BN254) ignores the sign flag of an
+        // uncompressed point; the Zcash encoding of BLS12-381 is canonical by
+        // itself, so nothing is found there.
+        let mut bytes = Vec::new();
+        proof.serialize_uncompressed(&mut bytes).unwrap();
+        let ring_part = proof.pedersen_proof.uncompressed_size();
+        let first_point = ring_part..ring_part + G1Affine::<S>::zero().uncompressed_size();
+        common::assert_aliases_rejected::<G1Affine<S>>(
+            &bytes,
+            first_point,
+            Compress::No,
+            |bytes| Proof::<S>::deserialize_uncompressed(bytes).is_ok(),
+        );
+    }
+
     /// N=3 multi proof via ring prove/verify.
     #[allow(unused)]
     pub fn prove_verify_multi<S: RingSuite>() {
@@ -1542,6 +1638,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ring::testing::prove_verify::<$suite>()
+                }
+
+                #[test]
+                fn proof_encoding_is_canonical() {
+                    $crate::ring::testing::proof_encoding_is_canonical::<$suite>()
                 }
 
                 #[test]

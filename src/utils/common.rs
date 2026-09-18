@@ -42,6 +42,80 @@ macro_rules! stack_buf {
     };
 }
 
+/// Reader that keeps a copy of every byte it hands out, in a fixed buffer.
+struct Recorder<R, const N: usize> {
+    inner: R,
+    bytes: [u8; N],
+    len: usize,
+    overflow: bool,
+}
+
+impl<R: ark_std::io::Read, const N: usize> ark_std::io::Read for Recorder<R, N> {
+    fn read(&mut self, buf: &mut [u8]) -> ark_std::io::Result<usize> {
+        if buf.len() > N - self.len {
+            self.overflow = true;
+            return Ok(0);
+        }
+        let count = self.inner.read(buf)?;
+        self.bytes[self.len..self.len + count].copy_from_slice(&buf[..count]);
+        self.len += count;
+        Ok(count)
+    }
+}
+
+/// Decode a value and, with `Validate::Yes`, accept only the bytes that the
+/// value itself encodes to. With `Validate::No` the bytes are trusted and
+/// decoded as they are.
+///
+/// Arkworks reads the identity from several byte strings and ignores the sign
+/// flag of an uncompressed Short Weierstrass point, so one point can have
+/// more than one accepted encoding. Comparing the consumed bytes with a fresh
+/// encoding of the decoded value leaves exactly one. Both buffers are `N`
+/// bytes on the stack; a value that encodes to more is `NotEnoughSpace`.
+pub(crate) fn deserialize_canonical<T, const N: usize>(
+    reader: impl ark_std::io::Read,
+    compress: ark_serialize::Compress,
+    validate: ark_serialize::Validate,
+) -> Result<T, ark_serialize::SerializationError>
+where
+    T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize,
+{
+    if validate == ark_serialize::Validate::No {
+        return T::deserialize_with_mode(reader, compress, validate);
+    }
+    let mut recorder = Recorder {
+        inner: reader,
+        bytes: [0u8; N],
+        len: 0,
+        overflow: false,
+    };
+    let decoded = T::deserialize_with_mode(&mut recorder, compress, validate);
+    if recorder.overflow {
+        return Err(ark_serialize::SerializationError::NotEnoughSpace);
+    }
+    let value = decoded?;
+    let consumed = &recorder.bytes[..recorder.len];
+    if value.serialized_size(compress) != consumed.len() {
+        return Err(ark_serialize::SerializationError::InvalidData);
+    }
+    let mut canonical = [0u8; N];
+    value.serialize_with_mode(&mut canonical[..consumed.len()], compress)?;
+    if canonical[..consumed.len()] != *consumed {
+        return Err(ark_serialize::SerializationError::InvalidData);
+    }
+    Ok(value)
+}
+
+/// [`deserialize_canonical`] for one affine point with the default stack
+/// buffer: a point encodes to at most 65 bytes on every built-in suite.
+pub(crate) fn deserialize_point<S: Suite>(
+    reader: impl ark_std::io::Read,
+    compress: ark_serialize::Compress,
+    validate: ark_serialize::Validate,
+) -> Result<AffinePoint<S>, ark_serialize::SerializationError> {
+    deserialize_canonical::<AffinePoint<S>, STACK_BUF_SIZE>(reader, compress, validate)
+}
+
 /// Challenge encoding length in bytes (128-bit security).
 pub const CHALLENGE_LEN: usize = SECURITY_PARAMETER / 8;
 

@@ -145,4 +145,64 @@ pub(crate) mod tests {
                 .is_some()
         );
     }
+
+    /// The identity `(0, 1)` compresses to `y = 1` with the sign flag of `x`
+    /// clear (bit 7 of the last byte). Arkworks reads the same point from the
+    /// bytes with the flag set, because both roots of `x` are zero. The
+    /// crate's point decoder trusts its bytes when unchecked and accepts both
+    /// strings; checked, it accepts only the string the encoder writes. A
+    /// proof that holds the point inherits this, so one proof has one
+    /// checked encoding.
+    #[test]
+    fn identity_has_one_checked_encoding() {
+        use crate::thin::Proof;
+        use crate::utils::common::deserialize_point;
+        use ark_serialize::{Compress, Validate};
+
+        let mut canonical = [0u8; 32];
+        canonical[0] = 1;
+        let mut alias = canonical;
+        alias[31] |= 0x80;
+
+        let identity = AffinePoint::deserialize_compressed(&canonical[..]).unwrap();
+        assert!(identity.is_zero());
+        assert_eq!(
+            AffinePoint::deserialize_compressed(&alias[..]).unwrap(),
+            identity
+        );
+
+        let decode =
+            |bytes: &[u8], validate| deserialize_point::<ThisSuite>(bytes, Compress::Yes, validate);
+        assert_eq!(decode(&canonical, Validate::No).unwrap(), identity);
+        assert_eq!(decode(&alias, Validate::No).unwrap(), identity);
+        assert_eq!(decode(&canonical, Validate::Yes).unwrap(), identity);
+        assert!(decode(&alias, Validate::Yes).is_err());
+
+        // A Thin proof is `R || s`; put the identity in `R`.
+        let mut s = Vec::new();
+        ScalarField::from(7u64)
+            .serialize_compressed(&mut s)
+            .unwrap();
+        let canonical_proof = [&canonical[..], &s[..]].concat();
+        let alias_proof = [&alias[..], &s[..]].concat();
+
+        let reencode = |proof: Proof<ThisSuite>| {
+            let mut bytes = Vec::new();
+            proof.serialize_compressed(&mut bytes).unwrap();
+            bytes
+        };
+        let unchecked = |bytes: &[u8]| Proof::<ThisSuite>::deserialize_compressed_unchecked(bytes);
+        assert_eq!(
+            reencode(unchecked(&canonical_proof).unwrap()),
+            canonical_proof
+        );
+        assert_eq!(reencode(unchecked(&alias_proof).unwrap()), canonical_proof);
+
+        let checked = |bytes: &[u8]| Proof::<ThisSuite>::deserialize_compressed(bytes);
+        assert_eq!(
+            reencode(checked(&canonical_proof).unwrap()),
+            canonical_proof
+        );
+        assert!(checked(&alias_proof).is_err());
+    }
 }

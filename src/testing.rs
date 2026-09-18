@@ -433,12 +433,100 @@ fn assert_torsion_rejected<S: Suite, K: Sync>(
     unchecked
 }
 
+/// Flip every bit of `bytes` inside `component`, decode that component alone
+/// with the plain arkworks decoder, and call a mutation that encodes back to
+/// the original component an alias of the same value. `decode`, the checked
+/// decoder of the whole byte string, must reject every alias. Returns the
+/// aliases so the caller can assert that the check ran.
+pub fn assert_aliases_rejected<T: CanonicalSerialize + CanonicalDeserialize>(
+    bytes: &[u8],
+    component: core::ops::Range<usize>,
+    compress: ark_serialize::Compress,
+    decode: impl Fn(&[u8]) -> bool,
+) -> Vec<Vec<u8>> {
+    let canonical = &bytes[component.clone()];
+    let mut aliases = Vec::new();
+    for bit in 0..canonical.len() * 8 {
+        let mut mutated = bytes.to_vec();
+        mutated[component.start + bit / 8] ^= 1 << (bit % 8);
+        let plain = T::deserialize_with_mode(
+            &mutated[component.clone()],
+            compress,
+            ark_serialize::Validate::No,
+        );
+        let Ok(value) = plain else {
+            continue;
+        };
+        let mut reencoded = Vec::new();
+        value.serialize_with_mode(&mut reencoded, compress).unwrap();
+        if reencoded != canonical {
+            continue;
+        }
+        assert!(
+            !decode(&mutated),
+            "alias accepted: bit {bit} of the component"
+        );
+        aliases.push(mutated);
+    }
+    aliases
+}
+
+/// A point must have one accepted encoding. Arkworks reads the identity from
+/// several byte strings (any `x` with the infinity flag on Short Weierstrass
+/// curves, either sign flag on Twisted Edwards curves) and ignores the sign
+/// flag of an uncompressed Short Weierstrass point. Byte-keyed deduplication
+/// and strong unforgeability of proofs need one encoding per value. Unchecked
+/// decoding trusts its bytes and skips the check by design.
+pub fn non_canonical_encoding_rejected<S: Suite>() {
+    use crate::utils::common::{deserialize_canonical, deserialize_point};
+    use ark_serialize::{Compress, SerializationError, Validate};
+
+    let mut identity = Vec::new();
+    AffinePoint::<S>::zero()
+        .serialize_compressed(&mut identity)
+        .unwrap();
+    let checked = |bytes: &[u8]| deserialize_point::<S>(bytes, Compress::Yes, Validate::Yes);
+    assert!(checked(&identity).unwrap().is_zero());
+    // A buffer too small for the value is an error, not a panic.
+    assert!(matches!(
+        deserialize_canonical::<AffinePoint<S>, 8>(&identity[..], Compress::Yes, Validate::Yes),
+        Err(SerializationError::NotEnoughSpace)
+    ));
+    let aliases = assert_aliases_rejected::<AffinePoint<S>>(
+        &identity,
+        0..identity.len(),
+        Compress::Yes,
+        |bytes| checked(bytes).is_ok(),
+    );
+    assert!(!aliases.is_empty());
+    for alias in &aliases {
+        assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_ok());
+    }
+
+    let point = Secret::<S>::from_seed(TEST_SEED).public().point();
+    for compress in [Compress::Yes, Compress::No] {
+        let mut bytes = Vec::new();
+        point.serialize_with_mode(&mut bytes, compress).unwrap();
+        let decode =
+            |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
+        assert_eq!(decode(&bytes).unwrap().point(), point);
+        assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
+            decode(bytes).is_ok()
+        });
+    }
+}
+
 #[macro_export]
 macro_rules! suite_tests {
     ($suite:ty) => {
         #[test]
         fn low_order_point_rejected() {
             $crate::testing::low_order_point_rejected::<$suite>();
+        }
+
+        #[test]
+        fn non_canonical_encoding_rejected() {
+            $crate::testing::non_canonical_encoding_rejected::<$suite>();
         }
     };
 }
