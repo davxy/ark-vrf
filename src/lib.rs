@@ -100,6 +100,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
 
@@ -213,7 +214,7 @@ pub trait Suite: Copy {
     ///
     /// Defaults to [`utils::nonce`] (deterministic, inspired by RFC-8032 section 5.1.6).
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, transcript: Option<Self::Transcript>) -> ScalarField<Self> {
+    fn nonce(sk: &ScalarField<Self>, transcript: Self::Transcript) -> ScalarField<Self> {
         utils::nonce::<Self>(sk, transcript)
     }
 
@@ -224,10 +225,7 @@ pub trait Suite: Copy {
     ///
     /// Defaults to [`utils::challenge`] (inspired by RFC-9381 section 5.4.3).
     #[inline(always)]
-    fn challenge(
-        pts: &[&AffinePoint<Self>],
-        transcript: Option<Self::Transcript>,
-    ) -> ScalarField<Self> {
+    fn challenge(pts: &[&AffinePoint<Self>], transcript: Self::Transcript) -> ScalarField<Self> {
         utils::challenge::<Self>(pts, transcript)
     }
 
@@ -355,7 +353,7 @@ impl<S: Suite> Secret<S> {
             if cnt > 0 {
                 transcript.absorb_raw(&[cnt]);
             }
-            let scalar = utils::nonce::<S>(&sk, Some(transcript.clone()));
+            let scalar = utils::nonce::<S>(&sk, transcript);
             if !scalar.is_zero() {
                 break scalar;
             }
@@ -730,7 +728,7 @@ mod tests {
     fn prove_uniqueness_vulnerability() {
         use ark_ff::BigInteger;
         use ark_std::{One, Zero};
-        use utils::common::{DomSep, ExactChain};
+        use utils::common::DomSep;
 
         type S = TestSuite;
         type Sc = ScalarField<S>;
@@ -772,13 +770,12 @@ mod tests {
         let mut ad_ctr = 0u32;
         let (ad, t, merged_input) = loop {
             let ad = format!("ad-{ad_ctr}");
-            let schnorr = core::iter::once(VrfIo {
-                input: Input::from_affine_unchecked(S::generator()),
-                output: Output::from_affine_unchecked(public.0),
-            });
-            let chain = ExactChain::new(schnorr, mal_ios.iter().copied());
-            let (t, zs) =
-                utils::vrf_transcript_scalars_from_iter(DomSep::TinyVrf, chain, ad.as_bytes());
+            let (t, zs) = utils::vrf_transcript_scalars_with_schnorr(
+                DomSep::TinyVrf,
+                public.0,
+                mal_ios,
+                ad.as_bytes(),
+            );
             // z_1 is the delinearization scalar for the VRF pair
             if zs[1].into_bigint().is_even() {
                 // Compute merged input: I_m = z_0*G + z_1*I
@@ -799,7 +796,7 @@ mod tests {
             // R = k * I_m (merged input including Schnorr pair)
             let r = (merged_input * k).into_affine();
 
-            let c = S::challenge(&[&r], Some(t.clone()));
+            let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
                 let s = k + c * secret.scalar;

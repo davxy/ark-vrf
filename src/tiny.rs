@@ -165,12 +165,12 @@ impl<S: TinySuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
 
-        let k = S::nonce(&self.scalar, Some(t.clone()));
+        let k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m
         let r = smul!(io.input.0, k).into_affine();
 
-        let c = S::challenge(&[&r], Some(t));
+        let c = S::challenge(&[&r], t);
         let s = k + c * self.scalar;
         Proof { c, s }
     }
@@ -203,7 +203,7 @@ impl<S: TinySuite> Verifier<S> for Public<S> {
         // R = s * I_m - c * O_m
         let r = short_msm(&[io.input.0, io.output.0], &[*s, -*c], 2).into_affine();
 
-        let c_exp = S::challenge(&[&r], Some(t));
+        let c_exp = S::challenge(&[&r], t);
         (c_exp == *c)
             .then_some(())
             .ok_or(Error::VerificationFailure)

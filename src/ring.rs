@@ -380,14 +380,6 @@ pub struct RingSetup<S: RingSuite> {
     pub ring_ctx: RingContext<S>,
 }
 
-impl<S: RingSuite> core::ops::Deref for RingSetup<S> {
-    type Target = RingContext<S>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ring_ctx
-    }
-}
-
 impl<S: RingSuite> RingSetup<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
@@ -433,11 +425,11 @@ impl<S: RingSuite> RingSetup<S> {
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
-        if pks.len() > self.piop_params.keyset_part_size {
+        if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).0)
+        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).0)
     }
 
     /// Create a verifier key for the given ring of public keys.
@@ -445,11 +437,11 @@ impl<S: RingSuite> RingSetup<S> {
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
-        if pks.len() > self.piop_params.keyset_part_size {
+        if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
         let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.piop_params, &pks).1)
+        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).1)
     }
 
     /// Create a verifier key from a precomputed ring commitment.
@@ -477,7 +469,7 @@ impl<S: RingSuite> RingSetup<S> {
     pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
-        let piop_domain_size = piop_domain_size::<S>(self.piop_params.keyset_part_size);
+        let piop_domain_size = piop_domain_size::<S>(self.ring_ctx.max_ring_size());
         let builder_key = RingBuilderKey::<S>::from_srs(&self.pcs_params, piop_domain_size);
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
         let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
@@ -614,7 +606,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
         let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
-            &ring_setup.piop_params,
+            &ring_setup.ring_ctx.piop_params,
             lookup,
             pcs_params.g1.into_group(),
         );
@@ -1195,7 +1187,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
 
-        let max_ring_size = ring_setup.max_ring_size();
+        let max_ring_size = ring_setup.ring_context().max_ring_size();
         let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
         assert!(matches!(
             ring_setup.prover_key(&pks),

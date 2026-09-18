@@ -122,13 +122,13 @@ impl<S: ThinSuite> Prover<S> for Secret<S> {
         let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, Some(t.clone()));
+        let k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m (secret nonce on merged input)
         let r = smul!(merged.input.0, k).into_affine();
 
         // Challenge
-        let c = S::challenge(&[&r], Some(t));
+        let c = S::challenge(&[&r], t);
 
         // Response
         let s = k + c * self.scalar;
@@ -161,7 +161,7 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
         let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
 
         // Challenge
-        let c = S::challenge(&[r], Some(t));
+        let c = S::challenge(&[r], t);
 
         // Verification: s * I_m - c * O_m == R
         let lhs = short_msm(&[merged.input.0, merged.output.0], &[*s, -c], 2);
@@ -202,7 +202,7 @@ impl<S: ThinSuite> BatchItem<S> {
     ) -> Self {
         let ios = ios.as_ref();
         let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
-        let c = S::challenge(&[&proof.r], Some(t));
+        let c = S::challenge(&[&proof.r], t);
         Self {
             c,
             pk: *public,
@@ -719,7 +719,7 @@ pub(crate) mod testing {
         // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (merged_input * k).into_affine();
-        let c = S::challenge(&[&r], Some(transcript));
+        let c = S::challenge(&[&r], transcript);
         let s = k + c * x;
 
         let forged_proof = Proof::<S> { r, s };

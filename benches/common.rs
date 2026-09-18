@@ -4,7 +4,7 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo};
+use ark_vrf::{AffinePoint, Input, Output, Secret, Suite, VrfIo, utils::Transcript};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -57,7 +57,7 @@ fn bench_challenge<S: Suite>(c: &mut Criterion) {
         b.iter(|| {
             S::challenge(
                 black_box(&[&public, &input, &output, &generator, &generator]),
-                None,
+                S::Transcript::new(S::SUITE_ID),
             )
         });
     });
@@ -79,7 +79,7 @@ fn bench_nonce<S: Suite>(c: &mut Criterion) {
 
     let name = format!("{}/nonce", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| S::nonce(black_box(secret.scalar()), None));
+        b.iter(|| S::nonce(black_box(secret.scalar()), S::Transcript::new(S::SUITE_ID)));
     });
 }
 

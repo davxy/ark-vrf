@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking**: `PointWrapper` no longer implements `Deref` to the affine
   point. Read it with the new `point()` method. The wrappers are role types,
   not smart pointers.
+- **Breaking**: `Suite::nonce`, `Suite::challenge`, `utils::nonce` and
+  `utils::challenge` take the transcript directly instead of an `Option`,
+  like `PedersenSuite::blinding`.
+- **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
+  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
+- The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
 
 ### Fixed
 

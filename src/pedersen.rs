@@ -53,7 +53,7 @@ pub trait PedersenSuite: Suite {
     /// Default implementation is deterministic. All parameters but `secret` are public.
     fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
-        Self::nonce(secret, Some(transcript))
+        Self::nonce(secret, transcript)
     }
 }
 
@@ -162,8 +162,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         t.absorb_serialize(&pk_com);
 
         // Nonces from T.fork()
-        let k = S::nonce(&self.scalar, Some(t.clone()));
-        let kb = S::nonce(&blinding, Some(t.clone()));
+        let k = S::nonce(&self.scalar, t.clone());
+        let kb = S::nonce(&blinding, t.clone());
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
@@ -177,7 +177,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let (r, ok) = (norms[0], norms[1]);
 
         // c = challenge([R, Ok], T)
-        let c = S::challenge(&[&r, &ok], Some(t));
+        let c = S::challenge(&[&r, &ok], t);
 
         // s = k + c*x
         let s = k + c * self.scalar;
@@ -228,7 +228,7 @@ impl<S: PedersenSuite> Verifier<S> for Public<S> {
         t.absorb_serialize(pk_com);
 
         // c = challenge([R, Ok], T)
-        let c = S::challenge(&[r, ok], Some(t));
+        let c = S::challenge(&[r, ok], t);
 
         let neg_c = -c;
 
@@ -289,7 +289,7 @@ impl<S: PedersenSuite> BatchItem<S> {
         let io_identity = ios.iter().any(VrfIo::has_identity);
         let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
         t.absorb_serialize(&proof.pk_com);
-        let c = S::challenge(&[&proof.r, &proof.ok], Some(t));
+        let c = S::challenge(&[&proof.r, &proof.ok], t);
         Self {
             c,
             input: io.input.0,

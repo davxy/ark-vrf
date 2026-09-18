@@ -37,8 +37,6 @@ pub use transcript::*;
 /// Without the feature enabled, it performs a standard scalar multiplication.
 mod secret_split {
     #[cfg(feature = "secret-split")]
-    #[doc(hidden)]
-    #[macro_export]
     macro_rules! smul {
         ($p:expr, $s:expr) => {{
             #[inline(always)]
@@ -52,11 +50,12 @@ mod secret_split {
     }
 
     #[cfg(not(feature = "secret-split"))]
-    #[doc(hidden)]
-    #[macro_export]
     macro_rules! smul {
         ($p:expr, $s:expr) => {
             $p * $s
         };
     }
+
+    pub(crate) use smul;
 }
+pub(crate) use secret_split::smul;
