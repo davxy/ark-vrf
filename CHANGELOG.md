@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking**: `thin::BatchVerifier::prepare` replaced by
   `thin::BatchItem::new(public, ios, ad, proof)`, matching the Pedersen and
   ring batch APIs.
+- **Breaking**: proof types are opaque. The fields of `tiny::Proof`,
+  `thin::Proof` and `ring::Proof` are no longer public, matching
+  `pedersen::Proof`. Construct proofs with `prove` or by deserialization, so
+  every proof holds subgroup-checked points unless built with a
+  `deserialize_*_unchecked` method.
+- **Breaking**: `Input::new` returns `Result<Self, Error>` instead of
+  `Option<Self>`, like the other checked constructors. A failed hash-to-curve
+  is `Error::InvalidData`.
+- **Breaking**: `PointWrapper` no longer implements `Deref` to the affine
+  point. Read it with the new `point()` method. The wrappers are role types,
+  not smart pointers.
 
 ### Fixed
 

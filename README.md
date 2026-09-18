@@ -58,7 +58,7 @@ let input = Input::new(b"example input").unwrap();
 let output = secret.output(input);
 
 // Get a deterministic hash from the VRF output point
-let hash_bytes = output.hash();
+let hash_bytes: [u8; 32] = output.hash();
 ```
 
 ### Tiny VRF
@@ -148,7 +148,7 @@ assert!(result.is_ok());
 
 // Verify the proof was created using a specific public key.
 // This requires knowledge of the blinding factor.
-let expected = (*public + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+let expected = (public.point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 assert_eq!(proof.key_commitment(), expected);
 ```
 
@@ -166,12 +166,12 @@ let mut ring = (0..RING_SIZE)
     .map(|i| {
         let mut seed = [0u8; 32];
         seed[..8].copy_from_slice(&i.to_le_bytes());
-        *Secret::from_seed(seed).public()
+        Secret::from_seed(seed).public().point()
     })
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover
-ring[prover_key_index] = *public;
+ring[prover_key_index] = public.point();
 
 // Any key can be replaced with the padding point
 ring[0] = RingSetup::padding_point();

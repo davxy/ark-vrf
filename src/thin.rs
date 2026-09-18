@@ -37,14 +37,16 @@ impl<T> ThinSuite for T where T: Suite {}
 /// - `r`: Nonce commitment on the merged input (`R = k * I_m`)
 /// - `s`: Response scalar (`s = k + c * x`)
 ///
-/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
-/// curve points, so deserialized proofs are guaranteed to contain valid points.
+/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
+/// every proof holds valid points unless built with a `deserialize_*_unchecked`
+/// method.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
-    pub r: AffinePoint<S>,
+    pub(crate) r: AffinePoint<S>,
     /// Response scalar.
-    pub s: ScalarField<S>,
+    pub(crate) s: ScalarField<S>,
 }
 
 #[inline(always)]

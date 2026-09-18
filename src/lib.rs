@@ -138,7 +138,8 @@ pub enum Error {
     /// Proof verification failed.
     VerificationFailure,
     /// Invalid input data (e.g. point not in the prime-order subgroup,
-    /// forbidden identity point, deserialization failure).
+    /// forbidden identity point, deserialization failure, hash-to-curve
+    /// found no point).
     InvalidData,
     /// Ring capacity exceeded (requested ring size beyond the parameters
     /// capacity, SRS too short, or no free slots left in the builder).
@@ -418,7 +419,7 @@ impl<S: Suite> Secret<S> {
 /// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
 /// skip validation and leave this responsibility to the caller.
 ///
-/// The wrapper dereferences to the affine point for read access.
+/// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
 
@@ -478,14 +479,6 @@ impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
     }
 }
 
-impl<S: Suite, K> core::ops::Deref for PointWrapper<S, K> {
-    type Target = AffinePoint<S>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl<S: Suite, K: Sync> PointWrapper<S, K> {
     /// Construct from an affine point with validation.
     ///
@@ -505,6 +498,11 @@ impl<S: Suite, K: Sync> PointWrapper<S, K> {
         Self(value, PhantomData)
     }
 
+    /// Get the affine point.
+    pub fn point(&self) -> AffinePoint<S> {
+        self.0
+    }
+
     /// Whether the point is the group identity.
     ///
     /// The identity passes the subgroup check but is never a usable point: as a
@@ -519,9 +517,12 @@ impl<S: Suite, K: Sync> PointWrapper<S, K> {
 impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
     ///
-    /// Maps arbitrary data to a curve point via hash-to-curve.
-    pub fn new(data: &[u8]) -> Option<Self> {
-        S::data_to_point(data).map(Self::from_affine_unchecked)
+    /// Maps arbitrary data to a curve point via hash-to-curve. Returns
+    /// `Error::InvalidData` if no point is found.
+    pub fn new(data: &[u8]) -> Result<Self, Error> {
+        S::data_to_point(data)
+            .map(Self::from_affine_unchecked)
+            .ok_or(Error::InvalidData)
     }
 }
 
@@ -641,6 +642,43 @@ mod tests {
             Error::InvalidData
         );
         assert_ne!(Error::InvalidData, Error::RingCapacityExceeded);
+    }
+
+    /// `Input::new` must compose with `?` in functions returning the crate
+    /// error, like the other checked constructors. A suite whose hash-to-curve
+    /// finds no point must surface that as `Error::InvalidData`.
+    #[test]
+    fn input_new_returns_crate_error() {
+        #[derive(Debug, Copy, Clone)]
+        struct NeverSuite;
+
+        impl Suite for NeverSuite {
+            const SUITE_ID: &'static [u8] = b"Never";
+            type Affine = <TestSuite as Suite>::Affine;
+            type Transcript = <TestSuite as Suite>::Transcript;
+
+            fn data_to_point(_data: &[u8]) -> Option<AffinePoint<Self>> {
+                None
+            }
+        }
+
+        fn build() -> Result<Input, Error> {
+            let input = Input::new(b"data")?;
+            Ok(input)
+        }
+        assert!(build().is_ok());
+        assert_eq!(
+            crate::Input::<NeverSuite>::new(b"data").unwrap_err(),
+            Error::InvalidData
+        );
+    }
+
+    /// The wrapper does not dereference to the affine point. `point()` is the
+    /// one read path, so the role types stay distinct.
+    #[test]
+    fn point_wrapper_point_accessor() {
+        let public = Secret::from_seed(TEST_SEED).public();
+        assert_eq!(public.point(), public.0);
     }
 
     /// The identity is a well-formed subgroup element, so the subgroup check

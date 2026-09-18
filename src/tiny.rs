@@ -49,15 +49,15 @@ fn vrf_transcript<S: TinySuite>(
 /// - `c`: Challenge scalar
 /// - `s`: Response scalar (`s = k + c * x`)
 ///
-/// Serialization encodes `c` on [`utils::CHALLENGE_LEN`] bytes and `s` as a
-/// full scalar. The proof holds no curve points, so deserialization involves
-/// no subgroup checks.
+/// Construct it with [`Prover::prove`] or by deserialization. Serialization
+/// encodes `c` on [`utils::CHALLENGE_LEN`] bytes and `s` as a full scalar. The
+/// proof holds no curve points, so deserialization involves no subgroup checks.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
     /// Challenge scalar.
-    pub c: ScalarField<S>,
+    pub(crate) c: ScalarField<S>,
     /// Response scalar.
-    pub s: ScalarField<S>,
+    pub(crate) s: ScalarField<S>,
 }
 
 impl<S: TinySuite> CanonicalSerialize for Proof<S> {

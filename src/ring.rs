@@ -20,10 +20,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         *Secret::from_seed(seed).public()
+//!         Secret::from_seed(seed).public().point()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = *public;
+//! ring[prover_key_index] = public.point();
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed(RING_SIZE, [0x42; 32]);
@@ -161,14 +161,29 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
 /// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
 ///
-/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
-/// curve points, so deserialized proofs are guaranteed to contain valid points.
+/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
+/// every proof holds valid points unless built with a `deserialize_*_unchecked`
+/// method.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
-    pub pedersen_proof: PedersenProof<S>,
+    pub(crate) pedersen_proof: PedersenProof<S>,
     /// Ring membership proof binding the key commitment to the ring.
-    pub ring_proof: RingBareProof<S>,
+    pub(crate) ring_proof: RingBareProof<S>,
+}
+
+impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
+    /// The backend ring proof type has no `Debug`; its serialized size stands in.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Proof")
+            .field("pedersen_proof", &self.pedersen_proof)
+            .field(
+                "ring_proof",
+                &format_args!("<{} bytes>", self.ring_proof.compressed_size()),
+            )
+            .finish()
+    }
 }
 
 /// Trait for types that can generate Ring VRF proofs.
@@ -1318,6 +1333,15 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
+    /// Downstream types that derive `Debug` need `Proof<S>: Debug`. The
+    /// backend ring proof type has no `Debug`, so the impl is manual and a
+    /// refactor can drop it without any other test noticing.
+    #[allow(unused)]
+    pub fn proof_is_debug<S: RingSuite + core::fmt::Debug>() {
+        fn assert_debug<T: core::fmt::Debug>() {}
+        assert_debug::<Proof<S>>();
+    }
+
     pub fn domain_size_conversions<S: RingSuite>() {
         let overhead = piop_overhead::<S>();
 
@@ -1430,6 +1454,11 @@ pub(crate) mod testing {
                 #[test]
                 fn domain_size_conversions() {
                     $crate::ring::testing::domain_size_conversions::<$suite>()
+                }
+
+                #[test]
+                fn proof_is_debug() {
+                    $crate::ring::testing::proof_is_debug::<$suite>()
                 }
 
                 $crate::test_vectors!($crate::ring::testing::TestVector<$suite>);

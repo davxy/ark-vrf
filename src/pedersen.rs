@@ -24,7 +24,7 @@
 //! let result = Public::verify(io, b"aux data", &proof);
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (*public + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! let expected = (public.point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -67,15 +67,17 @@ pub trait PedersenSuite: Suite {
 /// - `s`: Response scalar for the secret key (`s = k + c * x`)
 /// - `sb`: Response scalar for the blinding factor (`sb = kb + c * b`)
 ///
-/// Deserialization via [`CanonicalDeserialize`] includes subgroup checks for
-/// curve points, so deserialized proofs are guaranteed to contain valid points.
+/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
+/// every proof holds valid points unless built with a `deserialize_*_unchecked`
+/// method.
 #[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof<S: PedersenSuite> {
-    pk_com: AffinePoint<S>,
-    r: AffinePoint<S>,
-    ok: AffinePoint<S>,
-    s: ScalarField<S>,
-    sb: ScalarField<S>,
+    pub(crate) pk_com: AffinePoint<S>,
+    pub(crate) r: AffinePoint<S>,
+    pub(crate) ok: AffinePoint<S>,
+    pub(crate) s: ScalarField<S>,
+    pub(crate) sb: ScalarField<S>,
 }
 
 impl<S: PedersenSuite> Proof<S> {
