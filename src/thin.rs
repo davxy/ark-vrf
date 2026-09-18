@@ -171,7 +171,7 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
 /// Deferred Thin VRF verification data for batch verification.
 ///
 /// Stores raw points and delinearization scalars instead of the merged pair,
-/// so that `prepare` requires no EC ops (just hashing). The expanded
+/// so that [`Self::new`] requires no EC ops (just hashing). The expanded
 /// verification equation uses these directly in the batch MSM.
 pub struct BatchItem<S: ThinSuite> {
     c: ScalarField<S>,
@@ -180,6 +180,33 @@ pub struct BatchItem<S: ThinSuite> {
     zs: Vec<ScalarField<S>>,
     r: AffinePoint<S>,
     s: ScalarField<S>,
+}
+
+impl<S: ThinSuite> BatchItem<S> {
+    /// Prepare a proof for batch verification.
+    ///
+    /// Computes delinearization scalars and challenge via hashing only (no EC
+    /// ops). Stores the raw points and z scalars for the expanded verification
+    /// equation in [`BatchVerifier::verify`]. This is cheap and can be done in
+    /// parallel.
+    pub fn new(
+        public: &Public<S>,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        proof: &Proof<S>,
+    ) -> Self {
+        let ios = ios.as_ref();
+        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let c = S::challenge(&[&proof.r], Some(t));
+        Self {
+            c,
+            pk: *public,
+            ios: ios.to_vec(),
+            zs,
+            r: proof.r,
+            s: proof.s,
+        }
+    }
 }
 
 /// Batch verifier for Thin VRF proofs.
@@ -205,30 +232,6 @@ impl<S: ThinSuite> BatchVerifier<S> {
         Self::default()
     }
 
-    /// Prepare a proof for batch verification.
-    ///
-    /// Computes delinearization scalars and challenge via hashing only (no EC
-    /// ops). Stores the raw points and z scalars for the expanded verification
-    /// equation in [`Self::verify`].
-    pub fn prepare(
-        public: &Public<S>,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-    ) -> BatchItem<S> {
-        let ios = ios.as_ref();
-        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
-        let c = S::challenge(&[&proof.r], Some(t));
-        BatchItem {
-            c,
-            pk: *public,
-            ios: ios.to_vec(),
-            zs,
-            r: proof.r,
-            s: proof.s,
-        }
-    }
-
     /// Push a previously prepared entry into the batch.
     pub fn push_prepared(&mut self, entry: BatchItem<S>) {
         self.items.push(entry);
@@ -242,8 +245,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) {
-        let entry = Self::prepare(public, ios, ad, proof);
-        self.push_prepared(entry);
+        self.push_prepared(BatchItem::new(public, ios, ad, proof));
     }
 
     /// Batch-verify all collected proofs using a single multi-scalar multiplication.
@@ -270,7 +272,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         if items.is_empty() {
             return Ok(());
         }
-        // Checked here rather than in `prepare`, which cannot fail.
+        // Checked here rather than in `BatchItem::new`, which cannot fail.
         if items
             .iter()
             .any(|item| item.pk.is_identity() || item.ios.iter().any(VrfIo::has_identity))
@@ -352,7 +354,7 @@ pub(crate) mod testing {
     }
 
     pub fn batch_verify<S: ThinSuite>() {
-        use thin::{BatchVerifier, Prover, Verifier};
+        use thin::{BatchItem, BatchVerifier, Prover, Verifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -372,10 +374,10 @@ pub(crate) mod testing {
         batch.push(&public, io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
-        // Batch using prepare + push_prepared.
+        // Batch using BatchItem::new + push_prepared.
         let mut batch = BatchVerifier::new();
-        let entry1 = BatchVerifier::prepare(&public, io, b"foo", &proof1);
-        let entry2 = BatchVerifier::prepare(&public, io, b"bar", &proof2);
+        let entry1 = BatchItem::new(&public, io, b"foo", &proof1);
+        let entry2 = BatchItem::new(&public, io, b"bar", &proof2);
         batch.push_prepared(entry1);
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking**: `Public`, `Input` and `Output` are now aliases of the generic
   `PointWrapper<S, K>` with a private point field. Construct them with
   `from_affine`, `from_affine_unchecked`, `Input::new` or deserialization.
+- **Breaking**: `thin::BatchVerifier::prepare` replaced by
+  `thin::BatchItem::new(public, ios, ad, proof)`, matching the Pedersen and
+  ring batch APIs.
 
 ### Fixed
 
