@@ -56,7 +56,7 @@ use ark_ec::{
     pairing::Pairing,
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
 };
-use ark_std::ops::Range;
+use ark_std::{borrow::Cow, ops::Range};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
@@ -383,6 +383,16 @@ pub struct RingSetup<S: RingSuite> {
     pub ring_ctx: RingContext<S>,
 }
 
+/// The ring proof backend asserts on the identity, so it is rejected here.
+fn ring_members_te<S: RingSuite>(
+    pks: &[AffinePoint<S>],
+) -> Result<Cow<'_, [TEAffine<CurveConfig<S>>]>, Error> {
+    if pks.iter().any(AffineRepr::is_zero) {
+        return Err(Error::InvalidData);
+    }
+    TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)
+}
+
 impl<S: RingSuite> RingSetup<S> {
     /// Construct deterministic ring proof params for the given ring size.
     ///
@@ -426,24 +436,26 @@ impl<S: RingSuite> RingSetup<S> {
     /// Create a prover key for the given ring of public keys.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
-    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
+    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
+    /// Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
         if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
-        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
+        let pks = ring_members_te::<S>(pks)?;
         Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).0)
     }
 
     /// Create a verifier key for the given ring of public keys.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
-    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
+    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
+    /// Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
         if pks.len() > self.ring_ctx.max_ring_size() {
             return Err(Error::RingCapacityExceeded);
         }
-        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
+        let pks = ring_members_te::<S>(pks)?;
         Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).1)
     }
 
@@ -638,7 +650,8 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
     /// keys do not fit in the ring ([`Self::free_slots`] gives the remaining
     /// capacity), `Error::SrsLookupFailed` if the SRS lookup fails,
-    /// `Error::InvalidData` if a key cannot be mapped to Twisted Edwards form.
+    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
+    /// Twisted Edwards form.
     pub fn append(
         &mut self,
         pks: &[AffinePoint<S>],
@@ -656,7 +669,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
             debug_assert_eq!(segment.len(), range.len());
             Ok(segment.clone())
         };
-        let pks = TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)?;
+        let pks = ring_members_te::<S>(pks)?;
         self.partial.append(&pks, lookup);
         Ok(())
     }
@@ -1209,6 +1222,35 @@ pub(crate) mod testing {
         ));
     }
 
+    /// The ring proof backend asserts on the identity point. A member key
+    /// equal to the identity must be rejected at the crate boundary, on
+    /// every entry point that hands keys to the backend, and `append` must
+    /// leave the builder unchanged.
+    pub fn identity_in_ring_rejected<S: RingSuite>() {
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        pks[0] = AffinePoint::<S>::zero();
+
+        assert!(matches!(
+            ring_setup.prover_key(&pks),
+            Err(Error::InvalidData)
+        ));
+        assert!(matches!(
+            ring_setup.verifier_key(&pks),
+            Err(Error::InvalidData)
+        ));
+
+        let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
+        let free_slots = vk_builder.free_slots();
+        assert_eq!(
+            vk_builder.append(&pks, &lookup).unwrap_err(),
+            Error::InvalidData
+        );
+        assert_eq!(vk_builder.free_slots(), free_slots);
+    }
+
     #[allow(unused)]
     pub fn padding_check<S: RingSuite>()
     where
@@ -1424,6 +1466,11 @@ pub(crate) mod testing {
                 #[test]
                 fn ring_size_exceeded() {
                     $crate::ring::testing::ring_size_exceeded::<$suite>()
+                }
+
+                #[test]
+                fn identity_in_ring_rejected() {
+                    $crate::ring::testing::identity_in_ring_rejected::<$suite>()
                 }
 
                 #[test]

@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checked deserialization of the point wrappers do.
 - `utils::nonce` docs said the upper half of the expanded key is absorbed.
   All 64 bytes are.
+- `RingSetup::prover_key`, `RingSetup::verifier_key` and
+  `VerifierKeyBuilder::append` return `Error::InvalidData` for a member key
+  equal to the identity. On Twisted Edwards suites the identity reached an
+  assertion in the ring proof backend and panicked.
 
 ## [0.5.3] - 2026-08-18
 
