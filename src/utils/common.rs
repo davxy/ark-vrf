@@ -65,7 +65,9 @@ pub const fn expanded_scalar_len<S: Suite>(sec_bits: usize) -> usize {
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     stack_buf!(buf, expanded_scalar_len::<S>(SECURITY_PARAMETER));
     t.squeeze_raw(buf);
-    ScalarField::<S>::from_le_bytes_mod_order(buf)
+    let scalar = ScalarField::<S>::from_le_bytes_mod_order(buf);
+    buf.zeroize();
+    scalar
 }
 
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
@@ -279,10 +281,14 @@ pub fn point_to_hash<S: Suite, const N: usize>(
 
 /// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
 ///
-/// Hashes the secret key to derive a 64-byte expanded key, then absorbs the
-/// upper half into the transcript and squeezes a nonce. The transcript typically
+/// Hashes the secret key to derive a 64-byte expanded key, then absorbs it
+/// into the transcript and squeezes a nonce. The transcript typically
 /// carries shared state from `vrf_transcript`, binding the nonce to the I/O
 /// pairs and additional data.
+///
+/// The expanded key copy and the nonce reduction buffer are zeroized. The
+/// hasher states that absorbed the secret scalar and the expanded key are
+/// not: see [`crate::utils::DigestXof`].
 pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> ScalarField<S> {
     // Expand sk: H(transcript_state || NonceExpand || sk)
     let mut t_exp = transcript.clone();

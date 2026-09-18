@@ -162,8 +162,8 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         t.absorb_serialize(&pk_com);
 
         // Nonces from T.fork()
-        let k = S::nonce(&self.scalar, t.clone());
-        let kb = S::nonce(&blinding, t.clone());
+        let mut k = S::nonce(&self.scalar, t.clone());
+        let mut kb = S::nonce(&blinding, t.clone());
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
@@ -180,9 +180,15 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let c = S::challenge(&[&r, &ok], t);
 
         // s = k + c*x
-        let s = k + c * self.scalar;
+        let mut cx = c * self.scalar;
+        let s = k + cx;
         // sb = kb + c*b
-        let sb = kb + c * blinding;
+        let mut cb = c * blinding;
+        let sb = kb + cb;
+        k.zeroize();
+        kb.zeroize();
+        cx.zeroize();
+        cb.zeroize();
 
         let proof = Proof {
             pk_com,

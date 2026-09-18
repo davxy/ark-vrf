@@ -68,9 +68,10 @@
 //! - `full`: Enables all features listed below except `secret-split`, `parallel`, `asm`.
 //! - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
-//!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (output, nonce and
-//!   blinding), but provides side channel defenses for them. Ring proof witness generation is
-//!   not covered by this feature: it relies on the branch-free handling of the secret bits
+//!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
+//!   derivation, output, nonce and blinding), but provides side channel defenses for them.
+//!   Ring proof witness generation is not covered by this feature: it relies on the
+//!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
 //! - `ring`: Ring-VRF for the curves supporting it.
 //!
@@ -254,7 +255,9 @@ pub trait Suite: Copy {
 ///
 /// Contains the private scalar and cached public key.
 /// Implements automatic zeroization on drop. The `Debug` output redacts
-/// the scalar, and equality is evaluated in constant time.
+/// the scalar, and equality is evaluated in constant time. Key derivation
+/// and the provers zeroize their secret temporaries: seeds, nonces, the
+/// challenge products and, with `secret-split`, the split scalars.
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
@@ -330,7 +333,7 @@ impl<S: Suite> ark_serialize::Valid for Secret<S> {
 impl<S: Suite> Secret<S> {
     /// Construct a `Secret` from the given scalar.
     pub fn from_scalar(scalar: ScalarField<S>) -> Self {
-        let public = Public::from_affine_unchecked((S::generator() * scalar).into_affine());
+        let public = Public::from_affine_unchecked(smul!(S::generator(), scalar).into_affine());
         Self { scalar, public }
     }
 

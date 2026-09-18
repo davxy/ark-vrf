@@ -43,9 +43,12 @@ mod secret_split {
             fn get_rand<T: ark_std::UniformRand>(_: &T) -> T {
                 T::rand(&mut ark_std::rand::rngs::OsRng)
             }
-            let x1 = get_rand(&$s);
-            let x2 = $s - x1;
-            $p * x1 + $p * x2
+            let mut x1 = get_rand(&$s);
+            let mut x2 = $s - x1;
+            let result = $p * x1 + $p * x2;
+            zeroize::Zeroize::zeroize(&mut x1);
+            zeroize::Zeroize::zeroize(&mut x2);
+            result
         }};
     }
 

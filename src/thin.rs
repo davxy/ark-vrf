@@ -122,7 +122,7 @@ impl<S: ThinSuite> Prover<S> for Secret<S> {
         let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
 
         // Nonce
-        let k = S::nonce(&self.scalar, t.clone());
+        let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m (secret nonce on merged input)
         let r = smul!(merged.input.0, k).into_affine();
@@ -131,7 +131,10 @@ impl<S: ThinSuite> Prover<S> for Secret<S> {
         let c = S::challenge(&[&r], t);
 
         // Response
-        let s = k + c * self.scalar;
+        let mut cx = c * self.scalar;
+        let s = k + cx;
+        k.zeroize();
+        cx.zeroize();
 
         Proof { r, s }
     }

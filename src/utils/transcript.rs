@@ -3,6 +3,7 @@ use ark_std::io;
 use digest::Digest;
 use generic_array::GenericArray;
 use sha2::Sha512;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Fiat-Shamir transcript with absorb/squeeze interface.
 ///
@@ -205,6 +206,11 @@ where
 /// seed = H(absorbed_data)
 /// block_i = H(seed || i.to_le_bytes())    for i = 0, 1, 2, ...
 /// ```
+///
+/// The reader zeroizes its seed and its output block on drop. The wrapped
+/// hasher is not zeroized: the `digest` 0.10 crates offer no way to wipe
+/// their state, so absorbed bytes may remain in the dropped block buffer
+/// until the memory is reused.
 #[derive(Clone)]
 pub struct DigestXof<H: Digest + Clone>(H);
 
@@ -251,6 +257,23 @@ pub struct DigestXofReader<H: Digest> {
     buf_offset: usize,
 }
 
+/// The seed is the preimage of every squeezed byte and the buffer holds the
+/// last squeezed block. For a nonce derivation both are key material.
+impl<H: Digest> Zeroize for DigestXofReader<H> {
+    fn zeroize(&mut self) {
+        self.seed.as_mut_slice().zeroize();
+        self.buffer.as_mut_slice().zeroize();
+    }
+}
+
+impl<H: Digest> Drop for DigestXofReader<H> {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl<H: Digest> ZeroizeOnDrop for DigestXofReader<H> {}
+
 impl<H: Digest> digest::XofReader for DigestXofReader<H> {
     fn read(&mut self, buf: &mut [u8]) {
         let mut remaining = buf;
@@ -289,6 +312,9 @@ impl<H: Digest> digest::XofReader for DigestXofReader<H> {
 pub type HashTranscript<H = Sha512> = XofTranscript<DigestXof<H>>;
 
 /// SHAKE128 native XOF transcript.
+///
+/// Neither the hasher nor the reader state is zeroized on drop; `sha3` 0.10
+/// offers no way to do it.
 #[cfg(feature = "shake128")]
 pub type Shake128Transcript = XofTranscript<sha3::Shake128>;
 
@@ -376,6 +402,27 @@ mod tests {
 
     transcript_tests!(HashTranscript<sha2::Sha512>, hash_sha512);
     transcript_tests!(HashTranscript<sha2::Sha256>, hash_sha256);
+
+    /// The reader seed is the preimage of every squeezed byte, and the buffer
+    /// holds the last squeezed block. For a nonce derivation both are key
+    /// material, so `Drop` wipes them through `zeroize`. This checks the wipe.
+    #[test]
+    fn digest_xof_reader_zeroize() {
+        use digest::{ExtendableOutput, Update, XofReader};
+        use zeroize::Zeroize;
+
+        let mut hasher = super::DigestXof::<sha2::Sha512>::default();
+        hasher.update(b"secret");
+        let mut reader = hasher.finalize_xof();
+        let mut out = [0u8; 16];
+        reader.read(&mut out);
+        assert!(reader.seed.iter().any(|byte| *byte != 0));
+        assert!(reader.buffer.iter().any(|byte| *byte != 0));
+
+        reader.zeroize();
+        assert!(reader.seed.iter().all(|byte| *byte == 0));
+        assert!(reader.buffer.iter().all(|byte| *byte == 0));
+    }
 
     #[cfg(feature = "shake128")]
     transcript_tests!(Shake128Transcript, shake128_xof);
