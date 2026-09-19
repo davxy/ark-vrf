@@ -37,6 +37,9 @@ pub use transcript::*;
 /// of scalar multiplications.
 ///
 /// Without the feature enabled, it performs a standard scalar multiplication.
+///
+/// Neither form is constant time: the underlying arkworks multiplication
+/// follows the bits of the scalar. See the timing note on `Secret`.
 mod secret_split {
     #[cfg(feature = "secret-split")]
     macro_rules! smul {

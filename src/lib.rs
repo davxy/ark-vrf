@@ -74,6 +74,9 @@
 //!   multiplication, `Secret` deserialization and `from_seed` included, and the
 //!   call panics on a target where `getrandom` has no source (a seccomp filter,
 //!   wasm without the `js` backend, early boot).
+//!   The split hides the value of the scalar from an attacker who watches the
+//!   multiplication, but the multiplication stays variable time with the
+//!   feature and without it; see the timing note on [`Secret`].
 //!   Ring proof witness generation is not covered by this feature: it relies on the
 //!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
@@ -272,6 +275,14 @@ pub trait Suite: Copy {
 /// blinding factor are not wiped. The Pedersen prover returns the blinding
 /// factor to the caller, who owns it from then on (see
 /// [`pedersen::Prover::prove`]).
+///
+/// The scalar multiplications over the secret run in variable time. The
+/// arkworks double-and-add loop follows the bits of the scalar: its length
+/// gives the bit length, and its branch pattern gives the bits. A local
+/// attacker who times the prover learns part of each nonce, and a few nonce
+/// bits over many proofs give the secret key. The `secret-split` feature
+/// hides the value of the scalar behind a random split, but the loop stays
+/// variable time.
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.

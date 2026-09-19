@@ -12,6 +12,17 @@
 //! early boot). [`RingContext::new_without_blinding`] skips the draw and the
 //! zero knowledge with it.
 //!
+//! ## Setup
+//!
+//! Ring VRF soundness rests on the KZG trapdoor staying unknown. A deployment
+//! must build its [`RingSetup`] from the SRS of a trusted setup ceremony with
+//! [`RingSetup::from_pcs_params`]; the repository ships the Zcash ceremony SRS
+//! for the BLS12-381 based suites in
+//! `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`.
+//! [`RingSetup::from_seed_insecure`] and [`RingSetup::from_rand_insecure`]
+//! generate the trapdoor locally, which is good for tests only: the example
+//! below uses one.
+//!
 //! ## Usage
 //!
 //! ```rust,ignore
@@ -32,7 +43,7 @@
 //! ring[prover_key_index] = public.point();
 //!
 //! // Initialize ring parameters
-//! let ring_setup = RingSetup::from_seed(RING_SIZE, [0x42; 32]);
+//! let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
 //! let ring_ctx = ring_setup.ring_context();
 //!
 //! // Proving
@@ -356,6 +367,17 @@ pub struct RingContext<S: RingSuite> {
     piop_params: PiopParams<S>,
 }
 
+/// Bring `key_index` into `[0, capacity)` without a division.
+///
+/// The ring index is the secret that the ring VRF hides, and a hardware
+/// divider has an operand dependent latency. The mask reduces modulo the next
+/// power of two, which is below `2 * capacity`, and the subtraction closes the
+/// last step. An index below the capacity keeps its value.
+fn wrap_key_index(key_index: usize, capacity: usize) -> usize {
+    let masked = key_index & (capacity.next_power_of_two() - 1);
+    masked.checked_sub(capacity).unwrap_or(masked)
+}
+
 impl<S: RingSuite> RingContext<S> {
     /// Construct a context for a ring of at least `min_ring_size` keys.
     ///
@@ -408,10 +430,10 @@ impl<S: RingSuite> RingContext<S> {
 
     /// Create a prover instance for a specific position in the ring.
     ///
-    /// `key_index` is reduced modulo [`Self::max_ring_size`]. The proof
-    /// verifies only if the slot it lands on holds the prover's own key. The
-    /// context holds no keys and cannot check that: a wrong index gives a
-    /// proof that every verifier rejects.
+    /// An index at or beyond [`Self::max_ring_size`] wraps into range, on an
+    /// unspecified slot. The proof verifies only if the slot holds the
+    /// prover's own key. The context holds no keys and cannot check that: a
+    /// wrong index gives a proof that every verifier rejects.
     ///
     /// `prover_key` must come from a setup with the domain of this context:
     /// the same `min_ring_size`, or [`RingSetup::ring_context`] of that setup.
@@ -430,7 +452,7 @@ impl<S: RingSuite> RingContext<S> {
     ///
     /// See [`Self::ring_prover`] for the handling of `key_index`.
     pub fn into_ring_prover(self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
-        let key_index = key_index % self.max_ring_size();
+        let key_index = wrap_key_index(key_index, self.max_ring_size());
         RingProver::<S>::init(
             prover_key,
             self.piop_params,
@@ -487,18 +509,36 @@ impl<S: RingSuite> RingSetup<S> {
     /// `min_ring_size` keys.
     ///
     /// Creates parameters using a transcript-based RNG seeded with `seed`.
-    pub fn from_seed(min_ring_size: usize, seed: [u8; 32]) -> Self {
+    ///
+    /// # Insecure
+    ///
+    /// The KZG trapdoor comes from the seed, so anyone who knows the seed
+    /// recovers it. With the trapdoor a commitment opens to any value, and a
+    /// ring proof passes for a key that is not in the ring. Use this
+    /// constructor for tests, benchmarks and development only.
+    ///
+    /// A deployment loads an SRS from a trusted setup ceremony with
+    /// [`Self::from_pcs_params`]. See the note on that method.
+    pub fn from_seed_insecure(min_ring_size: usize, seed: [u8; 32]) -> Self {
         let mut t = S::Transcript::new(S::SUITE_ID);
         t.absorb_raw(&seed);
         let mut rng = t.to_rng();
-        Self::from_rand(min_ring_size, &mut rng)
+        Self::from_rand_insecure(min_ring_size, &mut rng)
     }
 
     /// Construct random ring proof params for a ring of at least `min_ring_size`
     /// keys.
     ///
     /// Generates a new KZG setup with sufficient degree for that ring size.
-    pub fn from_rand(min_ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
+    ///
+    /// # Insecure
+    ///
+    /// The KZG trapdoor is drawn from `rng` and dropped without a wipe, so
+    /// whoever runs the generation can recover it and forge a ring proof for
+    /// a key that is not in the ring. Use this constructor for tests,
+    /// benchmarks and development only. See
+    /// [`Self::from_seed_insecure`] and [`Self::from_pcs_params`].
+    pub fn from_rand_insecure(min_ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let max_degree = pcs_domain_size::<S>(min_ring_size) - 1;
         let pcs_params = Kzg::<S>::setup(max_degree, rng);
@@ -509,6 +549,18 @@ impl<S: RingSuite> RingSetup<S> {
     ///
     /// Truncates the setup if larger than needed, or returns
     /// `Error::RingCapacityExceeded` if it is insufficient for `min_ring_size` keys.
+    ///
+    /// This is the constructor a deployment uses. Ring VRF soundness rests on
+    /// the KZG trapdoor staying unknown, so `pcs_params` must come from a
+    /// trusted setup ceremony, where no single party holds it. Decode the
+    /// ceremony file with `PcsParams::deserialize_uncompressed`, or with the
+    /// `_unchecked` variant when the file is trusted, and pass the result
+    /// here.
+    ///
+    /// The repository ships the SRS of the Zcash powers of tau ceremony for
+    /// the BLS12-381 based suites, Bandersnatch and Jubjub, in
+    /// `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`. Its PIOP domain
+    /// is 2^11, which holds 1791 Bandersnatch keys and 1792 Jubjub keys.
     pub fn from_pcs_params(
         min_ring_size: usize,
         mut pcs_params: PcsParams<S>,
@@ -1184,7 +1236,7 @@ pub(crate) mod testing {
     #[allow(unused)]
     pub fn prove_verify<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -1214,7 +1266,7 @@ pub(crate) mod testing {
         use ring::{Prover, Verifier};
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
         let prover_idx = 3;
@@ -1275,7 +1327,7 @@ pub(crate) mod testing {
         use ring::{Prover, Verifier};
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -1321,7 +1373,7 @@ pub(crate) mod testing {
         const BATCH_SIZE: usize = 3 * TEST_RING_SIZE;
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -1445,7 +1497,7 @@ pub(crate) mod testing {
     #[allow(unused)]
     pub fn ring_size_exceeded<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let max_ring_size = ring_setup.ring_context().max_ring_size();
         let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
@@ -1472,7 +1524,7 @@ pub(crate) mod testing {
     /// leave the builder unchanged.
     pub fn identity_in_ring_rejected<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
         pks[0] = AffinePoint::<S>::zero();
@@ -1528,7 +1580,7 @@ pub(crate) mod testing {
         use ring::Prover;
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
         let prover_idx = 3;
@@ -1580,7 +1632,7 @@ pub(crate) mod testing {
         use ark_serialize::SerializationError;
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let capacity = ring_setup.ring_context().max_ring_size();
 
         let mut bytes = Vec::new();
@@ -1666,7 +1718,7 @@ pub(crate) mod testing {
     #[allow(unused)]
     pub fn verifier_key_from_commitment<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -1703,7 +1755,7 @@ pub(crate) mod testing {
         use crate::testing::{random_val, random_vec};
 
         let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();

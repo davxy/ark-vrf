@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a failed lookup panicked in the ring proof backend. `append` already
   returned that error. `RingSetup::verifier_key_builder` is unchanged: its
   in-memory table covers the whole domain.
+- **Breaking**: `RingSetup::from_seed` and `RingSetup::from_rand` are renamed
+  `from_seed_insecure` and `from_rand_insecure`. Both generate the KZG
+  trapdoor locally, so whoever knows the seed, or ran the generation, can
+  open a commitment to any value and prove membership for a key that is not
+  in the ring. Ring VRF soundness needs an SRS from a trusted setup ceremony,
+  loaded with `from_pcs_params`. The two constructors, the ring module docs
+  and the README say this now, and point at the Zcash ceremony SRS shipped in
+  `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`.
 - **Breaking**: `RingContext::piop_params` is private; `piop_params()` reads
   it. The capacity checks of `prover_key`, `verifier_key` and `ring_prover`
   read the context, so a context now always comes from `new`,
@@ -73,6 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   random source on every secret scalar multiplication, `Secret`
   deserialization included, and panics where `getrandom` has no source. The
   ring module docs say the same for the column blinding of the ring prover.
+- The `Secret`, `secret-split` and `smul!` docs say that the scalar
+  multiplications over the secret run in variable time, with the feature and
+  without it. The split hides the value of the scalar; the loop still follows
+  its bits, which leaks the bit length and the bits themselves to a local
+  timing attacker.
 - `secret-split` also covers public key derivation in `Secret::from_scalar`,
   which runs on every `Secret` deserialization.
 - The counter-mode XOF reader behind `HashTranscript` zeroizes its seed and
@@ -90,15 +103,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VerifierKeyBuilder::append` return `Error::InvalidData` for a member key
   equal to the identity. On Twisted Edwards suites the identity reached an
   assertion in the ring proof backend and panicked.
-- `RingContext::ring_prover` and `into_ring_prover` reduce `key_index` modulo
-  the ring capacity. An index at or beyond the capacity panicked in the ring
-  proof backend at `prove`.
+- `RingContext::ring_prover` and `into_ring_prover` wrap `key_index` into the
+  ring capacity. An index at or beyond the capacity panicked in the ring
+  proof backend at `prove`. The wrap is a mask and a conditional subtraction,
+  not a modulo: the ring index is the secret the ring VRF hides, and a
+  hardware divider has an operand dependent latency. An index below the
+  capacity keeps its value; any other index lands on an unspecified slot,
+  which gives a proof that no verifier accepts.
 - A `min_ring_size` of 0 counts as 1 in `RingContext::new`, the `RingSetup`
   constructors and `ring::piop_domain_size`, so every context holds at least
   one key. On Jubjub the PIOP overhead is a power of two, and a ring size of
-  0 gave a context with capacity 0: its provers panicked, at `prove` before
-  and in `ring_prover` with a division by zero after the reduction above. A
-  setup with the SRS of such a domain does not decode any more.
+  0 gave a context with capacity 0, whose provers panicked. A setup with the
+  SRS of such a domain does not decode any more.
 - `RingSetup` deserialization returns `SerializationError::InvalidData` for an
   SRS whose G1 length is not the exact size of a ring domain, `3 * P + 1` for
   a power of two `P`, or with fewer than two G2 powers. Before, an SRS shorter
