@@ -168,19 +168,4 @@ mod tests {
         assert!(te_to_sw::<BandersnatchConfig>(&te_identity).is_none());
         assert!(<EdwardsAffine as SWMapping<BandersnatchConfig>>::into_sw(te_identity).is_none());
     }
-
-    #[cfg(feature = "ring")]
-    #[test]
-    fn identity_in_ring_rejected() {
-        use crate::ring::{RingSetup, testing::TEST_RING_SIZE};
-
-        let rng = &mut ark_std::test_rng();
-        let ring_setup = RingSetup::<ThisSuite>::from_rand(TEST_RING_SIZE, rng);
-
-        let mut pks = testing::random_vec::<AffinePoint>(TEST_RING_SIZE, Some(rng));
-        pks[0] = AffinePoint::zero();
-
-        assert!(ring_setup.prover_key(&pks).is_err());
-        assert!(ring_setup.verifier_key(&pks).is_err());
-    }
 }

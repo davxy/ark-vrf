@@ -30,6 +30,7 @@
 
 use crate::Suite;
 use crate::utils;
+use crate::utils::canonical::deserialize_point;
 use crate::utils::common::DomSep;
 use crate::utils::straus::short_msm;
 use crate::*;
@@ -71,13 +72,54 @@ pub trait PedersenSuite: Suite {
 /// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
-#[derive(Debug, Clone, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// Both paths accept one encoding per proof and do not reject trailing bytes.
+#[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: PedersenSuite> {
     pub(crate) pk_com: AffinePoint<S>,
     pub(crate) r: AffinePoint<S>,
     pub(crate) ok: AffinePoint<S>,
     pub(crate) s: ScalarField<S>,
     pub(crate) sb: ScalarField<S>,
+}
+
+impl<S: PedersenSuite> CanonicalDeserialize for Proof<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let pk_com = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let r = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let ok = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            validate,
+        )?;
+        let sb = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            validate,
+        )?;
+        Ok(Proof {
+            pk_com,
+            r,
+            ok,
+            s,
+            sb,
+        })
+    }
+}
+
+impl<S: PedersenSuite> ark_serialize::Valid for Proof<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.pk_com.check()?;
+        self.r.check()?;
+        self.ok.check()?;
+        self.s.check()?;
+        self.sb.check()
+    }
 }
 
 impl<S: PedersenSuite> Proof<S> {
@@ -586,6 +628,39 @@ pub(crate) mod testing {
         assert!(Public::verify(ios, b"baz", &proof).is_err());
     }
 
+    /// With an empty I/O list `Ok` is the identity, which arkworks reads from
+    /// several byte strings. One proof must have one encoding.
+    pub fn proof_encoding_is_canonical<S: PedersenSuite>() {
+        use ark_serialize::Compress;
+        use pedersen::{Prover, Verifier};
+
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let ios: [VrfIo<S>; 0] = [];
+        let (proof, _) = secret.prove(ios, b"foo");
+        assert!(proof.ok.is_zero());
+
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).unwrap();
+        let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
+        assert!(Public::verify(ios, b"foo", &decoded).is_ok());
+        let mut reencoded = Vec::new();
+        decoded.serialize_compressed(&mut reencoded).unwrap();
+        assert_eq!(bytes, reencoded);
+
+        let point_len = proof.pk_com.compressed_size();
+        let ok_range = 2 * point_len..3 * point_len;
+        let aliases = common::assert_aliases_rejected::<AffinePoint<S>>(
+            &bytes,
+            ok_range,
+            Compress::Yes,
+            |bytes| {
+                Proof::<S>::deserialize_compressed(bytes).is_ok()
+                    || common::decodes_inside_vec::<Proof<S>>(bytes, Compress::Yes)
+            },
+        );
+        assert!(!aliases.is_empty());
+    }
+
     /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. Both
     /// verifiers merge like the prover does, so this runs the branch through
     /// prove, verify and batch verify; the branch itself is checked against a
@@ -705,6 +780,11 @@ pub(crate) mod testing {
         ($suite:ty) => {
             mod pedersen {
                 use super::*;
+
+                #[test]
+                fn proof_encoding_is_canonical() {
+                    $crate::pedersen::testing::proof_encoding_is_canonical::<$suite>()
+                }
 
                 #[test]
                 fn prove_verify() {

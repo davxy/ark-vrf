@@ -70,6 +70,9 @@
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
 //!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
 //!   derivation, output, nonce and blinding), but provides side channel defenses for them.
+//!   The split draws from `OsRng` on every secret scalar multiplication, `Secret`
+//!   deserialization included, and panics where `getrandom` has no source.
+//!   The multiplication stays variable time with the feature and without it.
 //!   Ring proof witness generation is not covered by this feature: it relies on the
 //!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
@@ -104,6 +107,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+use utils::canonical::deserialize_point;
 use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
@@ -260,9 +264,14 @@ pub trait Suite: Copy {
 /// Implements automatic zeroization on drop. The `Debug` output redacts
 /// the scalar, and equality is evaluated in constant time. Key derivation
 /// and the provers zeroize their secret temporaries: seeds, nonces, the
-/// challenge products and, with `secret-split`, the split scalars. The
-/// Pedersen prover returns the blinding factor to the caller, who owns it
-/// from then on (see [`pedersen::Prover::prove`]).
+/// challenge products and, with `secret-split`, the split scalars. This is
+/// best effort: temporaries inside arkworks and the ring proof backend are
+/// not wiped. The Pedersen prover returns the blinding factor to the caller,
+/// who owns it from then on (see [`pedersen::Prover::prove`]).
+///
+/// Scalar multiplications over the secret run in variable time: the arkworks
+/// double-and-add loop follows the bits of the scalar. `secret-split` hides
+/// the value of the scalar, not the timing.
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
@@ -419,14 +428,16 @@ impl<S: Suite> Secret<S> {
 /// # Validation
 ///
 /// [`Self::from_affine`] and the checked deserialization methods (the default
-/// `deserialize_*` family) accept only points in the prime-order subgroup and
-/// reject the group identity. The verifiers trust this invariant: they reject
-/// the identity, which is cheap, but they do not repeat the subgroup check.
-/// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
-/// skip validation and leave this responsibility to the caller.
+/// `deserialize_*` family, for [`Public`] and [`Output`]) accept only points
+/// in the prime-order subgroup and reject the group identity. The verifiers
+/// trust this invariant: they reject the identity, which is cheap, but they
+/// do not repeat the subgroup check. [`Self::from_affine_unchecked`] and the
+/// `deserialize_*_unchecked` methods skip validation and leave this
+/// responsibility to the caller. Both paths accept one encoding per point
+/// and do not reject trailing bytes.
 ///
 /// [`Self::point`] reads the affine point.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
 
 /// Role marker of [`Public`].
@@ -441,6 +452,14 @@ pub struct InputKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputKind;
 
+/// Role markers of the points that serialize. [`InputKind`] is left out, see
+/// [`Input`].
+pub(crate) trait Serializable: Sync {}
+
+impl Serializable for PublicKind {}
+
+impl Serializable for OutputKind {}
+
 /// Public key generic over the cipher suite.
 ///
 /// Elliptic curve point representing the public component of a VRF key pair.
@@ -453,6 +472,10 @@ pub type Public<S> = PointWrapper<S, PublicKind>;
 /// validates subgroup membership only: the caller must still ensure the point
 /// is not in a known discrete-log relation with the suite generator, which the
 /// soundness of the schemes requires (see the crate docs).
+///
+/// `Input` does not implement the serialization traits, so a verifier cannot
+/// take a prover-chosen point. Send the input data and call [`Input::new`] on
+/// both sides.
 pub type Input<S> = PointWrapper<S, InputKind>;
 
 /// VRF output point generic over the cipher suite.
@@ -469,17 +492,31 @@ impl<S: Suite, K: Sync> ark_serialize::Valid for PointWrapper<S, K> {
     }
 }
 
-impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
+impl<S: Suite, K: Serializable> CanonicalSerialize for PointWrapper<S, K> {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.0.serialize_with_mode(writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.0.serialized_size(compress)
+    }
+}
+
+impl<S: Suite, K: Serializable> CanonicalDeserialize for PointWrapper<S, K> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         reader: R,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let point =
-            AffinePoint::<S>::deserialize_with_mode(reader, compress, ark_serialize::Validate::No)?;
+        let point = deserialize_point::<S>(reader, compress, validate)?;
         let wrapper = Self::from_affine_unchecked(point);
-        if matches!(validate, ark_serialize::Validate::Yes) {
-            ark_serialize::Valid::check(&wrapper)?;
+        // `check()` ran on the point; the identity rule remains.
+        if matches!(validate, ark_serialize::Validate::Yes) && wrapper.is_identity() {
+            return Err(ark_serialize::SerializationError::InvalidData);
         }
         Ok(wrapper)
     }
@@ -540,7 +577,10 @@ impl<S: Suite> Output<S> {
 }
 
 /// VRF input-output pair.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// The pair does not implement the serialization traits, because [`Input`]
+/// does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VrfIo<S: Suite> {
     pub input: Input<S>,
     pub output: Output<S>,
@@ -722,11 +762,9 @@ mod tests {
 
         let mut buf = Vec::new();
         identity.serialize_compressed(&mut buf).unwrap();
-        assert!(crate::Input::<S>::deserialize_compressed(&buf[..]).is_err());
         assert!(crate::Output::<S>::deserialize_compressed(&buf[..]).is_err());
 
         // Unchecked paths are documented as skipping validation.
-        assert!(crate::Input::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
         assert!(crate::Output::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
         assert!(crate::Input::<S>::from_affine_unchecked(identity).is_identity());
         assert!(crate::Output::<S>::from_affine_unchecked(identity).is_identity());

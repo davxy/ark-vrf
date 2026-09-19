@@ -7,48 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Breaking release. Every entry under Changed alters the public API.
+
 ### Changed
 
-- **Breaking**: `Public`, `Input` and `Output` are now aliases of the generic
-  `PointWrapper<S, K>` with a private point field. Construct them with
-  `from_affine`, `from_affine_unchecked`, `Input::new` or deserialization.
-- **Breaking**: `thin::BatchVerifier::prepare` replaced by
-  `thin::BatchItem::new(public, ios, ad, proof)`, matching the Pedersen and
-  ring batch APIs.
-- **Breaking**: proof types are opaque. The fields of `tiny::Proof`,
-  `thin::Proof` and `ring::Proof` are no longer public, matching
-  `pedersen::Proof`. Construct proofs with `prove` or by deserialization, so
-  every proof holds subgroup-checked points unless built with a
-  `deserialize_*_unchecked` method.
-- **Breaking**: `Input::new` returns `Result<Self, Error>` instead of
-  `Option<Self>`, like the other checked constructors. A failed hash-to-curve
-  is `Error::InvalidData`.
-- **Breaking**: `PointWrapper` no longer implements `Deref` to the affine
-  point. Read it with the new `point()` method. The wrappers are role types,
-  not smart pointers.
-- **Breaking**: `Suite::nonce`, `Suite::challenge`, `utils::nonce` and
-  `utils::challenge` take the transcript directly instead of an `Option`,
-  like `PedersenSuite::blinding`.
-- **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
-  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
-- The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
-- `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
-  nonces and challenge products, the ring prover zeroizes its copy of the
-  blinding factor, and `secret-split` zeroizes the split scalars. Key
-  derivation already did this since 0.5.3.
-- `secret-split` also covers public key derivation in `Secret::from_scalar`,
-  which runs on every `Secret` deserialization.
-- The counter-mode XOF reader behind `HashTranscript` zeroizes its seed and
-  output block on drop, and the nonce reduction buffer is zeroized. The
-  `digest` 0.10 hasher state cannot be zeroized; see the `DigestXof` docs.
+- Opaque types. `Public`, `Input` and `Output` are aliases of
+  `PointWrapper<S, K>`. Its point and the fields of the proof types, of
+  `RingSetup` and of `RingContext` are private, with accessors.
+  Build values with the constructors, `prove` or deserialization.
+- `Input` and `VrfIo` no longer serialize. A verifier that decodes a
+  prover-chosen input point accepts a forgery: send the input data and call
+  `Input::new` on both sides.
+- `RingSetup::from_seed` and `from_rand` are renamed `from_seed_insecure` and
+  `from_rand_insecure`. Whoever generates the KZG trapdoor can forge ring
+  proofs; a deployment loads a trusted setup SRS with `from_pcs_params`.
+- Fallible constructors: `Input::new` and `VerifierKeyBuilder::new`.
 
 ### Fixed
 
-- `Suite::Affine` docs claimed that the `AffineRepr` bound guarantees
-  prime-order subgroup membership. It does not; the checked constructors and
-  checked deserialization of the point wrappers do.
-- `utils::nonce` docs said the upper half of the expanded key is absorbed.
-  All 64 bytes are.
+- Malformed ring input returns an error instead of a panic: an identity
+  member key, a ring size of 0, an SRS of the wrong length (decode a raw SRS
+  file as `PcsParams` and call `from_pcs_params`) and a builder with more
+  keys than slots. A prover index beyond the ring capacity wraps.
+
+### Security
+
+- `secret-split` also covers public key derivation. The provers zeroize their
+  nonces, challenge products, the ring blinding factor and the split scalars.
+  Best effort: temporaries inside arkworks and the ring backend stay.
+- Deserialization accepts one encoding per value, on the checked and on the
+  unchecked path.
+- Checked uncompressed deserialization of the ring proof and of
+  `VerifierKeyBuilder` rejects a pairing point off the curve, which the
+  arkworks BLS12-381 decoder accepts. Call `Valid::check` after decoding a
+  `RingVerifierKey`, `RingCommitment` or `PcsVerifierParams` from untrusted
+  bytes.
 
 ## [0.5.3] - 2026-08-18
 

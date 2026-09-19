@@ -145,4 +145,80 @@ pub(crate) mod tests {
                 .is_some()
         );
     }
+
+    /// Arkworks reads the identity `(0, 1)` with either sign flag, since both
+    /// roots of `x` are zero. The crate decoders accept the clear flag only.
+    #[test]
+    fn identity_has_one_encoding() {
+        use crate::thin::Proof;
+        use crate::utils::canonical::deserialize_point;
+        use ark_serialize::{Compress, Validate};
+
+        let mut canonical = [0u8; 32];
+        canonical[0] = 1;
+        let mut alias = canonical;
+        alias[31] |= 0x80;
+
+        let identity = AffinePoint::deserialize_compressed(&canonical[..]).unwrap();
+        assert!(identity.is_zero());
+        assert_eq!(
+            AffinePoint::deserialize_compressed(&alias[..]).unwrap(),
+            identity
+        );
+
+        let decode =
+            |bytes: &[u8], validate| deserialize_point::<ThisSuite>(bytes, Compress::Yes, validate);
+        assert_eq!(decode(&canonical, Validate::No).unwrap(), identity);
+        assert!(decode(&alias, Validate::No).is_err());
+        assert_eq!(decode(&canonical, Validate::Yes).unwrap(), identity);
+        assert!(decode(&alias, Validate::Yes).is_err());
+
+        // A Thin proof is `R || s`; put the identity in `R`.
+        let mut s = Vec::new();
+        ScalarField::from(7u64)
+            .serialize_compressed(&mut s)
+            .unwrap();
+        let canonical_proof = [&canonical[..], &s[..]].concat();
+        let alias_proof = [&alias[..], &s[..]].concat();
+
+        let reencode = |proof: Proof<ThisSuite>| {
+            let mut bytes = Vec::new();
+            proof.serialize_compressed(&mut bytes).unwrap();
+            bytes
+        };
+        let unchecked = |bytes: &[u8]| Proof::<ThisSuite>::deserialize_compressed_unchecked(bytes);
+        assert_eq!(
+            reencode(unchecked(&canonical_proof).unwrap()),
+            canonical_proof
+        );
+        assert!(unchecked(&alias_proof).is_err());
+
+        let checked = |bytes: &[u8]| Proof::<ThisSuite>::deserialize_compressed(bytes);
+        assert_eq!(
+            reencode(checked(&canonical_proof).unwrap()),
+            canonical_proof
+        );
+        assert!(checked(&alias_proof).is_err());
+    }
+
+    /// Canary for an arkworks defect: the BLS12-381 uncompressed decoder skips
+    /// the on-curve test. When this fails, the `RingVerifierKey` caveat can go.
+    #[test]
+    fn arkworks_bls12_381_uncompressed_decode_skips_on_curve() {
+        use ark_bls12_381::{Fq, G1Affine};
+        use ark_ff::Field;
+        use ark_serialize::Valid;
+
+        let (x, y) = G1Affine::generator().xy().unwrap();
+        let u = Fq::from(2u64);
+        let off_curve = G1Affine::new_unchecked(x * u.square(), y * u.square() * u);
+        assert!(!off_curve.is_on_curve());
+        assert!(off_curve.is_in_correct_subgroup_assuming_on_curve());
+
+        let mut bytes = Vec::new();
+        off_curve.serialize_uncompressed(&mut bytes).unwrap();
+        let decoded = G1Affine::deserialize_uncompressed(&bytes[..]).unwrap();
+        assert_eq!(decoded, off_curve);
+        assert!(decoded.check().is_err());
+    }
 }
