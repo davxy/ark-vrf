@@ -532,6 +532,25 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     }
 }
 
+/// The decoder reads one value and stops, as the `PointWrapper` and proof
+/// docs state: values decode in sequence from one reader, and a trailing byte
+/// is left unread, not rejected. Framing is the caller's job, so a consumer
+/// must not key values by unframed bytes.
+pub fn decoder_reads_one_value<S: Suite>() {
+    let first = Secret::<S>::from_seed(TEST_SEED).public();
+    let second = Secret::<S>::from_seed([1; 32]).public();
+    let mut buf = Vec::new();
+    first.serialize_compressed(&mut buf).unwrap();
+    second.serialize_compressed(&mut buf).unwrap();
+    buf.push(0xff);
+
+    let mut reader = &buf[..];
+    let decode = |reader: &mut &[u8]| Public::<S>::deserialize_compressed(reader).unwrap().point();
+    assert_eq!(decode(&mut reader), first.point());
+    assert_eq!(decode(&mut reader), second.point());
+    assert_eq!(reader, &[0xff][..]);
+}
+
 #[macro_export]
 macro_rules! suite_tests {
     ($suite:ty) => {
@@ -543,6 +562,11 @@ macro_rules! suite_tests {
         #[test]
         fn non_canonical_encoding_rejected() {
             $crate::testing::non_canonical_encoding_rejected::<$suite>();
+        }
+
+        #[test]
+        fn decoder_reads_one_value() {
+            $crate::testing::decoder_reads_one_value::<$suite>();
         }
     };
 }

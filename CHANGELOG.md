@@ -77,7 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ring proof over an empty I/O list, whose `Ok` is the identity, had several
   encodings that all verified. The rule holds on the unchecked path because
   arkworks sequences such as `Vec` decode their elements unchecked and batch
-  check the values afterwards, where no encoding rule can run.
+  check the values afterwards, where no encoding rule can run. The decoders
+  read one value and stop: framing, and so trailing bytes, is the caller's
+  job, as the type docs state.
 
 ## [0.5.3] - 2026-08-18
 
