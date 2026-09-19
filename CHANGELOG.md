@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needs and its encoding decodes to its own domain. Before, a struct literal
   could pair an SRS of one domain with a context of another, and the bytes
   of such a setup decoded to another domain, or not at all.
+- **Breaking**: `Input` and `VrfIo` no longer implement `CanonicalSerialize`
+  and `CanonicalDeserialize`. `Public` and `Output` keep both through the
+  sealed `Serializable` role marker trait. A verifier that decoded a `VrfIo` from
+  the wire accepted the prover's input, and a prover who knows `d` with
+  `I = d * G` proves any output (`known_dlog_input_forgery`); the checked
+  decode verified subgroup membership, which is the wrong property. Send the
+  input data and the output, and build the input with `Input::new` on both
+  sides. `Input::from_affine_unchecked` on a decoded point restores the old
+  behaviour, and the forgery with it. The transcripts absorb the same bytes
+  as before.
 - **Breaking**: `RingContext::piop_params` is private; `piop_params()` reads
   it. The capacity checks of `prover_key`, `verifier_key` and `ring_prover`
   read the context, so a context now always comes from `new`,

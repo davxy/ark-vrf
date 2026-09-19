@@ -348,14 +348,15 @@ impl<S: Suite> DelinearizeScalars<S> {
 /// Absorb I/O pairs into a transcript.
 ///
 /// The count is absorbed first as a little-endian `u64` so that the
-/// framing is unambiguous even though each `VrfIo` already has a
-/// fixed-size serialization. This is cheap and avoids any implicit
-/// dependency on the serialization being fixed-length.
+/// framing is unambiguous even though each pair is two fixed-size points.
+/// This is cheap and avoids any implicit dependency on the point encoding
+/// being fixed-length.
 fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
     let n = ios.len() as u64;
     t.absorb_raw(&n.to_le_bytes());
     for io in ios.iter() {
-        t.absorb_serialize(&io);
+        t.absorb_serialize(&io.input.0);
+        t.absorb_serialize(&io.output.0);
     }
 }
 

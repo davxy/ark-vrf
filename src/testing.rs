@@ -414,13 +414,13 @@ where
     let output = secret.output(input);
 
     assert_torsion_rejected(secret.public(), torsion);
-    assert_torsion_rejected(input, torsion);
+    assert!(Input::<S>::from_affine((input.0 + torsion).into_affine()).is_err());
     let bad_output = assert_torsion_rejected(output, torsion);
     assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
 }
 
 /// Checked paths reject `honest + torsion`; unchecked paths let it through.
-fn assert_torsion_rejected<S: Suite, K: Sync>(
+fn assert_torsion_rejected<S: Suite, K: Serializable>(
     honest: PointWrapper<S, K>,
     torsion: AffinePoint<S>,
 ) -> PointWrapper<S, K> {

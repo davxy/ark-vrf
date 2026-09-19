@@ -420,7 +420,8 @@ impl<S: Suite> Secret<S> {
 /// # Validation
 ///
 /// [`Self::from_affine`] and the checked deserialization methods (the default
-/// `deserialize_*` family) accept only points in the prime-order subgroup and
+/// `deserialize_*` family, for the roles that implement [`Serializable`])
+/// accept only points in the prime-order subgroup and
 /// reject the group identity. The verifiers trust this invariant: they reject
 /// the identity, which is cheap, but they do not repeat the subgroup check.
 /// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
@@ -432,7 +433,7 @@ impl<S: Suite> Secret<S> {
 /// the caller frames the bytes and rejects trailing data.
 ///
 /// [`Self::point`] reads the affine point.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
 
 /// Role marker of [`Public`].
@@ -447,9 +448,48 @@ pub struct InputKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputKind;
 
+/// Role markers of the points that serialize, that is encode to and decode
+/// from bytes: [`PublicKind`] and [`OutputKind`]. [`InputKind`] is left out on
+/// purpose, see [`Input`]. The trait is sealed: this crate decides which roles
+/// go on the wire.
+///
+/// ```compile_fail,E0277
+/// struct MyKind;
+/// impl ark_vrf::Serializable for MyKind {}
+/// ```
+pub trait Serializable: sealed::Sealed + Sync {}
+
+mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for super::PublicKind {}
+
+    impl Sealed for super::OutputKind {}
+}
+
+impl Serializable for PublicKind {}
+
+impl Serializable for OutputKind {}
+
 /// Public key generic over the cipher suite.
 ///
 /// Elliptic curve point representing the public component of a VRF key pair.
+/// It encodes to and decodes from bytes, like [`Output`]:
+///
+/// ```
+/// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+/// use ark_vrf::{Public, Suite};
+///
+/// fn encode<S: Suite>(public: &Public<S>) -> Result<Vec<u8>, SerializationError> {
+///     let mut bytes = Vec::new();
+///     public.serialize_compressed(&mut bytes)?;
+///     Ok(bytes)
+/// }
+///
+/// fn decode<S: Suite>(bytes: &[u8]) -> Result<Public<S>, SerializationError> {
+///     Public::<S>::deserialize_compressed(bytes)
+/// }
+/// ```
 pub type Public<S> = PointWrapper<S, PublicKind>;
 
 /// VRF input point generic over the cipher suite.
@@ -459,6 +499,33 @@ pub type Public<S> = PointWrapper<S, PublicKind>;
 /// validates subgroup membership only: the caller must still ensure the point
 /// is not in a known discrete-log relation with the suite generator, which the
 /// soundness of the schemes requires (see the crate docs).
+///
+/// `Input` does not encode to or decode from bytes: the input data travels,
+/// not the point. A verifier that decodes a prover-chosen input accepts a
+/// forgery: a prover who knows `d` with `I = d * G` proves any output (the
+/// test `known_dlog_input_forgery` shows it). Send the input data instead and
+/// call [`Input::new`] on both sides. [`Input::from_affine_unchecked`] on a
+/// decoded point restores the old behaviour, and the forgery with it.
+///
+/// ```compile_fail,E0277
+/// use ark_serialize::CanonicalDeserialize;
+/// use ark_vrf::{Input, Suite};
+///
+/// fn decode<S: Suite>(bytes: &[u8]) -> Input<S> {
+///     Input::<S>::deserialize_compressed(bytes).unwrap()
+/// }
+/// ```
+///
+/// ```compile_fail,E0277
+/// use ark_serialize::CanonicalSerialize;
+/// use ark_vrf::{Input, Suite};
+///
+/// fn encode<S: Suite>(input: &Input<S>) -> Vec<u8> {
+///     let mut bytes = Vec::new();
+///     input.serialize_compressed(&mut bytes).unwrap();
+///     bytes
+/// }
+/// ```
 pub type Input<S> = PointWrapper<S, InputKind>;
 
 /// VRF output point generic over the cipher suite.
@@ -475,7 +542,21 @@ impl<S: Suite, K: Sync> ark_serialize::Valid for PointWrapper<S, K> {
     }
 }
 
-impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
+impl<S: Suite, K: Serializable> CanonicalSerialize for PointWrapper<S, K> {
+    fn serialize_with_mode<W: ark_serialize::Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        self.0.serialize_with_mode(writer, compress)
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.0.serialized_size(compress)
+    }
+}
+
+impl<S: Suite, K: Serializable> CanonicalDeserialize for PointWrapper<S, K> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         reader: R,
         compress: ark_serialize::Compress,
@@ -546,7 +627,31 @@ impl<S: Suite> Output<S> {
 }
 
 /// VRF input-output pair.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// The pair does not encode to or decode from bytes, because [`Input`] does
+/// not: send the output and the input data, and build the input with
+/// [`Input::new`].
+///
+/// ```compile_fail,E0277
+/// use ark_serialize::CanonicalDeserialize;
+/// use ark_vrf::{Suite, VrfIo};
+///
+/// fn decode<S: Suite>(bytes: &[u8]) -> VrfIo<S> {
+///     VrfIo::<S>::deserialize_compressed(bytes).unwrap()
+/// }
+/// ```
+///
+/// ```compile_fail,E0277
+/// use ark_serialize::CanonicalSerialize;
+/// use ark_vrf::{Suite, VrfIo};
+///
+/// fn encode<S: Suite>(io: &VrfIo<S>) -> Vec<u8> {
+///     let mut bytes = Vec::new();
+///     io.serialize_compressed(&mut bytes).unwrap();
+///     bytes
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VrfIo<S: Suite> {
     pub input: Input<S>,
     pub output: Output<S>,
@@ -728,11 +833,9 @@ mod tests {
 
         let mut buf = Vec::new();
         identity.serialize_compressed(&mut buf).unwrap();
-        assert!(crate::Input::<S>::deserialize_compressed(&buf[..]).is_err());
         assert!(crate::Output::<S>::deserialize_compressed(&buf[..]).is_err());
 
         // Unchecked paths are documented as skipping validation.
-        assert!(crate::Input::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
         assert!(crate::Output::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
         assert!(crate::Input::<S>::from_affine_unchecked(identity).is_identity());
         assert!(crate::Output::<S>::from_affine_unchecked(identity).is_identity());
