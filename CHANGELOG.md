@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needs and its encoding decodes to its own domain. Before, a struct literal
   could pair an SRS of one domain with a context of another, and the bytes
   of such a setup decoded to another domain, or not at all.
+- **Breaking**: `RingContext::piop_params` is private; `piop_params()` reads
+  it. The capacity checks of `prover_key`, `verifier_key` and `ring_prover`
+  read the context, so a context now always comes from `new`,
+  `new_without_blinding` or a setup.
 - **Breaking**: `ring::max_ring_size_from_piop_domain_size`,
   `ring::piop_domain_size_from_pcs_domain_size` and
   `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`

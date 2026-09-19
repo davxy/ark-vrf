@@ -331,10 +331,11 @@ impl<S: RingSuite> Verifier<S> for Public<S> {
 ///
 /// Cheap to construct from a ring size alone via [`RingContext::new`], or
 /// extractable from a [`RingSetup`] via [`RingSetup::ring_context`].
+/// [`Self::piop_params`] reads the parameters.
 #[derive(Clone)]
 pub struct RingContext<S: RingSuite> {
     /// PIOP parameters.
-    pub piop_params: PiopParams<S>,
+    piop_params: PiopParams<S>,
 }
 
 impl<S: RingSuite> RingContext<S> {
@@ -379,6 +380,11 @@ impl<S: RingSuite> RingContext<S> {
     #[inline(always)]
     pub fn max_ring_size(&self) -> usize {
         self.piop_params.keyset_part_size
+    }
+
+    /// Get a reference to the PIOP parameters.
+    pub fn piop_params(&self) -> &PiopParams<S> {
+        &self.piop_params
     }
 
     /// Create a prover instance for a specific position in the ring.
