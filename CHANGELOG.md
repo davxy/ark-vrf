@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   uncompressed path. `RingVerifierKey`, `RingCommitment` and
   `PcsVerifierParams` are backend types with the arkworks decoder; their
   docs name the caveat.
+- `VerifierKeyBuilder` deserialization returns `SerializationError::InvalidData`
+  when the decoded key count exceeds the capacity, on the checked and on the
+  unchecked path. Before, such bytes decoded, `free_slots` underflowed, and
+  `append` reached an assertion in the ring proof backend.
 
 ## [0.5.3] - 2026-08-18
 

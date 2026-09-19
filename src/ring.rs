@@ -675,9 +675,10 @@ type PartialRingCommitment<S> =
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
 ///
-/// Checked deserialization runs `Valid::check` on the decoded value, so an
-/// uncompressed pairing point off the curve is rejected (see
-/// [`RingVerifierKey`]).
+/// Deserialization rejects a builder with more keys than slots on both
+/// paths, so [`Self::free_slots`] never underflows. Checked deserialization
+/// also runs `Valid::check` on the decoded value, so an uncompressed pairing
+/// point off the curve is rejected (see [`RingVerifierKey`]).
 #[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
@@ -695,6 +696,9 @@ impl<S: RingSuite> CanonicalDeserialize for VerifierKeyBuilder<S> {
             compress,
             ark_serialize::Validate::No,
         )?;
+        if partial.curr_keys > partial.max_keys {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
         let pcs_params = PcsVerifierParams::<S>::deserialize_with_mode(
             &mut reader,
             compress,
