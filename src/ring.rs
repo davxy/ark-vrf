@@ -575,7 +575,8 @@ impl<S: RingSuite> RingSetup<S> {
         let piop_domain_size = piop_domain_size::<S>(self.ring_ctx.max_ring_size());
         let builder_key = RingBuilderKey::<S>::from_srs(&self.pcs_params, piop_domain_size);
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
-        let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
+        let builder = VerifierKeyBuilder::new(self, &builder_pcs_params)
+            .expect("the builder key covers the whole domain");
         (builder, builder_pcs_params)
     }
 
@@ -755,18 +756,30 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
 
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
-    pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Self {
-        let lookup = |range: Range<usize>| lookup.lookup(range).ok_or(());
+    ///
+    /// The empty ring commits to the padding and to the powers of the
+    /// blinding base, which sit behind the keys in the Lagrangian SRS.
+    /// Returns `Error::SrsLookupFailed` if `lookup` does not cover that range,
+    /// `max_ring_size..piop_domain_size`.
+    pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Result<Self, Error> {
+        let keys = ring_setup.ring_ctx.max_ring_size();
+        let tail = lookup
+            .lookup(keys..piop_domain_size::<S>(keys))
+            .ok_or(Error::SrsLookupFailed)?;
+        let lookup = |range: Range<usize>| {
+            debug_assert_eq!(tail.len(), range.len());
+            Ok(tail.clone())
+        };
         let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
             &ring_setup.ring_ctx.piop_params,
             lookup,
             pcs_params.g1.into_group(),
         );
-        VerifierKeyBuilder {
+        Ok(VerifierKeyBuilder {
             partial,
             pcs_params,
-        }
+        })
     }
 
     /// Get the number of remaining slots available in the ring.

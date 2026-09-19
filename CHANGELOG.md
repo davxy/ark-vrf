@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sides. `Input::from_affine_unchecked` on a decoded point restores the old
   behaviour, and the forgery with it. The transcripts absorb the same bytes
   as before.
+- **Breaking**: `VerifierKeyBuilder::new` returns `Result<Self, Error>`:
+  `Error::SrsLookupFailed` when the lookup does not cover the tail of the
+  Lagrangian SRS behind the keys, `max_ring_size..piop_domain_size`. Before,
+  a failed lookup panicked in the ring proof backend. `append` already
+  returned that error. `RingSetup::verifier_key_builder` is unchanged: its
+  in-memory table covers the whole domain.
 - **Breaking**: `RingContext::piop_params` is private; `piop_params()` reads
   it. The capacity checks of `prover_key`, `verifier_key` and `ring_prover`
   read the context, so a context now always comes from `new`,
