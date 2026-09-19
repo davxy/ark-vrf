@@ -73,10 +73,7 @@ pub trait PedersenSuite: Suite {
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Deserialization accepts one encoding per proof: bytes that decode to a
-/// point but differ from that point's own encoding are rejected, on the
-/// checked and on the unchecked path alike. The decoder reads one proof and
-/// stops; the caller frames the bytes and rejects trailing data.
+/// Both paths accept one encoding per proof and do not reject trailing bytes.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: PedersenSuite> {
     pub(crate) pk_com: AffinePoint<S>,

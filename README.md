@@ -184,24 +184,17 @@ let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
 
 _Trusted setup_
 
-Ring VRF soundness rests on the KZG trapdoor staying unknown. `from_seed_insecure`
-and `from_rand_insecure` generate the trapdoor locally, so whoever runs them can
-forge a ring proof for a key that is not in the ring. A deployment loads the SRS
-of a trusted setup ceremony instead:
+`from_seed_insecure` and `from_rand_insecure` generate the KZG trapdoor locally,
+so whoever generated it can forge ring proofs. A deployment loads the SRS of a
+trusted setup ceremony instead. The repository ships the Zcash ceremony SRS for
+the BLS12-381 suites:
 
 ```rust,ignore
 use ark_serialize::CanonicalDeserialize;
 
-// The Zcash powers of tau ceremony SRS for the BLS12-381 based suites is
-// shipped in `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`. Its PIOP
-// domain is 2^11, which holds 1791 Bandersnatch keys and 1792 JubJub keys.
 let srs = std::fs::read("data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin").unwrap();
-
-// The shipped file is trusted, so it takes the unchecked decode. A file from
-// an untrusted source takes `deserialize_uncompressed`, which validates every
-// point of the SRS.
+// Use `deserialize_uncompressed` for a file from an untrusted source.
 let pcs_params = PcsParams::deserialize_uncompressed_unchecked(&srs[..]).unwrap();
-
 let ring_setup = RingSetup::from_pcs_params(RING_SIZE, pcs_params).unwrap();
 ```
 
@@ -262,13 +255,9 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
    secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
    derivation, output, nonce and blinding), but provides side channel defenses for them.
-   The split comes from the OS random source (`OsRng`) on every secret scalar
-   multiplication, `Secret` deserialization and `from_seed` included, and the
-   call panics on a target where `getrandom` has no source (a seccomp filter,
-   wasm without the `js` backend, early boot).
-   The split hides the value of the scalar from an attacker who watches the
-   multiplication, but the multiplication stays variable time with the
-   feature and without it; see the timing note on `Secret`.
+   The split draws from `OsRng` on every secret scalar multiplication, `Secret`
+   deserialization included, and panics where `getrandom` has no source.
+   The multiplication stays variable time with the feature and without it.
    Ring proof witness generation is not covered by this feature: it relies on the
    branch-free handling of the secret bits
    implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.

@@ -6,22 +6,18 @@
 //!
 //! This module is gated by the `ring` feature.
 //!
-//! The ring prover blinds its private columns with the OS random source, in
-//! the `w3f-plonk-common` backend, and panics at `prove` on a target where
-//! `getrandom` has no source (a seccomp filter, wasm without the `js` backend,
-//! early boot). [`RingContext::new_without_blinding`] skips the draw and the
-//! zero knowledge with it.
+//! The ring prover draws its column blinding from the OS random source and
+//! panics at `prove` where `getrandom` has no source.
+//! [`RingContext::new_without_blinding`] skips the draw, and the zero
+//! knowledge with it.
 //!
 //! ## Setup
 //!
-//! Ring VRF soundness rests on the KZG trapdoor staying unknown. A deployment
-//! must build its [`RingSetup`] from the SRS of a trusted setup ceremony with
-//! [`RingSetup::from_pcs_params`]; the repository ships the Zcash ceremony SRS
-//! for the BLS12-381 based suites in
-//! `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`.
-//! [`RingSetup::from_seed_insecure`] and [`RingSetup::from_rand_insecure`]
-//! generate the trapdoor locally, which is good for tests only: the example
-//! below uses one.
+//! A deployment builds its [`RingSetup`] from the SRS of a trusted setup
+//! ceremony with [`RingSetup::from_pcs_params`]. The repository ships the
+//! Zcash ceremony SRS in `data/srs/`. [`RingSetup::from_seed_insecure`] and
+//! [`RingSetup::from_rand_insecure`] generate the trapdoor locally and are
+//! for tests only.
 //!
 //! ## Usage
 //!
@@ -154,14 +150,10 @@ pub type RingProverKey<S> = ring_proof::ProverKey<BaseField<S>, Kzg<S>, TEAffine
 
 /// Ring verifier key.
 ///
-/// A backend type, decoded by arkworks. The BLS12-381 decoder does not check
-/// that an uncompressed point is on the curve under `Validate::Yes`, only that
-/// it passes the subgroup test, which a point on an isomorphic curve passes
-/// too. After an uncompressed decode of bytes from an untrusted source, call
-/// `Valid::check` on the value, or use the compressed form, which derives `y`
-/// from the curve. The same holds for [`RingCommitment`] and
-/// [`PcsVerifierParams`]. The types of this crate run `check()` on the checked
-/// path themselves.
+/// A backend type with the arkworks decoder, which does not check that an
+/// uncompressed BLS12-381 point is on the curve. After an uncompressed decode
+/// of untrusted bytes call `Valid::check`, or use the compressed form. The
+/// same holds for [`RingCommitment`] and [`PcsVerifierParams`].
 pub type RingVerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Kzg<S>>;
 
 /// Ring prover.
@@ -197,10 +189,7 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Deserialization accepts one encoding per proof: bytes that decode to a
-/// point but differ from that point's own encoding are rejected, on the
-/// checked and on the unchecked path alike. The decoder reads one proof and
-/// stops; the caller frames the bytes and rejects trailing data.
+/// Both paths accept one encoding per proof and do not reject trailing bytes.
 #[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
@@ -209,10 +198,8 @@ pub struct Proof<S: RingSuite> {
     pub(crate) ring_proof: RingBareProof<S>,
 }
 
-/// Stack buffer for the canonical decode of a backend ring proof.
-///
-/// BLS12-381 needs 928 bytes uncompressed and BN254 704. A larger proof, on a
-/// pairing curve with bigger points, spills to the heap.
+/// Stack buffer for the canonical decode of a ring proof, 928 bytes
+/// uncompressed on BLS12-381.
 const RING_PROOF_BUF_SIZE: usize = 1024;
 
 impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
@@ -367,12 +354,8 @@ pub struct RingContext<S: RingSuite> {
     piop_params: PiopParams<S>,
 }
 
-/// Bring `key_index` into `[0, capacity)` without a division.
-///
-/// The ring index is the secret that the ring VRF hides, and a hardware
-/// divider has an operand dependent latency. The mask reduces modulo the next
-/// power of two, which is below `2 * capacity`, and the subtraction closes the
-/// last step. An index below the capacity keeps its value.
+/// Bring `key_index` into `[0, capacity)` without a division: the index is a
+/// secret, and a hardware divider has an operand dependent latency.
 fn wrap_key_index(key_index: usize, capacity: usize) -> usize {
     let masked = key_index & (capacity.next_power_of_two() - 1);
     masked.checked_sub(capacity).unwrap_or(masked)
@@ -381,9 +364,8 @@ fn wrap_key_index(key_index: usize, capacity: usize) -> usize {
 impl<S: RingSuite> RingContext<S> {
     /// Construct a context for a ring of at least `min_ring_size` keys.
     ///
-    /// The domain rounds up to a power of two, so the context usually holds
-    /// more keys. [`Self::max_ring_size`] reports the exact capacity. A
-    /// `min_ring_size` of 0 counts as 1: every context holds at least one key.
+    /// [`Self::max_ring_size`] reports the exact capacity. A `min_ring_size`
+    /// of 0 counts as 1.
     pub fn new(min_ring_size: usize) -> Self {
         Self::construct(min_ring_size, true)
     }
@@ -430,15 +412,9 @@ impl<S: RingSuite> RingContext<S> {
 
     /// Create a prover instance for a specific position in the ring.
     ///
-    /// An index at or beyond [`Self::max_ring_size`] wraps into range, on an
-    /// unspecified slot. The proof verifies only if the slot holds the
-    /// prover's own key. The context holds no keys and cannot check that: a
-    /// wrong index gives a proof that every verifier rejects.
-    ///
-    /// `prover_key` must come from a setup with the domain of this context:
-    /// the same `min_ring_size`, or [`RingSetup::ring_context`] of that setup.
-    /// A context of a larger domain reduces the index against a capacity the
-    /// key does not have, and `prove` panics in the ring proof backend.
+    /// An index at or beyond [`Self::max_ring_size`] wraps into range. A wrong
+    /// index gives a proof that no verifier accepts. `prover_key` must come
+    /// from a setup with the domain of this context.
     pub fn ring_prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         self.clone().into_ring_prover(prover_key, key_index)
     }
@@ -478,14 +454,10 @@ impl<S: RingSuite> RingContext<S> {
 /// - `pcs_params`: Polynomial Commitment Scheme parameters (KZG setup)
 /// - `ring_ctx`: Ring context containing the PIOP parameters
 ///
-/// The serialized form is the SRS alone. The constructors trim it to the
-/// powers its domain needs, so the G1 length carries the ring capacity, and
-/// decoding accepts only an SRS of that exact shape: `3 * P + 1` G1 powers for
-/// a power of two `P`. A raw SRS file of another length is not a setup: decode
-/// it as [`PcsParams`] and call [`Self::from_pcs_params`] with the ring size of
-/// the protocol. Every setup comes from a constructor or from decoding, so its
-/// SRS has the shape its context needs; [`Self::pcs_params`] and
-/// [`Self::ring_context`] read the parts.
+/// The serialized form is the SRS, trimmed to the domain, so the G1 length
+/// carries the ring capacity and decoding accepts only that exact shape. A raw
+/// SRS file is not a setup: decode it as [`PcsParams`] and call
+/// [`Self::from_pcs_params`].
 #[derive(Clone)]
 pub struct RingSetup<S: RingSuite> {
     /// PCS parameters.
@@ -512,13 +484,8 @@ impl<S: RingSuite> RingSetup<S> {
     ///
     /// # Insecure
     ///
-    /// The KZG trapdoor comes from the seed, so anyone who knows the seed
-    /// recovers it. With the trapdoor a commitment opens to any value, and a
-    /// ring proof passes for a key that is not in the ring. Use this
-    /// constructor for tests, benchmarks and development only.
-    ///
-    /// A deployment loads an SRS from a trusted setup ceremony with
-    /// [`Self::from_pcs_params`]. See the note on that method.
+    /// Anyone who knows the seed knows the KZG trapdoor and can forge ring
+    /// proofs. For tests only; a deployment uses [`Self::from_pcs_params`].
     pub fn from_seed_insecure(min_ring_size: usize, seed: [u8; 32]) -> Self {
         let mut t = S::Transcript::new(S::SUITE_ID);
         t.absorb_raw(&seed);
@@ -533,11 +500,8 @@ impl<S: RingSuite> RingSetup<S> {
     ///
     /// # Insecure
     ///
-    /// The KZG trapdoor is drawn from `rng` and dropped without a wipe, so
-    /// whoever runs the generation can recover it and forge a ring proof for
-    /// a key that is not in the ring. Use this constructor for tests,
-    /// benchmarks and development only. See
-    /// [`Self::from_seed_insecure`] and [`Self::from_pcs_params`].
+    /// Whoever runs the generation knows the KZG trapdoor and can forge ring
+    /// proofs. For tests only; a deployment uses [`Self::from_pcs_params`].
     pub fn from_rand_insecure(min_ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let max_degree = pcs_domain_size::<S>(min_ring_size) - 1;
@@ -550,17 +514,11 @@ impl<S: RingSuite> RingSetup<S> {
     /// Truncates the setup if larger than needed, or returns
     /// `Error::RingCapacityExceeded` if it is insufficient for `min_ring_size` keys.
     ///
-    /// This is the constructor a deployment uses. Ring VRF soundness rests on
-    /// the KZG trapdoor staying unknown, so `pcs_params` must come from a
-    /// trusted setup ceremony, where no single party holds it. Decode the
-    /// ceremony file with `PcsParams::deserialize_uncompressed`, or with the
-    /// `_unchecked` variant when the file is trusted, and pass the result
-    /// here.
-    ///
-    /// The repository ships the SRS of the Zcash powers of tau ceremony for
-    /// the BLS12-381 based suites, Bandersnatch and Jubjub, in
-    /// `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`. Its PIOP domain
-    /// is 2^11, which holds 1791 Bandersnatch keys and 1792 Jubjub keys.
+    /// Ring VRF soundness rests on the KZG trapdoor staying unknown, so
+    /// `pcs_params` must come from a trusted setup ceremony. The repository
+    /// ships the Zcash ceremony SRS for the BLS12-381 suites in
+    /// `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`, which holds
+    /// 1791 Bandersnatch or 1792 Jubjub keys.
     pub fn from_pcs_params(
         min_ring_size: usize,
         mut pcs_params: PcsParams<S>,
@@ -733,11 +691,6 @@ type PartialRingCommitment<S> =
 ///
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
-///
-/// Deserialization rejects a builder with more keys than slots on both
-/// paths, so [`Self::free_slots`] never underflows. Checked deserialization
-/// also runs `Valid::check` on the decoded value, so an uncompressed pairing
-/// point off the curve is rejected (see [`RingVerifierKey`]).
 #[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
@@ -815,10 +768,8 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
-    /// The empty ring commits to the padding and to the powers of the
-    /// blinding base, which sit behind the keys in the Lagrangian SRS.
-    /// Returns `Error::SrsLookupFailed` if `lookup` does not cover that range,
-    /// `max_ring_size..piop_domain_size`.
+    /// Returns `Error::SrsLookupFailed` if `lookup` does not cover
+    /// `max_ring_size..piop_domain_size`, the part of the SRS behind the keys.
     pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Result<Self, Error> {
         let keys = ring_setup.ring_ctx.max_ring_size();
         let tail = lookup
@@ -1050,8 +1001,6 @@ macro_rules! ring_suite_types {
 ///   pcs_domain_size  = 3 * piop_domain_size + 1
 ///   max_ring_size    = piop_domain_size - PIOP_OVERHEAD
 ///
-/// A ring size of 0 counts as 1, so every domain holds at least one key.
-///
 /// where PIOP_OVERHEAD = 4 + MODULUS_BIT_SIZE accounts for:
 ///   - 3 points for zero-knowledge blinding
 ///   - 1 extra point used internally by the PIOP
@@ -1083,8 +1032,7 @@ pub mod dom_utils {
     ///
     /// Returns the smallest power of 2 that can accommodate `min_ring_size` members.
     /// This is the domain size used for polynomial operations in the ring proof and
-    /// already accounts for the PIOP overhead. A `min_ring_size` of 0 counts as
-    /// 1: every domain holds at least one key.
+    /// already accounts for the PIOP overhead. A `min_ring_size` of 0 counts as 1.
     pub const fn piop_domain_size<S: Suite>(min_ring_size: usize) -> usize {
         let min_ring_size = if min_ring_size == 0 { 1 } else { min_ring_size };
         (min_ring_size + piop_overhead::<S>()).next_power_of_two()
@@ -1093,8 +1041,7 @@ pub mod dom_utils {
     /// Maximum ring size supported by a given PIOP domain size.
     ///
     /// Returns the largest ring that fits in the domain, or `None` when the
-    /// domain holds no key, that is when it is not larger than the PIOP
-    /// overhead.
+    /// domain holds no key.
     pub const fn max_ring_size_from_piop_domain_size<S: Suite>(
         piop_domain_size: usize,
     ) -> Option<usize> {
@@ -1122,10 +1069,8 @@ pub mod dom_utils {
 
     /// PIOP domain size extracted from a PCS domain size.
     ///
-    /// Recovers the PIOP domain size from a PCS domain size. Rounds down to a
-    /// power of two, so an SRS larger than needed maps to the largest domain it
-    /// can back. Returns `None` when `pcs_domain_size` is below 4, the PCS size
-    /// of a domain with one point.
+    /// Rounds down to a power of two. Returns `None` when `pcs_domain_size` is
+    /// below 4.
     pub const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> Option<usize> {
         match (pcs_domain_size.saturating_sub(1) / 3).checked_ilog2() {
             Some(log2) => Some(1 << log2),
@@ -1136,8 +1081,7 @@ pub mod dom_utils {
     /// Maximum ring size supported by a given PCS domain size.
     ///
     /// Composes `piop_domain_size_from_pcs_domain_size` and
-    /// `max_ring_size_from_piop_domain_size`. Returns `None` when no valid domain
-    /// fits, that is when `pcs_domain_size` is below `pcs_domain_size::<S>(0)`.
+    /// `max_ring_size_from_piop_domain_size`. Returns `None` when no domain fits.
     pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(
         pcs_domain_size: usize,
     ) -> Option<usize> {

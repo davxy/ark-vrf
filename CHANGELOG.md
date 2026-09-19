@@ -29,63 +29,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking**: `Suite::nonce`, `Suite::challenge`, `utils::nonce` and
   `utils::challenge` take the transcript directly instead of an `Option`,
   like `PedersenSuite::blinding`.
-- **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
-  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields are private;
-  `pcs_params()` and `ring_context()` read them. A setup now always comes
-  from a constructor or from decoding, so its SRS has the shape its context
-  needs and its encoding decodes to its own domain. Before, a struct literal
-  could pair an SRS of one domain with a context of another, and the bytes
-  of such a setup decoded to another domain, or not at all.
+- **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`,
+  and its fields are private. Use `ring_context()` and `pcs_params()`. A
+  struct literal could pair an SRS and a context of different domains.
 - **Breaking**: `Input` and `VrfIo` no longer implement `CanonicalSerialize`
-  and `CanonicalDeserialize`. `Public` and `Output` keep both, through a
-  crate-private role marker trait. A verifier that decoded a `VrfIo` from
-  the wire accepted the prover's input, and a prover who knows `d` with
-  `I = d * G` proves any output (`known_dlog_input_forgery`); the checked
-  decode verified subgroup membership, which is the wrong property. Send the
-  input data and the output, and build the input with `Input::new` on both
-  sides. `Input::from_affine_unchecked` on a decoded point restores the old
-  behaviour, and the forgery with it. The transcripts absorb the same bytes
-  as before.
-- **Breaking**: `VerifierKeyBuilder::new` returns `Result<Self, Error>`:
-  `Error::SrsLookupFailed` when the lookup does not cover the tail of the
-  Lagrangian SRS behind the keys, `max_ring_size..piop_domain_size`. Before,
-  a failed lookup panicked in the ring proof backend. `append` already
-  returned that error. `RingSetup::verifier_key_builder` is unchanged: its
-  in-memory table covers the whole domain.
+  and `CanonicalDeserialize`. A verifier that decodes a prover-chosen input
+  point accepts a forgery. Send the input data instead and build the input
+  with `Input::new` on both sides. `Public` and `Output` still serialize, and
+  the transcripts absorb the same bytes as before.
+- **Breaking**: `VerifierKeyBuilder::new` returns `Result<Self, Error>`, with
+  `Error::SrsLookupFailed` when the lookup does not cover
+  `max_ring_size..piop_domain_size`. Before, a failed lookup panicked.
 - **Breaking**: `RingSetup::from_seed` and `RingSetup::from_rand` are renamed
   `from_seed_insecure` and `from_rand_insecure`. Both generate the KZG
-  trapdoor locally, so whoever knows the seed, or ran the generation, can
-  open a commitment to any value and prove membership for a key that is not
-  in the ring. Ring VRF soundness needs an SRS from a trusted setup ceremony,
-  loaded with `from_pcs_params`. The two constructors, the ring module docs
-  and the README say this now, and point at the Zcash ceremony SRS shipped in
-  `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`.
+  trapdoor locally, so whoever generated it can forge ring proofs. A
+  deployment loads a trusted setup SRS with `from_pcs_params`.
 - **Breaking**: `RingContext::piop_params` is private; `piop_params()` reads
-  it. The capacity checks of `prover_key`, `verifier_key` and `ring_prover`
-  read the context, so a context now always comes from `new`,
-  `new_without_blinding` or a setup.
+  it.
 - **Breaking**: `ring::max_ring_size_from_piop_domain_size`,
   `ring::piop_domain_size_from_pcs_domain_size` and
-  `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`
-  means that no valid domain fits the given size. Before, such inputs
-  panicked or wrapped. A domain that holds no key, one not larger than the
-  PIOP overhead, is `None` too.
+  `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`, `None`
+  when no domain fits the size. Before, such inputs panicked or wrapped.
 - The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
 - `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
   nonces and challenge products, the ring prover zeroizes its copy of the
   blinding factor, and `secret-split` zeroizes the split scalars. Key
-  derivation already did this since 0.5.3. This is best effort and covers
-  the named bindings only: operator temporaries, arkworks conversions,
-  register spills and the backend copy of the blinding factor stay.
-- The `secret-split` feature docs say that the split comes from the OS
-  random source on every secret scalar multiplication, `Secret`
-  deserialization included, and panics where `getrandom` has no source. The
-  ring module docs say the same for the column blinding of the ring prover.
-- The `Secret`, `secret-split` and `smul!` docs say that the scalar
-  multiplications over the secret run in variable time, with the feature and
-  without it. The split hides the value of the scalar; the loop still follows
-  its bits, which leaks the bit length and the bits themselves to a local
-  timing attacker.
+  derivation already did this since 0.5.3. This is best effort: temporaries
+  inside arkworks and the ring proof backend are not wiped.
+- Docs: `secret-split` and the ring prover draw from the OS random source and
+  panic where `getrandom` has no source. Secret scalar multiplications run in
+  variable time, with `secret-split` and without it.
 - `secret-split` also covers public key derivation in `Secret::from_scalar`,
   which runs on every `Secret` deserialization.
 - The counter-mode XOF reader behind `HashTranscript` zeroizes its seed and
@@ -100,59 +73,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `utils::nonce` docs said the upper half of the expanded key is absorbed.
   All 64 bytes are.
 - `RingSetup::prover_key`, `RingSetup::verifier_key` and
-  `VerifierKeyBuilder::append` return `Error::InvalidData` for a member key
-  equal to the identity. On Twisted Edwards suites the identity reached an
-  assertion in the ring proof backend and panicked.
+  `VerifierKeyBuilder::append` return `Error::InvalidData` for an identity
+  member key. Before, such a key panicked in the ring proof backend.
 - `RingContext::ring_prover` and `into_ring_prover` wrap `key_index` into the
-  ring capacity. An index at or beyond the capacity panicked in the ring
-  proof backend at `prove`. The wrap is a mask and a conditional subtraction,
-  not a modulo: the ring index is the secret the ring VRF hides, and a
-  hardware divider has an operand dependent latency. An index below the
-  capacity keeps its value; any other index lands on an unspecified slot,
-  which gives a proof that no verifier accepts.
+  ring capacity without a division. Before, an index at or beyond the
+  capacity panicked at `prove`.
 - A `min_ring_size` of 0 counts as 1 in `RingContext::new`, the `RingSetup`
-  constructors and `ring::piop_domain_size`, so every context holds at least
-  one key. On Jubjub the PIOP overhead is a power of two, and a ring size of
-  0 gave a context with capacity 0, whose provers panicked. A setup with the
-  SRS of such a domain does not decode any more.
+  constructors and `ring::piop_domain_size`. On Jubjub a ring size of 0 gave
+  a context with capacity 0, whose provers panicked.
 - `RingSetup` deserialization returns `SerializationError::InvalidData` for an
-  SRS whose G1 length is not the exact size of a ring domain, `3 * P + 1` for
-  a power of two `P`, or with fewer than two G2 powers. Before, an SRS shorter
-  than the smallest domain panicked in the domain size arithmetic, and a
-  longer one, such as an untrimmed SRS file, decoded as a setup with the largest
-  domain it could back, so a node that loaded a raw file that way and a node
-  that called `from_pcs_params` built keys on different domains without any
-  error.
-- Deserialization of `Public`, `Input`, `Output` and of the Thin, Pedersen
-  and Ring proofs accepts one encoding per value, on the checked and on the
-  unchecked path alike; `Validate::No` skips the subgroup and identity
-  checks, and the on-curve check of an uncompressed point, not the encoding
-  rule. Arkworks decodes the identity from several byte strings and ignores
-  the sign flag of an uncompressed Short Weierstrass point, so a Pedersen or
-  Ring proof over an empty I/O list, whose `Ok` is the identity, had several
-  encodings that all verified. The rule holds on the unchecked path because
-  arkworks sequences such as `Vec` decode their elements unchecked and batch
-  check the values afterwards, where no encoding rule can run. The decoders
-  read one value and stop: framing, and so trailing bytes, is the caller's
-  job, as the type docs state. This changes the set of byte strings that
-  verify: a proof with an alias encoding, such as a Thin proof with a zero
-  nonce and the sign flag of `R` set, verifies on 0.5.3 and fails at decode
-  here, and a key holder can build one at will. A consensus deployment must
-  switch every node together.
-- Checked deserialization of `Public`, `Input`, `Output`, of the Thin,
-  Pedersen and Ring proofs and of `VerifierKeyBuilder` validates the decoded
-  value with `Valid::check` instead of the inner arkworks decoder's
-  `Validate::Yes`. The arkworks BLS12-381 decoder does not check that an
-  uncompressed point is on the curve, only that it passes the subgroup test,
-  which a point scaled onto the isomorphic curve `y^2 = x^3 + b u^6` passes
-  as well, so a ring proof with such a point decoded as valid on the checked
-  uncompressed path. `RingVerifierKey`, `RingCommitment` and
-  `PcsVerifierParams` are backend types with the arkworks decoder; their
-  docs name the caveat.
+  SRS whose G1 length is not `3 * P + 1` for a power of two `P`, or with fewer
+  than two G2 powers. Before, a short SRS panicked and a raw SRS file decoded
+  as a setup of the largest domain it could back. Decode such a file as
+  `PcsParams` and call `from_pcs_params`.
+- Deserialization of `Public`, `Output` and of the Thin, Pedersen and Ring
+  proofs accepts one encoding per value, on the checked and on the unchecked
+  path alike. Arkworks reads the identity from several byte strings, so a
+  proof whose `Ok` or `R` is the identity had several encodings that all
+  verified. Such bytes now fail at decode, which a consensus deployment must
+  roll out on every node together.
+- Checked deserialization of the Ring proof and of `VerifierKeyBuilder`
+  rejects an uncompressed pairing point off the curve. The arkworks BLS12-381
+  decoder runs the subgroup test alone on such a point. `RingVerifierKey`,
+  `RingCommitment` and `PcsVerifierParams` keep the arkworks decoder; call
+  `Valid::check` after an uncompressed decode of untrusted bytes.
 - `VerifierKeyBuilder` deserialization returns `SerializationError::InvalidData`
-  when the decoded key count exceeds the capacity, on the checked and on the
-  unchecked path. Before, such bytes decoded, `free_slots` underflowed, and
-  `append` reached an assertion in the ring proof backend.
+  when the key count exceeds the capacity. Before, `free_slots` underflowed
+  and `append` panicked.
 
 ## [0.5.3] - 2026-08-18
 

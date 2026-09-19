@@ -1,10 +1,8 @@
 //! Canonical decoding: one accepted byte string per value.
 //!
 //! Arkworks reads the identity from several byte strings and ignores the sign
-//! flag of an uncompressed Short Weierstrass point, so one point can have more
-//! than one accepted encoding. The decoders here record the consumed bytes and
-//! stream a fresh encoding of the decoded value against them, which leaves
-//! exactly one, on the checked and on the unchecked path alike.
+//! flag of an uncompressed Short Weierstrass point. The decoder here compares
+//! the consumed bytes with a fresh encoding of the value.
 
 use super::common::STACK_BUF_SIZE;
 use crate::*;
@@ -78,14 +76,11 @@ impl ark_std::io::Write for Matcher<'_> {
 
 /// Decode a value and accept only the bytes that the value itself encodes to.
 ///
-/// The inner decoder runs unchecked, and `validate` gates a `Valid::check` of
-/// the decoded value after the comparison. The arkworks BLS12-381 decoder does
-/// not check that an uncompressed point is on the curve under `Validate::Yes`;
-/// `check()` does. The comparison does not depend on `validate`: arkworks
-/// sequences decode their elements with `Validate::No` and batch check the
-/// values afterwards, so a rule gated on it would never reach a value inside a
-/// `Vec`. The consumed bytes sit in an `N` byte stack buffer and spill to the
-/// heap if the value is larger.
+/// The comparison runs on both paths, because arkworks sequences decode their
+/// elements with `Validate::No` and batch check them afterwards. `validate`
+/// gates a `Valid::check` of the value, because the arkworks BLS12-381 decoder
+/// skips the on-curve test of an uncompressed point. The consumed bytes spill
+/// from the `N` byte stack buffer to the heap.
 pub(crate) fn deserialize_canonical<T, const N: usize>(
     reader: impl ark_std::io::Read,
     compress: ark_serialize::Compress,

@@ -70,13 +70,9 @@
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
 //!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
 //!   derivation, output, nonce and blinding), but provides side channel defenses for them.
-//!   The split comes from the OS random source (`OsRng`) on every secret scalar
-//!   multiplication, `Secret` deserialization and `from_seed` included, and the
-//!   call panics on a target where `getrandom` has no source (a seccomp filter,
-//!   wasm without the `js` backend, early boot).
-//!   The split hides the value of the scalar from an attacker who watches the
-//!   multiplication, but the multiplication stays variable time with the
-//!   feature and without it; see the timing note on [`Secret`].
+//!   The split draws from `OsRng` on every secret scalar multiplication, `Secret`
+//!   deserialization included, and panics where `getrandom` has no source.
+//!   The multiplication stays variable time with the feature and without it.
 //!   Ring proof witness generation is not covered by this feature: it relies on the
 //!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
@@ -269,20 +265,13 @@ pub trait Suite: Copy {
 /// the scalar, and equality is evaluated in constant time. Key derivation
 /// and the provers zeroize their secret temporaries: seeds, nonces, the
 /// challenge products and, with `secret-split`, the split scalars. This is
-/// best effort and covers the named bindings only. The by-value copies that
-/// the arithmetic operators make, the big-integer conversions inside
-/// arkworks, register spills and the ring proof backend's copy of the
-/// blinding factor are not wiped. The Pedersen prover returns the blinding
-/// factor to the caller, who owns it from then on (see
-/// [`pedersen::Prover::prove`]).
+/// best effort: temporaries inside arkworks and the ring proof backend are
+/// not wiped. The Pedersen prover returns the blinding factor to the caller,
+/// who owns it from then on (see [`pedersen::Prover::prove`]).
 ///
-/// The scalar multiplications over the secret run in variable time. The
-/// arkworks double-and-add loop follows the bits of the scalar: its length
-/// gives the bit length, and its branch pattern gives the bits. A local
-/// attacker who times the prover learns part of each nonce, and a few nonce
-/// bits over many proofs give the secret key. The `secret-split` feature
-/// hides the value of the scalar behind a random split, but the loop stays
-/// variable time.
+/// Scalar multiplications over the secret run in variable time: the arkworks
+/// double-and-add loop follows the bits of the scalar. `secret-split` hides
+/// the value of the scalar, not the timing.
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.
@@ -439,17 +428,13 @@ impl<S: Suite> Secret<S> {
 /// # Validation
 ///
 /// [`Self::from_affine`] and the checked deserialization methods (the default
-/// `deserialize_*` family, for [`Public`] and [`Output`])
-/// accept only points in the prime-order subgroup and
-/// reject the group identity. The verifiers trust this invariant: they reject
-/// the identity, which is cheap, but they do not repeat the subgroup check.
-/// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
-/// skip validation and leave this responsibility to the caller. Both
-/// deserialization paths accept only the canonical encoding of the point:
-/// `Validate::No` skips the subgroup and identity checks, not the encoding
-/// rule, so a point inside an arkworks sequence, whose elements are decoded
-/// unchecked, has one encoding too. The decoder reads one point and stops;
-/// the caller frames the bytes and rejects trailing data.
+/// `deserialize_*` family, for [`Public`] and [`Output`]) accept only points
+/// in the prime-order subgroup and reject the group identity. The verifiers
+/// trust this invariant: they reject the identity, which is cheap, but they
+/// do not repeat the subgroup check. [`Self::from_affine_unchecked`] and the
+/// `deserialize_*_unchecked` methods skip validation and leave this
+/// responsibility to the caller. Both paths accept one encoding per point
+/// and do not reject trailing bytes.
 ///
 /// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,9 +452,8 @@ pub struct InputKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputKind;
 
-/// Role markers of the points that serialize, that is encode to and decode
-/// from bytes: [`PublicKind`] and [`OutputKind`]. [`InputKind`] is left out on
-/// purpose, see [`Input`].
+/// Role markers of the points that serialize. [`InputKind`] is left out, see
+/// [`Input`].
 pub(crate) trait Serializable: Sync {}
 
 impl Serializable for PublicKind {}
@@ -479,22 +463,6 @@ impl Serializable for OutputKind {}
 /// Public key generic over the cipher suite.
 ///
 /// Elliptic curve point representing the public component of a VRF key pair.
-/// It encodes to and decodes from bytes, like [`Output`]:
-///
-/// ```
-/// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-/// use ark_vrf::{Public, Suite};
-///
-/// fn encode<S: Suite>(public: &Public<S>) -> Result<Vec<u8>, SerializationError> {
-///     let mut bytes = Vec::new();
-///     public.serialize_compressed(&mut bytes)?;
-///     Ok(bytes)
-/// }
-///
-/// fn decode<S: Suite>(bytes: &[u8]) -> Result<Public<S>, SerializationError> {
-///     Public::<S>::deserialize_compressed(bytes)
-/// }
-/// ```
 pub type Public<S> = PointWrapper<S, PublicKind>;
 
 /// VRF input point generic over the cipher suite.
@@ -505,30 +473,20 @@ pub type Public<S> = PointWrapper<S, PublicKind>;
 /// is not in a known discrete-log relation with the suite generator, which the
 /// soundness of the schemes requires (see the crate docs).
 ///
-/// `Input` does not encode to or decode from bytes: the input data travels,
-/// not the point. A verifier that decodes a prover-chosen input accepts a
-/// forgery: a prover who knows `d` with `I = d * G` proves any output (the
-/// test `known_dlog_input_forgery` shows it). Send the input data instead and
-/// call [`Input::new`] on both sides. [`Input::from_affine_unchecked`] on a
-/// decoded point restores the old behaviour, and the forgery with it.
+/// `Input` does not encode to or decode from bytes: a verifier that decoded a
+/// prover-chosen point could not check that relation. Send the input data and
+/// call [`Input::new`] on both sides.
 ///
 /// ```compile_fail,E0277
-/// use ark_serialize::CanonicalDeserialize;
+/// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 /// use ark_vrf::{Input, Suite};
 ///
 /// fn decode<S: Suite>(bytes: &[u8]) -> Input<S> {
 ///     Input::<S>::deserialize_compressed(bytes).unwrap()
 /// }
-/// ```
 ///
-/// ```compile_fail,E0277
-/// use ark_serialize::CanonicalSerialize;
-/// use ark_vrf::{Input, Suite};
-///
-/// fn encode<S: Suite>(input: &Input<S>) -> Vec<u8> {
-///     let mut bytes = Vec::new();
-///     input.serialize_compressed(&mut bytes).unwrap();
-///     bytes
+/// fn encode<S: Suite>(input: &Input<S>, bytes: &mut Vec<u8>) {
+///     input.serialize_compressed(bytes).unwrap()
 /// }
 /// ```
 pub type Input<S> = PointWrapper<S, InputKind>;
@@ -636,26 +594,6 @@ impl<S: Suite> Output<S> {
 /// The pair does not encode to or decode from bytes, because [`Input`] does
 /// not: send the output and the input data, and build the input with
 /// [`Input::new`].
-///
-/// ```compile_fail,E0277
-/// use ark_serialize::CanonicalDeserialize;
-/// use ark_vrf::{Suite, VrfIo};
-///
-/// fn decode<S: Suite>(bytes: &[u8]) -> VrfIo<S> {
-///     VrfIo::<S>::deserialize_compressed(bytes).unwrap()
-/// }
-/// ```
-///
-/// ```compile_fail,E0277
-/// use ark_serialize::CanonicalSerialize;
-/// use ark_vrf::{Suite, VrfIo};
-///
-/// fn encode<S: Suite>(io: &VrfIo<S>) -> Vec<u8> {
-///     let mut bytes = Vec::new();
-///     io.serialize_compressed(&mut bytes).unwrap();
-///     bytes
-/// }
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VrfIo<S: Suite> {
     pub input: Input<S>,
