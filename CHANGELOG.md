@@ -101,6 +101,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nonce and the sign flag of `R` set, verifies on 0.5.3 and fails at decode
   here, and a key holder can build one at will. A consensus deployment must
   switch every node together.
+- Checked deserialization of `Public`, `Input`, `Output`, of the Thin,
+  Pedersen and Ring proofs and of `VerifierKeyBuilder` validates the decoded
+  value with `Valid::check` instead of the inner arkworks decoder's
+  `Validate::Yes`. The arkworks BLS12-381 decoder does not check that an
+  uncompressed point is on the curve, only that it passes the subgroup test,
+  which a point scaled onto the isomorphic curve `y^2 = x^3 + b u^6` passes
+  as well, so a ring proof with such a point decoded as valid on the checked
+  uncompressed path. `RingVerifierKey`, `RingCommitment` and
+  `PcsVerifierParams` are backend types with the arkworks decoder; their
+  docs name the caveat.
 
 ## [0.5.3] - 2026-08-18
 

@@ -483,7 +483,7 @@ impl<S: Suite, K: Sync> CanonicalDeserialize for PointWrapper<S, K> {
     ) -> Result<Self, ark_serialize::SerializationError> {
         let point = deserialize_point::<S>(reader, compress, validate)?;
         let wrapper = Self::from_affine_unchecked(point);
-        // The point decoder ran the subgroup check; the identity rule remains.
+        // `check()` ran on the point; the identity rule remains.
         if matches!(validate, ark_serialize::Validate::Yes) && wrapper.is_identity() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }

@@ -117,7 +117,8 @@ pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing
 /// A few points extracted from the SRS, independent of ring size. Together
 /// with a [`RingCommitment`] it is sufficient to reconstruct a
 /// [`RingVerifierKey`] via [`verifier_key_from_commitment`], without access
-/// to the full [`RingSetup`].
+/// to the full [`RingSetup`]. See [`RingVerifierKey`] for the uncompressed
+/// decode caveat.
 pub type PcsVerifierParams<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
 /// Polynomial Interactive Oracle Proof (IOP) parameters.
@@ -127,12 +128,23 @@ pub type PcsVerifierParams<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RV
 pub type PiopParams<S> = ring_proof::PiopParams<TEAffine<CurveConfig<S>>>;
 
 /// Ring keys commitment.
+///
+/// See [`RingVerifierKey`] for the uncompressed decode caveat.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
 
 /// Ring prover key.
 pub type RingProverKey<S> = ring_proof::ProverKey<BaseField<S>, Kzg<S>, TEAffine<CurveConfig<S>>>;
 
 /// Ring verifier key.
+///
+/// A backend type, decoded by arkworks. The BLS12-381 decoder does not check
+/// that an uncompressed point is on the curve under `Validate::Yes`, only that
+/// it passes the subgroup test, which a point on an isomorphic curve passes
+/// too. After an uncompressed decode of bytes from an untrusted source, call
+/// `Valid::check` on the value, or use the compressed form, which derives `y`
+/// from the curve. The same holds for [`RingCommitment`] and
+/// [`PcsVerifierParams`]. The types of this crate run `check()` on the checked
+/// path themselves.
 pub type RingVerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Kzg<S>>;
 
 /// Ring prover.
@@ -662,10 +674,48 @@ type PartialRingCommitment<S> =
 ///
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
-#[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
+///
+/// Checked deserialization runs `Valid::check` on the decoded value, so an
+/// uncompressed pairing point off the curve is rejected (see
+/// [`RingVerifierKey`]).
+#[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
     pcs_params: PcsVerifierParams<S>,
+}
+
+impl<S: RingSuite> CanonicalDeserialize for VerifierKeyBuilder<S> {
+    fn deserialize_with_mode<R: ark_serialize::Read>(
+        mut reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let partial = PartialRingCommitment::<S>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            ark_serialize::Validate::No,
+        )?;
+        let pcs_params = PcsVerifierParams::<S>::deserialize_with_mode(
+            &mut reader,
+            compress,
+            ark_serialize::Validate::No,
+        )?;
+        let builder = Self {
+            partial,
+            pcs_params,
+        };
+        if matches!(validate, ark_serialize::Validate::Yes) {
+            ark_serialize::Valid::check(&builder)?;
+        }
+        Ok(builder)
+    }
+}
+
+impl<S: RingSuite> ark_serialize::Valid for VerifierKeyBuilder<S> {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        ark_serialize::Valid::check(&self.partial)?;
+        ark_serialize::Valid::check(&self.pcs_params)
+    }
 }
 
 /// Pairing G1 affine point type.
@@ -1422,6 +1472,79 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), free_slots);
     }
 
+    /// Scale a Short Weierstrass point by `(x, y) -> (u^2 x, u^3 y)`, an
+    /// isomorphism onto `y^2 = x^3 + b u^6`. The arkworks group law of an
+    /// `a = 0` curve never reads `b`, so the image is off the curve and still
+    /// passes the subgroup test, which is the only test the BLS12-381 decoder
+    /// runs on an uncompressed point under `Validate::Yes`.
+    pub trait OffCurveAlias: Sized {
+        fn off_curve_alias(&self) -> Self;
+    }
+
+    impl<C: SWCurveConfig> OffCurveAlias for SWAffine<C> {
+        fn off_curve_alias(&self) -> Self {
+            use ark_ff::Field;
+            let (x, y) = self.xy().unwrap();
+            let u = C::BaseField::from(2u64);
+            let alias = SWAffine::new_unchecked(x * u.square(), y * u.square() * u);
+            assert!(!alias.is_on_curve());
+            assert!(alias.is_in_correct_subgroup_assuming_on_curve());
+            alias
+        }
+    }
+
+    /// A checked uncompressed decode must reject an off-curve pairing point,
+    /// in a ring proof and in a verifier key builder. The unchecked decode
+    /// takes it, and `check()` on the value rejects it. The pairing point
+    /// feeds a pairing, and the proof docs promise that a checked decode
+    /// holds valid points.
+    pub fn off_curve_pairing_point_rejected<S: RingSuite>()
+    where
+        G1Affine<S>: OffCurveAlias,
+    {
+        use ring::Prover;
+
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand(TEST_RING_SIZE, rng);
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let prover_idx = 3;
+        pks[prover_idx] = secret.public().0;
+        let ring_ctx = ring_setup.ring_context();
+        let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
+        let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
+        let proof = secret.prove(secret.vrf_io(input), b"foo", &prover);
+
+        let point_len = G1Affine::<S>::zero().uncompressed_size();
+        let replace_with_alias = |bytes: &mut [u8], start: usize| {
+            let range = start..start + point_len;
+            let point = G1Affine::<S>::deserialize_uncompressed(&bytes[range.clone()]).unwrap();
+            let mut alias = Vec::new();
+            point
+                .off_curve_alias()
+                .serialize_uncompressed(&mut alias)
+                .unwrap();
+            bytes[range].copy_from_slice(&alias);
+        };
+
+        let mut bytes = Vec::new();
+        proof.serialize_uncompressed(&mut bytes).unwrap();
+        replace_with_alias(&mut bytes, proof.pedersen_proof.uncompressed_size());
+        assert!(Proof::<S>::deserialize_uncompressed(&bytes[..]).is_err());
+        let unchecked = Proof::<S>::deserialize_uncompressed_unchecked(&bytes[..]).unwrap();
+        assert!(ark_serialize::Valid::check(&unchecked).is_err());
+
+        // `cx` of the partial ring commitment is the first field of the builder.
+        let (builder, _) = ring_setup.verifier_key_builder();
+        let mut bytes = Vec::new();
+        builder.serialize_uncompressed(&mut bytes).unwrap();
+        replace_with_alias(&mut bytes, 0);
+        assert!(VerifierKeyBuilder::<S>::deserialize_uncompressed(&bytes[..]).is_err());
+        let unchecked =
+            VerifierKeyBuilder::<S>::deserialize_uncompressed_unchecked(&bytes[..]).unwrap();
+        assert!(ark_serialize::Valid::check(&unchecked).is_err());
+    }
+
     /// The bytes of a `RingSetup` may come from a file or from a peer. The
     /// encoding is the SRS alone, trimmed by the constructors to the powers
     /// its domain needs, so the G1 length carries the ring capacity. A
@@ -1729,6 +1852,11 @@ pub(crate) mod testing {
                 #[test]
                 fn ring_size_exceeded() {
                     $crate::ring::testing::ring_size_exceeded::<$suite>()
+                }
+
+                #[test]
+                fn off_curve_pairing_point_rejected() {
+                    $crate::ring::testing::off_curve_pairing_point_rejected::<$suite>()
                 }
 
                 #[test]

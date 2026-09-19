@@ -78,11 +78,14 @@ impl ark_std::io::Write for Matcher<'_> {
 
 /// Decode a value and accept only the bytes that the value itself encodes to.
 ///
-/// `validate` goes to the inner decoder for its subgroup check and does not
-/// gate the comparison: arkworks sequences decode their elements with
-/// `Validate::No` and batch check the values afterwards, so a rule gated on it
-/// would never reach a value inside a `Vec`. The consumed bytes sit in an `N`
-/// byte stack buffer and spill to the heap if the value is larger.
+/// The inner decoder runs unchecked, and `validate` gates a `Valid::check` of
+/// the decoded value after the comparison. The arkworks BLS12-381 decoder does
+/// not check that an uncompressed point is on the curve under `Validate::Yes`;
+/// `check()` does. The comparison does not depend on `validate`: arkworks
+/// sequences decode their elements with `Validate::No` and batch check the
+/// values afterwards, so a rule gated on it would never reach a value inside a
+/// `Vec`. The consumed bytes sit in an `N` byte stack buffer and spill to the
+/// heap if the value is larger.
 pub(crate) fn deserialize_canonical<T, const N: usize>(
     reader: impl ark_std::io::Read,
     compress: ark_serialize::Compress,
@@ -95,7 +98,7 @@ where
         inner: reader,
         bytes: Recorded::Stack([0u8; N], 0),
     };
-    let value = T::deserialize_with_mode(&mut recorder, compress, validate)?;
+    let value = T::deserialize_with_mode(&mut recorder, compress, ark_serialize::Validate::No)?;
     let mut matcher = Matcher {
         expected: recorder.recorded(),
         mismatch: false,
@@ -103,6 +106,9 @@ where
     value.serialize_with_mode(&mut matcher, compress)?;
     if matcher.mismatch || !matcher.expected.is_empty() {
         return Err(ark_serialize::SerializationError::InvalidData);
+    }
+    if matches!(validate, ark_serialize::Validate::Yes) {
+        ark_serialize::Valid::check(&value)?;
     }
     Ok(value)
 }

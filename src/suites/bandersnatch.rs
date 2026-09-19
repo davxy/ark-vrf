@@ -204,4 +204,31 @@ pub(crate) mod tests {
         );
         assert!(checked(&alias_proof).is_err());
     }
+
+    /// Canary for an arkworks defect. The BLS12-381 decoder validates an
+    /// uncompressed point with the subgroup test alone and never runs the
+    /// on-curve test. A point scaled by `(x, y) -> (u^2 x, u^3 y)` lies on the
+    /// isomorphic curve `y^2 = x^3 + 4 u^6`, and the group law of an `a = 0`
+    /// curve never reads `b`, so the subgroup test passes off the curve and
+    /// the checked decode returns the point. The crate runs `Valid::check`
+    /// itself (`utils::canonical`, `VerifierKeyBuilder`). When this test
+    /// fails, arkworks is fixed and the caveat on `RingVerifierKey` can go.
+    #[test]
+    fn arkworks_bls12_381_uncompressed_decode_skips_on_curve() {
+        use ark_bls12_381::{Fq, G1Affine};
+        use ark_ff::Field;
+        use ark_serialize::Valid;
+
+        let (x, y) = G1Affine::generator().xy().unwrap();
+        let u = Fq::from(2u64);
+        let off_curve = G1Affine::new_unchecked(x * u.square(), y * u.square() * u);
+        assert!(!off_curve.is_on_curve());
+        assert!(off_curve.is_in_correct_subgroup_assuming_on_curve());
+
+        let mut bytes = Vec::new();
+        off_curve.serialize_uncompressed(&mut bytes).unwrap();
+        let decoded = G1Affine::deserialize_uncompressed(&bytes[..]).unwrap();
+        assert_eq!(decoded, off_curve);
+        assert!(decoded.check().is_err());
+    }
 }
