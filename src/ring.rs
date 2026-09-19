@@ -1201,10 +1201,8 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
-    /// One proof, one encoding. With an empty I/O list `Ok` is the identity,
-    /// which arkworks reads from several byte strings; a relay could turn one
-    /// valid proof into different bytes that also verify. The ring part goes
-    /// through the same canonical check.
+    /// With an empty I/O list `Ok` is the identity, which arkworks reads from
+    /// several byte strings. The ring part goes through the same check.
     pub fn proof_encoding_is_canonical<S: RingSuite>() {
         use ark_serialize::Compress;
         use ring::{Prover, Verifier};
@@ -1244,10 +1242,8 @@ pub(crate) mod testing {
         );
         assert!(!aliases.is_empty());
 
-        // The ring part: the pairing curve decides whether aliases exist. The
-        // generic arkworks encoding (BN254) ignores the sign flag of an
-        // uncompressed point; the Zcash encoding of BLS12-381 is canonical by
-        // itself, so nothing is found there.
+        // BN254 ignores the sign flag of an uncompressed point; the BLS12-381
+        // encoding has no alias, so nothing is found there.
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_uncompressed(&bytes[..]).unwrap();
@@ -1462,10 +1458,8 @@ pub(crate) mod testing {
         ));
     }
 
-    /// The ring proof backend asserts on the identity point. A member key
-    /// equal to the identity must be rejected at the crate boundary, on
-    /// every entry point that hands keys to the backend, and `append` must
-    /// leave the builder unchanged.
+    /// The ring proof backend asserts on the identity, so every entry point
+    /// that hands it keys must reject it first.
     pub fn identity_in_ring_rejected<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
@@ -1491,11 +1485,8 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), free_slots);
     }
 
-    /// Scale a Short Weierstrass point by `(x, y) -> (u^2 x, u^3 y)`, an
-    /// isomorphism onto `y^2 = x^3 + b u^6`. The arkworks group law of an
-    /// `a = 0` curve never reads `b`, so the image is off the curve and still
-    /// passes the subgroup test, which is the only test the BLS12-381 decoder
-    /// runs on an uncompressed point under `Validate::Yes`.
+    /// Map `(x, y)` to `(u^2 x, u^3 y)`: off the curve, but the group law of an
+    /// `a = 0` curve never reads `b`, so the subgroup test still passes.
     pub trait OffCurveAlias: Sized {
         fn off_curve_alias(&self) -> Self;
     }
@@ -1513,10 +1504,7 @@ pub(crate) mod testing {
     }
 
     /// A checked uncompressed decode must reject an off-curve pairing point,
-    /// in a ring proof and in a verifier key builder. The unchecked decode
-    /// takes it, and `check()` on the value rejects it. The pairing point
-    /// feeds a pairing, and the proof docs promise that a checked decode
-    /// holds valid points.
+    /// in a ring proof and in a verifier key builder.
     pub fn off_curve_pairing_point_rejected<S: RingSuite>()
     where
         G1Affine<S>: OffCurveAlias,
@@ -1564,14 +1552,9 @@ pub(crate) mod testing {
         assert!(ark_serialize::Valid::check(&unchecked).is_err());
     }
 
-    /// The bytes of a `RingSetup` may come from a file or from a peer. The
-    /// encoding is the SRS alone, trimmed by the constructors to the powers
-    /// its domain needs, so the G1 length carries the ring capacity. A
-    /// restored setup must serialize to the same bytes and keep its capacity.
-    /// Any other G1 length is a decode error: a raw SRS file would otherwise
-    /// decode as a setup with the largest domain it can back, and two nodes
-    /// that load the same file by different paths would build keys on
-    /// different domains without any error.
+    /// The G1 length carries the ring capacity. A restored setup keeps its
+    /// bytes and capacity; any other G1 length is a decode error, or a raw
+    /// SRS file would decode as a setup of another domain.
     pub fn ring_setup_serialization<S: RingSuite>() {
         use ark_serialize::SerializationError;
 
@@ -1596,10 +1579,7 @@ pub(crate) mod testing {
             RingSetup::<S>::deserialize_uncompressed_unchecked(&buf[..])
         };
 
-        // Below the smallest domain (a panic once), the domain that holds no
-        // key (a setup with capacity 0 once, on Jubjub), one power off, and
-        // the power of two of an untrimmed SRS file (a setup with its own
-        // domain once).
+        // Too short, the domain with no key, one power off, an untrimmed file.
         let g1_powers = ring_setup.pcs_params.powers_in_g1.len();
         let g1_power = ring_setup.pcs_params.powers_in_g1[0];
         for g1_len in [
@@ -1815,8 +1795,7 @@ pub(crate) mod testing {
             assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
         }
 
-        // A domain holds at least one key. At or below the overhead nothing
-        // fits: `None`, so no context or setup has capacity 0.
+        // At or below the overhead no key fits.
         assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead - 1), None);
         assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead), None);
         assert_eq!(
@@ -1837,7 +1816,7 @@ pub(crate) mod testing {
             Some(dom_utils::max_ring_size::<S>(0))
         );
 
-        // A ring size of 0 counts as 1: the context holds at least one key.
+        // A ring size of 0 counts as 1.
         assert_eq!(piop_domain_size::<S>(0), piop_domain_size::<S>(1));
         assert!(dom_utils::max_ring_size::<S>(0) >= 1);
     }

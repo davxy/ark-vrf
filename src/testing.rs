@@ -433,11 +433,8 @@ fn assert_torsion_rejected<S: Suite, K: Serializable>(
     unchecked
 }
 
-/// Flip every bit of `bytes` inside `component`, decode that component alone
-/// with the plain arkworks decoder, and call a mutation that encodes back to
-/// the original component an alias of the same value. `decode`, the checked
-/// decoder of the whole byte string, must reject every alias. Returns the
-/// aliases so the caller can assert that the check ran.
+/// Flip each bit of `component`; a mutation that arkworks decodes to the same
+/// value is an alias, and `decode` must reject it. Returns the aliases.
 pub fn assert_aliases_rejected<T: CanonicalSerialize + CanonicalDeserialize>(
     bytes: &[u8],
     component: core::ops::Range<usize>,
@@ -471,10 +468,8 @@ pub fn assert_aliases_rejected<T: CanonicalSerialize + CanonicalDeserialize>(
     aliases
 }
 
-/// Decode `bytes` as the single element of a `Vec<T>` with the checked
-/// method. Arkworks decodes the elements of a sequence with `Validate::No`
-/// and batch checks the values afterwards, so a rule that only the checked
-/// decoder applies is skipped on this path.
+/// Decode `bytes` as the single element of a `Vec<T>`, whose elements arkworks
+/// decodes with `Validate::No`.
 pub fn decodes_inside_vec<T: CanonicalDeserialize>(
     bytes: &[u8],
     compress: ark_serialize::Compress,
@@ -485,14 +480,8 @@ pub fn decodes_inside_vec<T: CanonicalDeserialize>(
     Vec::<T>::deserialize_with_mode(&framed[..], compress, ark_serialize::Validate::Yes).is_ok()
 }
 
-/// A point must have one accepted encoding. Arkworks reads the identity from
-/// several byte strings (any `x` with the infinity flag on Short Weierstrass
-/// curves, either sign flag on Twisted Edwards curves) and ignores the sign
-/// flag of an uncompressed Short Weierstrass point. Byte-keyed deduplication
-/// and strong unforgeability of proofs need one encoding per value. The rule
-/// does not depend on `Validate`: unchecked decoding skips the subgroup and
-/// identity checks, not the encoding rule, so a value inside an arkworks
-/// sequence, whose elements are decoded unchecked, gets one encoding too.
+/// Arkworks reads the identity from several byte strings; the crate decoders
+/// accept one, on both paths and inside a `Vec`.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
     use crate::utils::canonical::{deserialize_canonical, deserialize_point};
     use ark_serialize::{Compress, Validate};
@@ -533,10 +522,8 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     }
 }
 
-/// The decoder reads one value and stops, as the `PointWrapper` and proof
-/// docs state: values decode in sequence from one reader, and a trailing byte
-/// is left unread, not rejected. Framing is the caller's job, so a consumer
-/// must not key values by unframed bytes.
+/// The decoder reads one value and leaves trailing bytes unread, as the docs
+/// state.
 pub fn decoder_reads_one_value<S: Suite>() {
     let first = Secret::<S>::from_seed(TEST_SEED).public();
     let second = Secret::<S>::from_seed([1; 32]).public();

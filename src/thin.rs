@@ -561,9 +561,8 @@ pub(crate) mod testing {
         assert!(public.verify([], b"baz", &proof).is_err());
     }
 
-    /// One proof, one encoding. `R` is the identity only for a zero nonce, so
-    /// that proof is built by hand; arkworks reads the identity from several
-    /// byte strings, and the decoder must accept the canonical one only.
+    /// `R` is the identity only for a zero nonce, so that proof is built by
+    /// hand. One proof must have one encoding.
     pub fn proof_encoding_is_canonical<S: ThinSuite>() {
         use ark_serialize::Compress;
         use thin::{Prover, Verifier};

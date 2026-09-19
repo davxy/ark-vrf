@@ -628,9 +628,8 @@ pub(crate) mod testing {
         assert!(Public::verify(ios, b"baz", &proof).is_err());
     }
 
-    /// One proof, one encoding. With an empty I/O list `Ok` is the identity,
-    /// which arkworks reads from several byte strings; a relay could turn one
-    /// valid proof into different bytes that also verify.
+    /// With an empty I/O list `Ok` is the identity, which arkworks reads from
+    /// several byte strings. One proof must have one encoding.
     pub fn proof_encoding_is_canonical<S: PedersenSuite>() {
         use ark_serialize::Compress;
         use pedersen::{Prover, Verifier};

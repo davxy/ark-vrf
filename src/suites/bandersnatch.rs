@@ -146,12 +146,8 @@ pub(crate) mod tests {
         );
     }
 
-    /// The identity `(0, 1)` compresses to `y = 1` with the sign flag of `x`
-    /// clear (bit 7 of the last byte). Arkworks reads the same point from the
-    /// bytes with the flag set, because both roots of `x` are zero. The
-    /// crate's point decoder accepts only the string the encoder writes, on
-    /// the checked and on the unchecked path. A proof that holds the point
-    /// inherits this, so one proof has one encoding.
+    /// Arkworks reads the identity `(0, 1)` with either sign flag, since both
+    /// roots of `x` are zero. The crate decoders accept the clear flag only.
     #[test]
     fn identity_has_one_encoding() {
         use crate::thin::Proof;
@@ -205,14 +201,8 @@ pub(crate) mod tests {
         assert!(checked(&alias_proof).is_err());
     }
 
-    /// Canary for an arkworks defect. The BLS12-381 decoder validates an
-    /// uncompressed point with the subgroup test alone and never runs the
-    /// on-curve test. A point scaled by `(x, y) -> (u^2 x, u^3 y)` lies on the
-    /// isomorphic curve `y^2 = x^3 + 4 u^6`, and the group law of an `a = 0`
-    /// curve never reads `b`, so the subgroup test passes off the curve and
-    /// the checked decode returns the point. The crate runs `Valid::check`
-    /// itself (`utils::canonical`, `VerifierKeyBuilder`). When this test
-    /// fails, arkworks is fixed and the caveat on `RingVerifierKey` can go.
+    /// Canary for an arkworks defect: the BLS12-381 uncompressed decoder skips
+    /// the on-curve test. When this fails, the `RingVerifierKey` caveat can go.
     #[test]
     fn arkworks_bls12_381_uncompressed_decode_skips_on_curve() {
         use ark_bls12_381::{Fq, G1Affine};
