@@ -87,15 +87,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error.
 - Deserialization of `Public`, `Input`, `Output` and of the Thin, Pedersen
   and Ring proofs accepts one encoding per value, on the checked and on the
-  unchecked path alike; `Validate::No` skips only the subgroup and identity
-  checks. Arkworks decodes the identity from several byte strings and ignores
+  unchecked path alike; `Validate::No` skips the subgroup and identity
+  checks, and the on-curve check of an uncompressed point, not the encoding
+  rule. Arkworks decodes the identity from several byte strings and ignores
   the sign flag of an uncompressed Short Weierstrass point, so a Pedersen or
   Ring proof over an empty I/O list, whose `Ok` is the identity, had several
   encodings that all verified. The rule holds on the unchecked path because
   arkworks sequences such as `Vec` decode their elements unchecked and batch
   check the values afterwards, where no encoding rule can run. The decoders
   read one value and stop: framing, and so trailing bytes, is the caller's
-  job, as the type docs state.
+  job, as the type docs state. This changes the set of byte strings that
+  verify: a proof with an alias encoding, such as a Thin proof with a zero
+  nonce and the sign flag of `R` set, verifies on 0.5.3 and fails at decode
+  here, and a key holder can build one at will. A consensus deployment must
+  switch every node together.
 
 ## [0.5.3] - 2026-08-18
 

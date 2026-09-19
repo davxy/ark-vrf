@@ -490,9 +490,9 @@ pub fn decodes_inside_vec<T: CanonicalDeserialize>(
 /// curves, either sign flag on Twisted Edwards curves) and ignores the sign
 /// flag of an uncompressed Short Weierstrass point. Byte-keyed deduplication
 /// and strong unforgeability of proofs need one encoding per value. The rule
-/// does not depend on `Validate`: unchecked decoding skips only the subgroup
-/// and identity checks, so a value inside an arkworks sequence, whose
-/// elements are decoded unchecked, gets one encoding too.
+/// does not depend on `Validate`: unchecked decoding skips the subgroup and
+/// identity checks, not the encoding rule, so a value inside an arkworks
+/// sequence, whose elements are decoded unchecked, gets one encoding too.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
     use crate::utils::canonical::{deserialize_canonical, deserialize_point};
     use ark_serialize::{Compress, Validate};
