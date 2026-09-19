@@ -23,10 +23,8 @@
 //! ```
 
 use crate::{
-    utils::challenge_scalar,
-    utils::common::{DomSep, deserialize_point},
-    utils::straus::short_msm,
-    *,
+    utils::canonical::deserialize_point, utils::challenge_scalar, utils::common::DomSep,
+    utils::straus::short_msm, *,
 };
 
 /// Marker trait for suites that support the Thin VRF scheme.

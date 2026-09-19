@@ -155,7 +155,7 @@ pub(crate) mod tests {
     #[test]
     fn identity_has_one_encoding() {
         use crate::thin::Proof;
-        use crate::utils::common::deserialize_point;
+        use crate::utils::canonical::deserialize_point;
         use ark_serialize::{Compress, Validate};
 
         let mut canonical = [0u8; 32];

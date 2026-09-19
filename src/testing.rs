@@ -494,8 +494,8 @@ pub fn decodes_inside_vec<T: CanonicalDeserialize>(
 /// and identity checks, so a value inside an arkworks sequence, whose
 /// elements are decoded unchecked, gets one encoding too.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
-    use crate::utils::common::{deserialize_canonical, deserialize_point};
-    use ark_serialize::{Compress, SerializationError, Validate};
+    use crate::utils::canonical::{deserialize_canonical, deserialize_point};
+    use ark_serialize::{Compress, Validate};
 
     let mut identity = Vec::new();
     AffinePoint::<S>::zero()
@@ -503,11 +503,11 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
         .unwrap();
     let checked = |bytes: &[u8]| deserialize_point::<S>(bytes, Compress::Yes, Validate::Yes);
     assert!(checked(&identity).unwrap().is_zero());
-    // A buffer too small for the value is an error, not a panic.
-    assert!(matches!(
-        deserialize_canonical::<AffinePoint<S>, 8>(&identity[..], Compress::Yes, Validate::Yes),
-        Err(SerializationError::NotEnoughSpace)
-    ));
+    // A stack buffer too small for the value spills to the heap.
+    let spilled = |bytes: &[u8]| {
+        deserialize_canonical::<AffinePoint<S>, 8>(bytes, Compress::Yes, Validate::Yes)
+    };
+    assert!(spilled(&identity).unwrap().is_zero());
     let aliases = assert_aliases_rejected::<AffinePoint<S>>(
         &identity,
         0..identity.len(),
@@ -517,6 +517,7 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     assert!(!aliases.is_empty());
     for alias in &aliases {
         assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_err());
+        assert!(spilled(alias).is_err());
     }
 
     let point = Secret::<S>::from_seed(TEST_SEED).public().point();

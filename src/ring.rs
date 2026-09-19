@@ -58,7 +58,7 @@ use ark_ec::{
 };
 use ark_std::{borrow::Cow, ops::Range};
 use pedersen::{PedersenSuite, Proof as PedersenProof};
-use utils::common::deserialize_canonical;
+use utils::canonical::deserialize_canonical;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -182,9 +182,8 @@ pub struct Proof<S: RingSuite> {
 
 /// Stack buffer for the canonical decode of a backend ring proof.
 ///
-/// BLS12-381 needs 928 bytes uncompressed and BN254 704. A pairing curve with
-/// larger points needs a larger value, or its proofs fail to decode with
-/// `NotEnoughSpace`.
+/// BLS12-381 needs 928 bytes uncompressed and BN254 704. A larger proof, on a
+/// pairing curve with bigger points, spills to the heap.
 const RING_PROOF_BUF_SIZE: usize = 1024;
 
 impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
@@ -1154,6 +1153,8 @@ pub(crate) mod testing {
         // itself, so nothing is found there.
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
+        let decoded = Proof::<S>::deserialize_uncompressed(&bytes[..]).unwrap();
+        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
         let ring_part = proof.pedersen_proof.uncompressed_size();
         let first_point = ring_part..ring_part + G1Affine::<S>::zero().uncompressed_size();
         common::assert_aliases_rejected::<G1Affine<S>>(

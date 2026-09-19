@@ -30,7 +30,8 @@
 
 use crate::Suite;
 use crate::utils;
-use crate::utils::common::{DomSep, deserialize_point};
+use crate::utils::canonical::deserialize_point;
+use crate::utils::common::DomSep;
 use crate::utils::straus::short_msm;
 use crate::*;
 use ark_ec::VariableBaseMSM;

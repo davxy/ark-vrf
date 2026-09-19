@@ -104,7 +104,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
-use utils::common::deserialize_point;
+use utils::canonical::deserialize_point;
 use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;

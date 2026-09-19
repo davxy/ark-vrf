@@ -9,6 +9,8 @@ pub mod straus;
 pub mod te_sw_map;
 pub mod transcript;
 
+pub(crate) mod canonical;
+
 /// Standard cryptographic procedures.
 ///
 /// Includes challenge generation, nonce derivation, and point-to-hash conversions
