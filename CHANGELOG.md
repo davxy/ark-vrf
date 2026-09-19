@@ -36,9 +36,7 @@ Breaking release. Every entry under Changed alters the public API.
   nonces, challenge products, the ring blinding factor and the split scalars.
   Best effort: temporaries inside arkworks and the ring backend stay.
 - Deserialization accepts one encoding per value, on the checked and on the
-  unchecked path. Arkworks reads the identity from several byte strings, so a
-  proof whose `Ok` or `R` is the identity verified under each of them.
-  Consensus deployments must switch every node together.
+  unchecked path.
 - Checked uncompressed deserialization of the ring proof and of
   `VerifierKeyBuilder` rejects a pairing point off the curve, which the
   arkworks BLS12-381 decoder accepts. Call `Valid::check` after decoding a
