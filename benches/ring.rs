@@ -55,7 +55,7 @@ fn ring_benches<S: RingSuite>(c: &mut Criterion) {
                 b.iter(|| {
                     ring::RingSetup::<S>::from_pcs_params(
                         black_box(n),
-                        setup.ring_setup.pcs_params.clone(),
+                        setup.ring_setup.pcs_params().clone(),
                     )
                     .unwrap()
                 });

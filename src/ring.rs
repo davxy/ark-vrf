@@ -431,13 +431,15 @@ impl<S: RingSuite> RingContext<S> {
 /// decoding accepts only an SRS of that exact shape: `3 * P + 1` G1 powers for
 /// a power of two `P`. A raw SRS file of another length is not a setup: decode
 /// it as [`PcsParams`] and call [`Self::from_pcs_params`] with the ring size of
-/// the protocol.
+/// the protocol. Every setup comes from a constructor or from decoding, so its
+/// SRS has the shape its context needs; [`Self::pcs_params`] and
+/// [`Self::ring_context`] read the parts.
 #[derive(Clone)]
 pub struct RingSetup<S: RingSuite> {
     /// PCS parameters.
-    pub pcs_params: PcsParams<S>,
+    pcs_params: PcsParams<S>,
     /// Ring context (PIOP parameters).
-    pub ring_ctx: RingContext<S>,
+    ring_ctx: RingContext<S>,
 }
 
 /// The ring proof backend asserts on the identity, so it is rejected here.
@@ -551,6 +553,11 @@ impl<S: RingSuite> RingSetup<S> {
         let builder_pcs_params = RingBuilderPcsParams(builder_key.lis_in_g1);
         let builder = VerifierKeyBuilder::new(self, &builder_pcs_params);
         (builder, builder_pcs_params)
+    }
+
+    /// Get a reference to the PCS parameters: the SRS, trimmed to the domain.
+    pub fn pcs_params(&self) -> &PcsParams<S> {
+        &self.pcs_params
     }
 
     /// Get a reference to the lightweight [`RingContext`].

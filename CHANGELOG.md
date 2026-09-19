@@ -30,7 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `utils::challenge` take the transcript directly instead of an `Option`,
   like `PedersenSuite::blinding`.
 - **Breaking**: `RingSetup` no longer implements `Deref` to `RingContext`.
-  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields stay public.
+  Use `ring_context()`. The `pcs_params` and `ring_ctx` fields are private;
+  `pcs_params()` and `ring_context()` read them. A setup now always comes
+  from a constructor or from decoding, so its SRS has the shape its context
+  needs and its encoding decodes to its own domain. Before, a struct literal
+  could pair an SRS of one domain with a context of another, and the bytes
+  of such a setup decoded to another domain, or not at all.
 - **Breaking**: `ring::max_ring_size_from_piop_domain_size`,
   `ring::piop_domain_size_from_pcs_domain_size` and
   `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`
