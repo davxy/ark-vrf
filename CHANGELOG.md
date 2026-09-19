@@ -37,8 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could pair an SRS of one domain with a context of another, and the bytes
   of such a setup decoded to another domain, or not at all.
 - **Breaking**: `Input` and `VrfIo` no longer implement `CanonicalSerialize`
-  and `CanonicalDeserialize`. `Public` and `Output` keep both through the
-  sealed `Serializable` role marker trait. A verifier that decoded a `VrfIo` from
+  and `CanonicalDeserialize`. `Public` and `Output` keep both, through a
+  crate-private role marker trait. A verifier that decoded a `VrfIo` from
   the wire accepted the prover's input, and a prover who knows `d` with
   `I = d * G` proves any output (`known_dlog_input_forgery`); the checked
   decode verified subgroup membership, which is the wrong property. Send the

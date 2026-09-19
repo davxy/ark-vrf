@@ -420,7 +420,7 @@ impl<S: Suite> Secret<S> {
 /// # Validation
 ///
 /// [`Self::from_affine`] and the checked deserialization methods (the default
-/// `deserialize_*` family, for the roles that implement [`Serializable`])
+/// `deserialize_*` family, for [`Public`] and [`Output`])
 /// accept only points in the prime-order subgroup and
 /// reject the group identity. The verifiers trust this invariant: they reject
 /// the identity, which is cheap, but they do not repeat the subgroup check.
@@ -450,22 +450,8 @@ pub struct OutputKind;
 
 /// Role markers of the points that serialize, that is encode to and decode
 /// from bytes: [`PublicKind`] and [`OutputKind`]. [`InputKind`] is left out on
-/// purpose, see [`Input`]. The trait is sealed: this crate decides which roles
-/// go on the wire.
-///
-/// ```compile_fail,E0277
-/// struct MyKind;
-/// impl ark_vrf::Serializable for MyKind {}
-/// ```
-pub trait Serializable: sealed::Sealed + Sync {}
-
-mod sealed {
-    pub trait Sealed {}
-
-    impl Sealed for super::PublicKind {}
-
-    impl Sealed for super::OutputKind {}
-}
+/// purpose, see [`Input`].
+pub(crate) trait Serializable: Sync {}
 
 impl Serializable for PublicKind {}
 
