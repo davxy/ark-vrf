@@ -44,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ring::piop_domain_size_from_pcs_domain_size` and
   `ring::max_ring_size_from_pcs_domain_size` return `Option<usize>`. `None`
   means that no valid domain fits the given size. Before, such inputs
-  panicked or wrapped.
+  panicked or wrapped. A domain that holds no key, one not larger than the
+  PIOP overhead, is `None` too.
 - The `smul!` macro is crate-private. It was exported as `#[doc(hidden)]`.
 - `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
   nonces and challenge products, the ring prover zeroizes its copy of the
@@ -70,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RingContext::ring_prover` and `into_ring_prover` reduce `key_index` modulo
   the ring capacity. An index at or beyond the capacity panicked in the ring
   proof backend at `prove`.
+- A `min_ring_size` of 0 counts as 1 in `RingContext::new`, the `RingSetup`
+  constructors and `ring::piop_domain_size`, so every context holds at least
+  one key. On Jubjub the PIOP overhead is a power of two, and a ring size of
+  0 gave a context with capacity 0: its provers panicked, at `prove` before
+  and in `ring_prover` with a division by zero after the reduction above. A
+  setup with the SRS of such a domain does not decode any more.
 - `RingSetup` deserialization returns `SerializationError::InvalidData` for an
   SRS whose G1 length is not the exact size of a ring domain, `3 * P + 1` for
   a power of two `P`, or with fewer than two G2 powers. Before, an SRS shorter

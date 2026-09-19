@@ -342,7 +342,8 @@ impl<S: RingSuite> RingContext<S> {
     /// Construct a context for a ring of at least `min_ring_size` keys.
     ///
     /// The domain rounds up to a power of two, so the context usually holds
-    /// more keys. [`Self::max_ring_size`] reports the exact capacity.
+    /// more keys. [`Self::max_ring_size`] reports the exact capacity. A
+    /// `min_ring_size` of 0 counts as 1: every context holds at least one key.
     pub fn new(min_ring_size: usize) -> Self {
         Self::construct(min_ring_size, true)
     }
@@ -393,6 +394,11 @@ impl<S: RingSuite> RingContext<S> {
     /// verifies only if the slot it lands on holds the prover's own key. The
     /// context holds no keys and cannot check that: a wrong index gives a
     /// proof that every verifier rejects.
+    ///
+    /// `prover_key` must come from a setup with the domain of this context:
+    /// the same `min_ring_size`, or [`RingSetup::ring_context`] of that setup.
+    /// A context of a larger domain reduces the index against a capacity the
+    /// key does not have, and `prove` panics in the ring proof backend.
     pub fn ring_prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         self.clone().into_ring_prover(prover_key, key_index)
     }
@@ -915,9 +921,11 @@ macro_rules! ring_suite_types {
 /// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
 ///
 /// Relationships:
-///   piop_domain_size = (min_ring_size + PIOP_OVERHEAD).next_power_of_two()
+///   piop_domain_size = (max(min_ring_size, 1) + PIOP_OVERHEAD).next_power_of_two()
 ///   pcs_domain_size  = 3 * piop_domain_size + 1
 ///   max_ring_size    = piop_domain_size - PIOP_OVERHEAD
+///
+/// A ring size of 0 counts as 1, so every domain holds at least one key.
 ///
 /// where PIOP_OVERHEAD = 4 + MODULUS_BIT_SIZE accounts for:
 ///   - 3 points for zero-knowledge blinding
@@ -950,19 +958,26 @@ pub mod dom_utils {
     ///
     /// Returns the smallest power of 2 that can accommodate `min_ring_size` members.
     /// This is the domain size used for polynomial operations in the ring proof and
-    /// already accounts for the PIOP overhead.
+    /// already accounts for the PIOP overhead. A `min_ring_size` of 0 counts as
+    /// 1: every domain holds at least one key.
     pub const fn piop_domain_size<S: Suite>(min_ring_size: usize) -> usize {
+        let min_ring_size = if min_ring_size == 0 { 1 } else { min_ring_size };
         (min_ring_size + piop_overhead::<S>()).next_power_of_two()
     }
 
     /// Maximum ring size supported by a given PIOP domain size.
     ///
     /// Returns the largest ring that fits in the domain, or `None` when the
-    /// domain is smaller than the PIOP overhead and fits no ring at all.
+    /// domain holds no key, that is when it is not larger than the PIOP
+    /// overhead.
     pub const fn max_ring_size_from_piop_domain_size<S: Suite>(
         piop_domain_size: usize,
     ) -> Option<usize> {
-        piop_domain_size.checked_sub(piop_overhead::<S>())
+        if piop_domain_size > piop_overhead::<S>() {
+            Some(piop_domain_size - piop_overhead::<S>())
+        } else {
+            None
+        }
     }
 
     /// PCS domain size required to support the given ring size.
@@ -1439,8 +1454,10 @@ pub(crate) mod testing {
             RingSetup::<S>::deserialize_uncompressed_unchecked(&buf[..])
         };
 
-        // Below the smallest domain (a panic once), one power off, and the
-        // power of two of an untrimmed SRS file (a setup with its own domain once).
+        // Below the smallest domain (a panic once), the domain that holds no
+        // key (a setup with capacity 0 once, on Jubjub), one power off, and
+        // the power of two of an untrimmed SRS file (a setup with its own
+        // domain once).
         let g1_powers = ring_setup.pcs_params.powers_in_g1.len();
         let g1_power = ring_setup.pcs_params.powers_in_g1[0];
         for g1_len in [
@@ -1449,6 +1466,7 @@ pub(crate) mod testing {
             3,
             4,
             100,
+            3 * piop_overhead::<S>() + 1,
             g1_powers - 1,
             g1_powers + 1,
             g1_powers.next_power_of_two(),
@@ -1655,10 +1673,14 @@ pub(crate) mod testing {
             assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
         }
 
-        // Below the smallest domain nothing fits: `None`, which differs from a
-        // domain that fits a ring of zero members.
+        // A domain holds at least one key. At or below the overhead nothing
+        // fits: `None`, so no context or setup has capacity 0.
         assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead - 1), None);
-        assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead), Some(0));
+        assert_eq!(max_ring_size_from_piop_domain_size::<S>(overhead), None);
+        assert_eq!(
+            max_ring_size_from_piop_domain_size::<S>(overhead + 1),
+            Some(1)
+        );
         for pcs_dom_size in [0, 1, 2, 3] {
             assert_eq!(piop_domain_size_from_pcs_domain_size(pcs_dom_size), None);
         }
@@ -1673,10 +1695,9 @@ pub(crate) mod testing {
             Some(dom_utils::max_ring_size::<S>(0))
         );
 
-        // Edge case: ring_size = 0 (degenerate but shouldn't panic)
-        let piop_zero = piop_domain_size::<S>(0);
-        assert!(piop_zero.is_power_of_two());
-        assert_eq!(piop_zero, overhead.next_power_of_two());
+        // A ring size of 0 counts as 1: the context holds at least one key.
+        assert_eq!(piop_domain_size::<S>(0), piop_domain_size::<S>(1));
+        assert!(dom_utils::max_ring_size::<S>(0) >= 1);
     }
 
     #[macro_export]
