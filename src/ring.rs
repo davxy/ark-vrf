@@ -6,6 +6,12 @@
 //!
 //! This module is gated by the `ring` feature.
 //!
+//! The ring prover blinds its private columns with the OS random source, in
+//! the `w3f-plonk-common` backend, and panics at `prove` on a target where
+//! `getrandom` has no source (a seccomp filter, wasm without the `js` backend,
+//! early boot). [`RingContext::new_without_blinding`] skips the draw and the
+//! zero knowledge with it.
+//!
 //! ## Usage
 //!
 //! ```rust,ignore

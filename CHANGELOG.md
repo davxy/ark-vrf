@@ -66,7 +66,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Secret` hardening: the Tiny, Thin and Pedersen provers zeroize their
   nonces and challenge products, the ring prover zeroizes its copy of the
   blinding factor, and `secret-split` zeroizes the split scalars. Key
-  derivation already did this since 0.5.3.
+  derivation already did this since 0.5.3. This is best effort and covers
+  the named bindings only: operator temporaries, arkworks conversions,
+  register spills and the backend copy of the blinding factor stay.
+- The `secret-split` feature docs say that the split comes from the OS
+  random source on every secret scalar multiplication, `Secret`
+  deserialization included, and panics where `getrandom` has no source. The
+  ring module docs say the same for the column blinding of the ring prover.
 - `secret-split` also covers public key derivation in `Secret::from_scalar`,
   which runs on every `Secret` deserialization.
 - The counter-mode XOF reader behind `HashTranscript` zeroizes its seed and

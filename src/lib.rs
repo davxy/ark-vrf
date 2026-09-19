@@ -70,6 +70,10 @@
 //!   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
 //!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
 //!   derivation, output, nonce and blinding), but provides side channel defenses for them.
+//!   The split comes from the OS random source (`OsRng`) on every secret scalar
+//!   multiplication, `Secret` deserialization and `from_seed` included, and the
+//!   call panics on a target where `getrandom` has no source (a seccomp filter,
+//!   wasm without the `js` backend, early boot).
 //!   Ring proof witness generation is not covered by this feature: it relies on the
 //!   branch-free handling of the secret bits
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
@@ -261,9 +265,13 @@ pub trait Suite: Copy {
 /// Implements automatic zeroization on drop. The `Debug` output redacts
 /// the scalar, and equality is evaluated in constant time. Key derivation
 /// and the provers zeroize their secret temporaries: seeds, nonces, the
-/// challenge products and, with `secret-split`, the split scalars. The
-/// Pedersen prover returns the blinding factor to the caller, who owns it
-/// from then on (see [`pedersen::Prover::prove`]).
+/// challenge products and, with `secret-split`, the split scalars. This is
+/// best effort and covers the named bindings only. The by-value copies that
+/// the arithmetic operators make, the big-integer conversions inside
+/// arkworks, register spills and the ring proof backend's copy of the
+/// blinding factor are not wiped. The Pedersen prover returns the blinding
+/// factor to the caller, who owns it from then on (see
+/// [`pedersen::Prover::prove`]).
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
     /// Secret scalar.

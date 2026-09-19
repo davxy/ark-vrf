@@ -238,6 +238,10 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
    secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
    derivation, output, nonce and blinding), but provides side channel defenses for them.
+   The split comes from the OS random source (`OsRng`) on every secret scalar
+   multiplication, `Secret` deserialization and `from_seed` included, and the
+   call panics on a target where `getrandom` has no source (a seccomp filter,
+   wasm without the `js` backend, early boot).
    Ring proof witness generation is not covered by this feature: it relies on the
    branch-free handling of the secret bits
    implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
