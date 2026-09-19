@@ -383,6 +383,11 @@ impl<S: RingSuite> RingContext<S> {
     }
 
     /// Create a prover instance for a specific position in the ring.
+    ///
+    /// `key_index` is reduced modulo [`Self::max_ring_size`]. The proof
+    /// verifies only if the slot it lands on holds the prover's own key. The
+    /// context holds no keys and cannot check that: a wrong index gives a
+    /// proof that every verifier rejects.
     pub fn ring_prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         self.clone().into_ring_prover(prover_key, key_index)
     }
@@ -393,7 +398,10 @@ impl<S: RingSuite> RingContext<S> {
     }
 
     /// Create a prover instance, consuming the context to avoid cloning.
+    ///
+    /// See [`Self::ring_prover`] for the handling of `key_index`.
     pub fn into_ring_prover(self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
+        let key_index = key_index % self.max_ring_size();
         RingProver::<S>::init(
             prover_key,
             self.piop_params,
@@ -1412,7 +1420,7 @@ pub(crate) mod testing {
         };
 
         // Below the smallest domain (a panic once), one power off, and the
-        // power of two of a raw SRS file (a setup with its own domain once).
+        // power of two of an untrimmed SRS file (a setup with its own domain once).
         let g1_powers = ring_setup.pcs_params.powers_in_g1.len();
         let g1_power = ring_setup.pcs_params.powers_in_g1[0];
         for g1_len in [

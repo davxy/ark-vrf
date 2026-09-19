@@ -58,11 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VerifierKeyBuilder::append` return `Error::InvalidData` for a member key
   equal to the identity. On Twisted Edwards suites the identity reached an
   assertion in the ring proof backend and panicked.
+- `RingContext::ring_prover` and `into_ring_prover` reduce `key_index` modulo
+  the ring capacity. An index at or beyond the capacity panicked in the ring
+  proof backend at `prove`.
 - `RingSetup` deserialization returns `SerializationError::InvalidData` for an
   SRS whose G1 length is not the exact size of a ring domain, `3 * P + 1` for
   a power of two `P`, or with fewer than two G2 powers. Before, an SRS shorter
   than the smallest domain panicked in the domain size arithmetic, and a
-  longer one, such as a raw SRS file, decoded as a setup with the largest
+  longer one, such as an untrimmed SRS file, decoded as a setup with the largest
   domain it could back, so a node that loaded a raw file that way and a node
   that called `from_pcs_params` built keys on different domains without any
   error.
