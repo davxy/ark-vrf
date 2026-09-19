@@ -473,22 +473,9 @@ pub type Public<S> = PointWrapper<S, PublicKind>;
 /// is not in a known discrete-log relation with the suite generator, which the
 /// soundness of the schemes requires (see the crate docs).
 ///
-/// `Input` does not encode to or decode from bytes: a verifier that decoded a
-/// prover-chosen point could not check that relation. Send the input data and
-/// call [`Input::new`] on both sides.
-///
-/// ```compile_fail,E0277
-/// use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-/// use ark_vrf::{Input, Suite};
-///
-/// fn decode<S: Suite>(bytes: &[u8]) -> Input<S> {
-///     Input::<S>::deserialize_compressed(bytes).unwrap()
-/// }
-///
-/// fn encode<S: Suite>(input: &Input<S>, bytes: &mut Vec<u8>) {
-///     input.serialize_compressed(bytes).unwrap()
-/// }
-/// ```
+/// `Input` does not implement the serialization traits, so a verifier cannot
+/// take a prover-chosen point. Send the input data and call [`Input::new`] on
+/// both sides.
 pub type Input<S> = PointWrapper<S, InputKind>;
 
 /// VRF output point generic over the cipher suite.
@@ -591,9 +578,8 @@ impl<S: Suite> Output<S> {
 
 /// VRF input-output pair.
 ///
-/// The pair does not encode to or decode from bytes, because [`Input`] does
-/// not: send the output and the input data, and build the input with
-/// [`Input::new`].
+/// The pair does not implement the serialization traits, because [`Input`]
+/// does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VrfIo<S: Suite> {
     pub input: Input<S>,
