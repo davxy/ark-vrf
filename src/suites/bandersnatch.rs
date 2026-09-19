@@ -149,12 +149,11 @@ pub(crate) mod tests {
     /// The identity `(0, 1)` compresses to `y = 1` with the sign flag of `x`
     /// clear (bit 7 of the last byte). Arkworks reads the same point from the
     /// bytes with the flag set, because both roots of `x` are zero. The
-    /// crate's point decoder trusts its bytes when unchecked and accepts both
-    /// strings; checked, it accepts only the string the encoder writes. A
-    /// proof that holds the point inherits this, so one proof has one
-    /// checked encoding.
+    /// crate's point decoder accepts only the string the encoder writes, on
+    /// the checked and on the unchecked path. A proof that holds the point
+    /// inherits this, so one proof has one encoding.
     #[test]
-    fn identity_has_one_checked_encoding() {
+    fn identity_has_one_encoding() {
         use crate::thin::Proof;
         use crate::utils::common::deserialize_point;
         use ark_serialize::{Compress, Validate};
@@ -174,7 +173,7 @@ pub(crate) mod tests {
         let decode =
             |bytes: &[u8], validate| deserialize_point::<ThisSuite>(bytes, Compress::Yes, validate);
         assert_eq!(decode(&canonical, Validate::No).unwrap(), identity);
-        assert_eq!(decode(&alias, Validate::No).unwrap(), identity);
+        assert!(decode(&alias, Validate::No).is_err());
         assert_eq!(decode(&canonical, Validate::Yes).unwrap(), identity);
         assert!(decode(&alias, Validate::Yes).is_err());
 
@@ -196,7 +195,7 @@ pub(crate) mod tests {
             reencode(unchecked(&canonical_proof).unwrap()),
             canonical_proof
         );
-        assert_eq!(reencode(unchecked(&alias_proof).unwrap()), canonical_proof);
+        assert!(unchecked(&alias_proof).is_err());
 
         let checked = |bytes: &[u8]| Proof::<ThisSuite>::deserialize_compressed(bytes);
         assert_eq!(

@@ -424,9 +424,11 @@ impl<S: Suite> Secret<S> {
 /// reject the group identity. The verifiers trust this invariant: they reject
 /// the identity, which is cheap, but they do not repeat the subgroup check.
 /// [`Self::from_affine_unchecked`] and the `deserialize_*_unchecked` methods
-/// skip validation and leave this responsibility to the caller. Checked
-/// deserialization also accepts only the canonical encoding of the point;
-/// the unchecked methods trust the bytes as they are.
+/// skip validation and leave this responsibility to the caller. Both
+/// deserialization paths accept only the canonical encoding of the point:
+/// `Validate::No` skips the subgroup and identity checks, not the encoding
+/// rule, so a point inside an arkworks sequence, whose elements are decoded
+/// unchecked, has one encoding too.
 ///
 /// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize)]

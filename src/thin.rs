@@ -47,10 +47,10 @@ impl<T> ThinSuite for T where T: Suite {}
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Checked deserialization accepts one encoding per proof: bytes that decode
-/// to a point but differ from that point's own encoding are rejected. The
-/// unchecked methods trust the bytes as they are. The decoder reads one proof
-/// and stops; the caller frames the bytes and rejects trailing data.
+/// Deserialization accepts one encoding per proof: bytes that decode to a
+/// point but differ from that point's own encoding are rejected, on the
+/// checked and on the unchecked path alike. The decoder reads one proof and
+/// stops; the caller frames the bytes and rejects trailing data.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
@@ -598,7 +598,10 @@ pub(crate) mod testing {
             &bytes,
             r_range,
             Compress::Yes,
-            |bytes| Proof::<S>::deserialize_compressed(bytes).is_ok(),
+            |bytes| {
+                Proof::<S>::deserialize_compressed(bytes).is_ok()
+                    || common::decodes_inside_vec::<Proof<S>>(bytes, Compress::Yes)
+            },
         );
         assert!(!aliases.is_empty());
     }

@@ -63,9 +63,11 @@ impl<R: ark_std::io::Read, const N: usize> ark_std::io::Read for Recorder<R, N> 
     }
 }
 
-/// Decode a value and, with `Validate::Yes`, accept only the bytes that the
-/// value itself encodes to. With `Validate::No` the bytes are trusted and
-/// decoded as they are.
+/// Decode a value and accept only the bytes that the value itself encodes to.
+/// `validate` goes to the inner decoder for its subgroup check and does not
+/// gate the comparison: arkworks sequences decode their elements with
+/// `Validate::No` and batch check the values afterwards, so a rule gated on it
+/// would never reach a value inside a `Vec`.
 ///
 /// Arkworks reads the identity from several byte strings and ignores the sign
 /// flag of an uncompressed Short Weierstrass point, so one point can have
@@ -80,9 +82,6 @@ pub(crate) fn deserialize_canonical<T, const N: usize>(
 where
     T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize,
 {
-    if validate == ark_serialize::Validate::No {
-        return T::deserialize_with_mode(reader, compress, validate);
-    }
     let mut recorder = Recorder {
         inner: reader,
         bytes: [0u8; N],

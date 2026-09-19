@@ -168,10 +168,10 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Checked deserialization accepts one encoding per proof: bytes that decode
-/// to a point but differ from that point's own encoding are rejected. The
-/// unchecked methods trust the bytes as they are. The decoder reads one proof
-/// and stops; the caller frames the bytes and rejects trailing data.
+/// Deserialization accepts one encoding per proof: bytes that decode to a
+/// point but differ from that point's own encoding are rejected, on the
+/// checked and on the unchecked path alike. The decoder reads one proof and
+/// stops; the caller frames the bytes and rejects trailing data.
 #[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
@@ -1141,7 +1141,10 @@ pub(crate) mod testing {
             &bytes,
             ok_range,
             Compress::Yes,
-            |bytes| Proof::<S>::deserialize_compressed(bytes).is_ok(),
+            |bytes| {
+                Proof::<S>::deserialize_compressed(bytes).is_ok()
+                    || common::decodes_inside_vec::<Proof<S>>(bytes, Compress::Yes)
+            },
         );
         assert!(!aliases.is_empty());
 
@@ -1157,7 +1160,10 @@ pub(crate) mod testing {
             &bytes,
             first_point,
             Compress::No,
-            |bytes| Proof::<S>::deserialize_uncompressed(bytes).is_ok(),
+            |bytes| {
+                Proof::<S>::deserialize_uncompressed(bytes).is_ok()
+                    || common::decodes_inside_vec::<Proof<S>>(bytes, Compress::No)
+            },
         );
     }
 

@@ -471,12 +471,28 @@ pub fn assert_aliases_rejected<T: CanonicalSerialize + CanonicalDeserialize>(
     aliases
 }
 
+/// Decode `bytes` as the single element of a `Vec<T>` with the checked
+/// method. Arkworks decodes the elements of a sequence with `Validate::No`
+/// and batch checks the values afterwards, so a rule that only the checked
+/// decoder applies is skipped on this path.
+pub fn decodes_inside_vec<T: CanonicalDeserialize>(
+    bytes: &[u8],
+    compress: ark_serialize::Compress,
+) -> bool {
+    let mut framed = Vec::new();
+    1u64.serialize_with_mode(&mut framed, compress).unwrap();
+    framed.extend_from_slice(bytes);
+    Vec::<T>::deserialize_with_mode(&framed[..], compress, ark_serialize::Validate::Yes).is_ok()
+}
+
 /// A point must have one accepted encoding. Arkworks reads the identity from
 /// several byte strings (any `x` with the infinity flag on Short Weierstrass
 /// curves, either sign flag on Twisted Edwards curves) and ignores the sign
 /// flag of an uncompressed Short Weierstrass point. Byte-keyed deduplication
-/// and strong unforgeability of proofs need one encoding per value. Unchecked
-/// decoding trusts its bytes and skips the check by design.
+/// and strong unforgeability of proofs need one encoding per value. The rule
+/// does not depend on `Validate`: unchecked decoding skips only the subgroup
+/// and identity checks, so a value inside an arkworks sequence, whose
+/// elements are decoded unchecked, gets one encoding too.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
     use crate::utils::common::{deserialize_canonical, deserialize_point};
     use ark_serialize::{Compress, SerializationError, Validate};
@@ -500,7 +516,7 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
     for alias in &aliases {
-        assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_ok());
+        assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_err());
     }
 
     let point = Secret::<S>::from_seed(TEST_SEED).public().point();
@@ -511,7 +527,7 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
             |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
         assert_eq!(decode(&bytes).unwrap().point(), point);
         assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
-            decode(bytes).is_ok()
+            decode(bytes).is_ok() || decodes_inside_vec::<Public<S>>(bytes, compress)
         });
     }
 }

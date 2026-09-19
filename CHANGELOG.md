@@ -69,12 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   domain it could back, so a node that loaded a raw file that way and a node
   that called `from_pcs_params` built keys on different domains without any
   error.
-- Checked deserialization of `Public`, `Input`, `Output` and of the Thin,
-  Pedersen and Ring proofs accepts one encoding per value; the unchecked
-  methods trust their bytes. Arkworks decodes the identity
-  from several byte strings and ignores the sign flag of an uncompressed
-  Short Weierstrass point, so a Pedersen or Ring proof over an empty I/O list,
-  whose `Ok` is the identity, had several encodings that all verified.
+- Deserialization of `Public`, `Input`, `Output` and of the Thin, Pedersen
+  and Ring proofs accepts one encoding per value, on the checked and on the
+  unchecked path alike; `Validate::No` skips only the subgroup and identity
+  checks. Arkworks decodes the identity from several byte strings and ignores
+  the sign flag of an uncompressed Short Weierstrass point, so a Pedersen or
+  Ring proof over an empty I/O list, whose `Ok` is the identity, had several
+  encodings that all verified. The rule holds on the unchecked path because
+  arkworks sequences such as `Vec` decode their elements unchecked and batch
+  check the values afterwards, where no encoding rule can run.
 
 ## [0.5.3] - 2026-08-18
 
