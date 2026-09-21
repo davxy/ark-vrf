@@ -29,10 +29,11 @@
 //!   representation.
 //!
 //! * The point_to_string function converts a point in **G** to an octet
-//!   string using compressed form. The y coordinate is encoded using
-//!   int_to_string function and the most significant bit of the last
-//!   octet is used to keep track of the x's sign. This implies that
-//!   the point is encoded on 32 bytes.
+//!   string using compressed form: the x coordinate encoded with
+//!   int_to_string, followed by one flag octet. The flag is `0x00` when the
+//!   integer y is at most `(p - 1) / 2` and `0x80` otherwise; the identity
+//!   has its own flag `0x40` and is never a valid public key or output.
+//!   This implies that the point is encoded on 33 bytes.
 //!
 //! * The string_to_point function tries to decompress the point encoded
 //!   according to `point_to_string` procedure. This function MUST outputs

@@ -97,6 +97,7 @@ where
 }
 
 use ark_ec::twisted_edwards::{Affine as TEAffine, TECurveConfig};
+use ark_ff::BigInteger;
 impl<C> CheckPoint for TEAffine<C>
 where
     C: TECurveConfig,
@@ -110,6 +111,91 @@ where
         }
         Ok(())
     }
+}
+
+fn compressed<P: CanonicalSerialize>(point: &P) -> Vec<u8> {
+    let mut buf = Vec::new();
+    point.serialize_compressed(&mut buf).unwrap();
+    buf
+}
+
+/// The compressed point layout that the suite module docs state.
+pub trait PointEncodingRule {
+    /// Panics when the encoding differs from the documented rule.
+    fn check_point_encoding();
+}
+
+impl<C> PointEncodingRule for SWAffine<C>
+where
+    C: SWCurveConfig,
+    C::BaseField: PrimeField,
+{
+    /// `x` little-endian, then the flags in the two top bits of the last
+    /// octet, on `ceil((bits + 2) / 8)` octets: one extra octet on a 255 or
+    /// 256 bit field. The flag is set for `y > (p - 1) / 2`, so the negation
+    /// flips it. SEC1 uses a big-endian `x` after a leading `0x02` or `0x03`.
+    fn check_point_encoding() {
+        let generator = Self::generator();
+        let (x, y) = generator.xy().unwrap();
+        let y_is_high = y.into_bigint() > C::BaseField::MODULUS_MINUS_ONE_DIV_TWO;
+        let encoded_len = (C::BaseField::MODULUS_BIT_SIZE as usize + 2).div_ceil(8);
+
+        let mut expected = x.into_bigint().to_bytes_le();
+        expected.resize(encoded_len, 0);
+        expected[encoded_len - 1] |= (y_is_high as u8) << 7;
+        assert_eq!(compressed(&generator), expected);
+
+        expected[encoded_len - 1] ^= 1 << 7;
+        assert_eq!(compressed(&-generator), expected);
+    }
+}
+
+impl<C> PointEncodingRule for TEAffine<C>
+where
+    C: TECurveConfig,
+    C::BaseField: PrimeField,
+{
+    /// `y` little-endian with the top bit of the last octet set for
+    /// `x > (p - 1) / 2`, on `ceil((bits + 1) / 8)` octets. RFC 8032 and the
+    /// zkcrypto crates store the parity of `x` there instead, so the check
+    /// walks to a point where the two rules disagree.
+    fn check_point_encoding() {
+        let encoded_len = (C::BaseField::MODULUS_BIT_SIZE as usize + 1).div_ceil(8);
+        let x_is_high =
+            |point: &Self| point.x.into_bigint() > C::BaseField::MODULUS_MINUS_ONE_DIV_TWO;
+        let expected = |point: &Self| {
+            let mut bytes = point.y.into_bigint().to_bytes_le();
+            bytes.resize(encoded_len, 0);
+            bytes[encoded_len - 1] |= (x_is_high(point) as u8) << 7;
+            bytes
+        };
+
+        let generator = Self::generator();
+        assert_eq!(compressed(&generator), expected(&generator));
+
+        let mut point = generator;
+        while x_is_high(&point) == point.x.into_bigint().is_odd() {
+            point = (point + generator).into_affine();
+        }
+        assert_eq!(compressed(&point), expected(&point));
+    }
+}
+
+/// The suite module docs state the point and scalar encodings. This pins
+/// them, so that the docs and the bytes cannot drift apart.
+pub fn encodings_follow_the_module_doc<S: Suite>()
+where
+    AffinePoint<S>: PointEncodingRule,
+{
+    AffinePoint::<S>::check_point_encoding();
+
+    let encoded = scalar_encode::<S>(&ScalarField::<S>::from(0x0102u64));
+    assert_eq!(
+        encoded.len(),
+        ScalarField::<S>::MODULUS_BIT_SIZE.div_ceil(8) as usize
+    );
+    assert_eq!(encoded[..2], [0x02, 0x01]);
+    assert!(encoded[2..].iter().all(|byte| *byte == 0));
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -555,6 +641,11 @@ macro_rules! suite_tests {
         #[test]
         fn decoder_reads_one_value() {
             $crate::testing::decoder_reads_one_value::<$suite>();
+        }
+
+        #[test]
+        fn encodings_follow_the_module_doc() {
+            $crate::testing::encodings_follow_the_module_doc::<$suite>();
         }
     };
 }

@@ -30,8 +30,9 @@
 //! * The point_to_string function converts a point in **G** to an octet
 //!   string using compressed form. The y coordinate is encoded using
 //!   int_to_string function and the most significant bit of the last
-//!   octet is used to keep track of the x's sign. This implies that
-//!   the point is encoded on 32 bytes.
+//!   octet is set when the integer x is greater than `(p - 1) / 2`. The
+//!   zkcrypto `jubjub` crate stores the parity of x there instead. This
+//!   implies that the point is encoded on 32 bytes.
 //!
 //! * The string_to_point function tries to decompress the point encoded
 //!   according to `point_to_string` procedure. This function MUST outputs
