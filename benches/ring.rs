@@ -299,7 +299,7 @@ fn bench_ring_suite<S: RingSuite>(c: &mut Criterion) {
 }
 
 fn bench_ring(c: &mut Criterion) {
-    for_each_ring_suite!(c, bench_ring_suite);
+    for_each_suite!(ring, c, bench_ring_suite);
 }
 
 criterion_group!(benches, bench_ring);

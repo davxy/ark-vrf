@@ -22,6 +22,8 @@ fn bench_data_to_point_tai<S: Suite>(c: &mut Criterion) {
     });
 }
 
+// Called for the Elligator2 suites only, see `bench_common`.
+#[cfg(feature = "bandersnatch")]
 fn bench_data_to_point_ell2<S: Suite>(c: &mut Criterion)
 where
     ark_vrf::CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
