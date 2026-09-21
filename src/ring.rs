@@ -70,6 +70,7 @@ use ark_ec::{
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
 };
 use ark_std::{borrow::Cow, ops::Range};
+use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::canonical::deserialize_canonical;
 use utils::te_sw_map::TEMapping;
@@ -767,6 +768,26 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
     }
 }
 
+/// What the backend expects from its SRS lookup closure.
+type SrsSegment<S> = Result<Vec<G1Affine<S>>, ()>;
+
+/// The backend asks its lookup closure for one range, once, and panics on an
+/// error. This fetches that range through the caller's fallible [`SrsLookup`]
+/// up front and returns a closure that serves it once and fails otherwise.
+fn prefetched_lookup<S: RingSuite>(
+    lookup: impl SrsLookup<S>,
+    range: Range<usize>,
+) -> Result<impl Fn(Range<usize>) -> SrsSegment<S>, Error> {
+    let points = lookup.lookup(range.clone()).ok_or(Error::SrsLookupFailed)?;
+    let points = Cell::new(Some(points));
+    Ok(move |asked| {
+        if asked != range {
+            return Err(());
+        }
+        points.take().ok_or(())
+    })
+}
+
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
@@ -774,17 +795,11 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// `max_ring_size..piop_domain_size`, the part of the SRS behind the keys.
     pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Result<Self, Error> {
         let keys = ring_setup.ring_ctx.max_ring_size();
-        let tail = lookup
-            .lookup(keys..piop_domain_size::<S>(keys))
-            .ok_or(Error::SrsLookupFailed)?;
-        let lookup = |range: Range<usize>| {
-            debug_assert_eq!(tail.len(), range.len());
-            Ok(tail.clone())
-        };
+        let srs = prefetched_lookup(lookup, keys..piop_domain_size::<S>(keys))?;
         let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
             &ring_setup.ring_ctx.piop_params,
-            lookup,
+            srs,
             pcs_params.g1.into_group(),
         );
         Ok(VerifierKeyBuilder {
@@ -822,17 +837,12 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         if self.free_slots() < pks.len() {
             return Err(Error::RingCapacityExceeded);
         }
-        // Currently `ring-proof` backend panics if lookup fails.
-        // This workaround makes lookup failures a bit less harsh.
-        let segment = lookup
-            .lookup(self.partial.curr_keys..self.partial.curr_keys + pks.len())
-            .ok_or(Error::SrsLookupFailed)?;
-        let lookup = |range: Range<usize>| {
-            debug_assert_eq!(segment.len(), range.len());
-            Ok(segment.clone())
-        };
+        let srs = prefetched_lookup(
+            lookup,
+            self.partial.curr_keys..self.partial.curr_keys + pks.len(),
+        )?;
         let pks = ring_members_te::<S>(pks)?;
-        self.partial.append(&pks, lookup);
+        self.partial.append(&pks, srs);
         Ok(())
     }
 
@@ -1108,6 +1118,23 @@ pub(crate) mod testing {
     pub const TEST_RING_SIZE: usize = 8;
 
     const MAX_AD_LEN: usize = 100;
+
+    /// The backend asks its lookup closure for one range, once, and panics
+    /// on an error. The closure must serve the prefetched range and nothing
+    /// else: another range, the same range a second time, or a lookup that
+    /// failed up front must surface instead of feeding the backend wrong or
+    /// stale points.
+    pub fn prefetched_lookup_serves_the_range_once<S: RingSuite>() {
+        let points = vec![G1Affine::<S>::generator(); 4];
+        let srs = prefetched_lookup::<S>(|_: Range<usize>| Some(points.clone()), 3..7).unwrap();
+        assert_eq!(srs(2..6), Err(()));
+        assert_eq!(srs(3..8), Err(()));
+        assert_eq!(srs(3..7), Ok(points.clone()));
+        assert_eq!(srs(3..7), Err(()));
+
+        let failed = prefetched_lookup::<S>(|_: Range<usize>| None, 3..7).map(|_| ());
+        assert!(matches!(failed, Err(Error::SrsLookupFailed)));
+    }
 
     fn find_complement_point<C: SWCurveConfig>() -> SWAffine<C> {
         use ark_ff::{One, Zero};
@@ -1806,6 +1833,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ring::testing::prove_verify::<$suite>()
+                }
+
+                #[test]
+                fn prefetched_lookup_serves_the_range_once() {
+                    $crate::ring::testing::prefetched_lookup_serves_the_range_once::<$suite>()
                 }
 
                 #[test]
