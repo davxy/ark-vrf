@@ -4,6 +4,7 @@
 //! used throughout the VRF schemes, including challenge generation, nonce
 //! derivation, and delinearization.
 
+use crate::utils::straus::short_msm;
 use crate::utils::transcript::Transcript;
 use crate::*;
 use ark_ec::AffineRepr;
@@ -178,7 +179,7 @@ fn vrf_transcript_merged<S: Suite>(
     ios: Ios<'_, S>,
     ad: &[u8],
 ) -> (S::Transcript, VrfIo<S>) {
-    let (t, scalars) = vrf_transcript_base(scheme, ios, ad);
+    let (t, mut scalars) = vrf_transcript_base(scheme, ios, ad);
     let io = match ios.len() {
         0 => {
             let zero = AffinePoint::<S>::zero();
@@ -188,7 +189,7 @@ fn vrf_transcript_merged<S: Suite>(
             }
         }
         1 => ios.iter().next().expect("one pair"),
-        _ => merge_ios(ios, scalars),
+        n => merge_ios(ios, &scalars.take(n)),
     };
     (t, io)
 }
@@ -235,6 +236,42 @@ pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
     vrf_transcript_scalars(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
+}
+
+/// Point count up to which the Tiny and Thin verifiers expand their equation
+/// over the raw pairs. Straus with a one bit window stays cheap up to about
+/// five points; above that the merged pair costs less.
+const EXPANDED_MAX_POINTS: usize = 5;
+
+/// Left-hand side `s * I_m - c * O_m` of the Tiny and Thin verification
+/// equation, with `(G, Y)` prepended as the pair of `zs[0]`.
+///
+/// With few pairs the merge is skipped: `sum_i (s * z_i) * I_i - (c * z_i) * O_i`
+/// runs as one Straus pass over the raw points.
+pub(crate) fn schnorr_lhs<S: Suite>(
+    public: AffinePoint<S>,
+    ios: &[VrfIo<S>],
+    zs: &[ScalarField<S>],
+    s: ScalarField<S>,
+    c: ScalarField<S>,
+) -> <AffinePoint<S> as AffineRepr>::Group {
+    let ios = Ios::with_schnorr(public, ios);
+    let points = 2 * ios.len();
+    if points <= EXPANDED_MAX_POINTS {
+        let mut bases = Vec::with_capacity(points);
+        let mut scalars = Vec::with_capacity(points);
+        for (io, z) in ios.iter().zip(zs) {
+            bases.push(io.input.0);
+            scalars.push(s * z);
+            bases.push(io.output.0);
+            scalars.push(-(c * z));
+        }
+        let window = if points <= 3 { 2 } else { 1 };
+        short_msm(&bases, &scalars, window)
+    } else {
+        let merged = merge_ios(ios, zs);
+        short_msm(&[merged.input.0, merged.output.0], &[s, -c], 2)
+    }
 }
 
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
@@ -370,25 +407,22 @@ pub(crate) const MSM_THRESHOLD: usize = 16;
 
 /// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
-/// Caller must ensure `ios.len() >= 2` and that `scalars` yields at least
-/// `n` values.
-fn merge_ios<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> VrfIo<S> {
-    let n = ios.len();
-
+/// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
+fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
     let zero = AffinePoint::<S>::zero().into_group();
-    let (input, output) = if n < MSM_THRESHOLD {
-        ios.iter().fold((zero, zero), |(h_acc, g_acc), io| {
-            let z = scalars.next();
-            (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
-        })
+    let (input, output) = if zs.len() < MSM_THRESHOLD {
+        ios.iter()
+            .zip(zs)
+            .fold((zero, zero), |(h_acc, g_acc), (io, z)| {
+                (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
+            })
     } else {
-        let zs = scalars.take(n);
         let (inputs, outputs): (Vec<_>, Vec<_>) =
             ios.iter().map(|io| (io.input.0, io.output.0)).unzip();
         use ark_ec::VariableBaseMSM;
         type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
-        let input = Group::<S>::msm_unchecked(&inputs, &zs);
-        let output = Group::<S>::msm_unchecked(&outputs, &zs);
+        let input = Group::<S>::msm_unchecked(&inputs, zs);
+        let output = Group::<S>::msm_unchecked(&outputs, zs);
         (input, output)
     };
     let norms = CurveGroup::normalize_batch(&[input, output]);
@@ -402,6 +436,48 @@ fn merge_ios<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> V
 mod tests {
     use super::*;
     use suites::testing::TestSuite;
+
+    fn sample_ios(n: usize) -> Vec<VrfIo<TestSuite>> {
+        let sk = ScalarField::<TestSuite>::from(42u64);
+        (0..n as u8)
+            .map(|i| {
+                let input = TestSuite::data_to_point(&[i]).unwrap();
+                let output = (input * sk).into_affine();
+                VrfIo {
+                    input: Input::from_affine_unchecked(input),
+                    output: Output::from_affine_unchecked(output),
+                }
+            })
+            .collect()
+    }
+
+    /// The Tiny and Thin verifiers expand `s * I_m - c * O_m` over the raw
+    /// pairs when the pairs are few and merge them otherwise. Both paths must
+    /// equal the plain sum, on each side of the point threshold.
+    #[test]
+    fn schnorr_lhs_matches_the_plain_sum() {
+        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let s = ScalarField::<TestSuite>::from(12345u64);
+        let c = ScalarField::<TestSuite>::from(678u64);
+        for n in 0..=3 {
+            let ios = sample_ios(n);
+            let (_, zs) = vrf_transcript_scalars_with_schnorr::<TestSuite>(
+                DomSep::TinyVrf,
+                public,
+                &ios,
+                b"ad",
+            );
+            let zero = AffinePoint::<TestSuite>::zero().into_group();
+            let (input, output) = Ios::with_schnorr(public, &ios)
+                .iter()
+                .zip(&zs)
+                .fold((zero, zero), |(i, o), (io, z)| {
+                    (i + io.input.0 * z, o + io.output.0 * z)
+                });
+            let expected = input * s - output * c;
+            assert_eq!(schnorr_lhs::<TestSuite>(public, &ios, &zs, s, c), expected);
+        }
+    }
 
     /// Verify that the scheme tag produces distinct transcripts.
     #[test]
@@ -451,8 +527,8 @@ mod tests {
                 })
                 .collect();
 
-            let (t, scalars) = vrf_transcript_base(DomSep::ThinVrf, Ios::plain(&ios), b"ad");
-            let merged = merge_ios(Ios::plain(&ios), scalars);
+            let (t, mut scalars) = vrf_transcript_base(DomSep::ThinVrf, Ios::plain(&ios), b"ad");
+            let merged = merge_ios(Ios::plain(&ios), &scalars.take(n));
 
             let zs = DelinearizeScalars::<TestSuite>::new(t).take(n);
             let plain_sum = |points: Vec<AffinePoint<TestSuite>>| {

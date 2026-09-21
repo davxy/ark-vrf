@@ -22,10 +22,7 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::{
-    utils::canonical::deserialize_point, utils::common::DomSep, utils::straus::short_msm,
-    utils::weight_scalar, *,
-};
+use crate::{utils::canonical::deserialize_point, utils::common::DomSep, utils::weight_scalar, *};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -189,13 +186,13 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
         }
 
         let Proof { r, s } = proof;
-        let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(self.0, ios, ad);
 
         // Challenge
         let c = S::challenge(&[r], t);
 
         // Verification: s * I_m - c * O_m == R
-        let lhs = short_msm(&[merged.input.0, merged.output.0], &[*s, -c], 2);
+        let lhs = utils::schnorr_lhs::<S>(self.0, ios, &zs, *s, c);
         if lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }

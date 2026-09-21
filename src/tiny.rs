@@ -25,7 +25,6 @@
 
 use super::*;
 use utils::common::{DomSep, stack_buf};
-use utils::straus::short_msm;
 
 /// Marker trait for suites that support the Tiny VRF scheme.
 ///
@@ -41,6 +40,15 @@ fn vrf_transcript<S: TinySuite>(
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, VrfIo<S>) {
     utils::vrf_transcript_with_schnorr(DomSep::TinyVrf, public, ios, ad)
+}
+
+#[inline(always)]
+fn vrf_transcript_scalars<S: TinySuite>(
+    public: AffinePoint<S>,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Vec<ScalarField<S>>) {
+    utils::vrf_transcript_scalars_with_schnorr(DomSep::TinyVrf, public, ios, ad)
 }
 
 /// Tiny VRF proof.
@@ -215,12 +223,12 @@ impl<S: TinySuite> Verifier<S> for Public<S> {
             return Err(Error::InvalidData);
         }
 
-        let (t, io) = vrf_transcript::<S>(self.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(self.0, ios, ad);
 
         let Proof { c, s } = proof;
 
         // R = s * I_m - c * O_m
-        let r = short_msm(&[io.input.0, io.output.0], &[*s, -*c], 2).into_affine();
+        let r = utils::schnorr_lhs::<S>(self.0, ios, &zs, *s, *c).into_affine();
 
         let c_exp = S::challenge(&[&r], t);
         (c_exp == *c)

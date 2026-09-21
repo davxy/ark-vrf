@@ -49,6 +49,12 @@ Breaking release. Every entry under Changed alters the public API.
   `RingVerifierKey`, `RingCommitment` or `PcsVerifierParams` from untrusted
   bytes.
 
+### Performance
+
+- Tiny and Thin verification with one I/O pair runs one Straus pass over the
+  four raw points instead of merging the pairs first. Bandersnatch, one
+  thread, `asm`: Tiny verify 196 us to 128 us, Thin verify 176 us to 124 us.
+
 ## [0.5.3] - 2026-08-18
 
 ### Changed
