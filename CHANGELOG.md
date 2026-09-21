@@ -22,6 +22,10 @@ Breaking release. Every entry under Changed alters the public API.
   `from_rand_insecure`. Whoever generates the KZG trapdoor can forge ring
   proofs; a deployment loads a trusted setup SRS with `from_pcs_params`.
 - Fallible constructors: `Input::new` and `VerifierKeyBuilder::new`.
+- `Suite::SECURITY_PARAMETER` (default 128) and the derived
+  `Suite::CHALLENGE_LEN` size the challenge, the delinearization and batch
+  scalars, the nonce expansion and the hash-to-curve field expansion.
+  `utils::CHALLENGE_LEN` is gone.
 
 ### Fixed
 

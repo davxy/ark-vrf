@@ -331,7 +331,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         let mut g_scalar = ScalarField::<S>::zero();
 
         for item in items.iter() {
-            // 128-bit random weights for Schwartz-Zippel soundness.
+            // Random weights of CHALLENGE_LEN bytes for Schwartz-Zippel soundness.
             let w = challenge_scalar::<S>(&mut t);
 
             let wc = w * item.c;
