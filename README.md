@@ -238,6 +238,13 @@ let verifier = ring_ctx.ring_verifier(verifier_key);
 let result = Public::verify(io, b"aux data", &proof, &verifier);
 ```
 
+_Both keys_
+```rust,ignore
+// A party that needs both keys indexes the ring once. The two calls above
+// each build both keys and drop one half, so they cost twice as much.
+let (prover_key, verifier_key) = ring_setup.keys(&ring).unwrap();
+```
+
 _Verifier key from commitment_
 ```rust,ignore
 // For efficiency, a commitment to the ring can be shared

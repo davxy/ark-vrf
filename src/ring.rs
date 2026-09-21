@@ -540,30 +540,50 @@ impl<S: RingSuite> RingSetup<S> {
         })
     }
 
+    /// Create both keys for the given ring of public keys.
+    ///
+    /// The backend builds the two keys in one pass. [`Self::prover_key`] and
+    /// [`Self::verifier_key`] each drop one half, so a party that needs both
+    /// keys pays twice if it calls them.
+    ///
+    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
+    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
+    /// Twisted Edwards form.
+    pub fn keys(
+        &self,
+        pks: &[AffinePoint<S>],
+    ) -> Result<(RingProverKey<S>, RingVerifierKey<S>), Error> {
+        if pks.len() > self.ring_ctx.max_ring_size() {
+            return Err(Error::RingCapacityExceeded);
+        }
+        let pks = ring_members_te::<S>(pks)?;
+        Ok(ring_proof::index(
+            &self.pcs_params,
+            &self.ring_ctx.piop_params,
+            &pks,
+        ))
+    }
+
     /// Create a prover key for the given ring of public keys.
+    ///
+    /// Use [`Self::keys`] if the verifier key is needed too.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).0)
+        Ok(self.keys(pks)?.0)
     }
 
     /// Create a verifier key for the given ring of public keys.
+    ///
+    /// Use [`Self::keys`] if the prover key is needed too.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).1)
+        Ok(self.keys(pks)?.1)
     }
 
     /// Create a verifier key from a precomputed ring commitment.
@@ -1452,6 +1472,10 @@ pub(crate) mod testing {
             ring_setup.verifier_key(&pks),
             Err(Error::RingCapacityExceeded)
         ));
+        assert!(matches!(
+            ring_setup.keys(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
 
         // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity.
         let pcs_params = ring_setup.pcs_params.clone();
@@ -1478,6 +1502,7 @@ pub(crate) mod testing {
             ring_setup.verifier_key(&pks),
             Err(Error::InvalidData)
         ));
+        assert!(matches!(ring_setup.keys(&pks), Err(Error::InvalidData)));
 
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
         let free_slots = vk_builder.free_slots();

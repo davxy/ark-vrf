@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Breaking release. Every entry under Changed alters the public API.
 
+### Added
+
+- `RingSetup::keys` returns the prover key and the verifier key from one
+  indexing pass. `prover_key` and `verifier_key` each dropped one half, so a
+  party that needs both paid twice: 74 ms against 38 ms at ring size 255.
+
 ### Changed
 
 - Opaque types. `Public`, `Input` and `Output` are aliases of

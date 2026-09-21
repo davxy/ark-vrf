@@ -84,6 +84,12 @@ fn ring_benches<S: RingSuite>(c: &mut Criterion) {
                 });
             });
 
+        c.benchmark_group(format!("{}/ring_keys", S::SUITE_NAME))
+            .sample_size(10)
+            .bench_function(id.clone(), |b| {
+                b.iter(|| setup.ring_setup.keys(black_box(&setup.ring)).unwrap());
+            });
+
         let ring_ctx = setup.ring_setup.ring_context();
         let prover_key = setup.ring_setup.prover_key(&setup.ring).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, setup.prover_idx);

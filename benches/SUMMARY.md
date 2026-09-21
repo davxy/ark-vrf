@@ -66,8 +66,9 @@ Criterion: 0.5.1, `--quick` mode. One run per benchmark, except `ring_prove` and
 |:-------------------------|----------:|----------:|----------:|
 | ring_params_setup        |  849.7 us |  3.646 ms |  7.843 ms |
 | ring_context_setup       |  833.9 us |  3.649 ms |  8.304 ms |
-| ring_prover_key          |  38.59 ms |  118.5 ms |  204.1 ms |
-| ring_verifier_key        |  38.77 ms |  118.5 ms |  204.8 ms |
+| ring_prover_key          |  36.85 ms |  115.2 ms |  212.4 ms |
+| ring_verifier_key        |  37.71 ms |  115.9 ms |  215.8 ms |
+| ring_keys                |  38.09 ms |  117.2 ms |  214.6 ms |
 | ring_prove               |  130.7 ms |  407.0 ms |  741.6 ms |
 | ring_verify              |  3.241 ms |  3.255 ms |  3.138 ms |
 | ring_verifier_from_key   |  252.3 us |  271.5 us |  283.9 us |
@@ -111,6 +112,8 @@ Optimal window size is w=2 for n=2 and n=3, and w=1 for n>=4.
   (they all round up to the same power-of-two domain).
 - `ring_prove` scales with ring size: 131 ms at n=255, 407 ms at n=1023,
   742 ms at n=2047.
+- `ring_keys` costs one indexing pass, the same as either single-key method,
+  so a party that needs both keys pays about half of the two calls.
 - `ring_vk_builder_create` is the most expensive operation (up to 2.96 s at n=2047).
   This is the Lagrangian SRS computation.
 - `ring_vk_builder_finalize` and `ring_vk_from_commitment` are essentially free
