@@ -432,14 +432,15 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             t.absorb_serialize(&e.s);
             t.absorb_serialize(&e.sb);
         }
-        // Sample 2N random scalars of CHALLENGE_LEN bytes (t_i for eq1, u_i for
-        // eq2): enough for the Schwartz-Zippel soundness argument, and shorter
-        // than full-width field elements, so the MSM needs fewer doublings.
+        // Sample 2N random weights of SECURITY_PARAMETER bits (t_i for eq1, u_i
+        // for eq2): enough for the Schwartz-Zippel soundness argument, and
+        // shorter than full-width field elements, so the MSM needs fewer
+        // doublings.
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
                 (
-                    utils::challenge_scalar::<S>(&mut t),
-                    utils::challenge_scalar::<S>(&mut t),
+                    utils::weight_scalar::<S>(&mut t),
+                    utils::weight_scalar::<S>(&mut t),
                 )
             })
             .collect();

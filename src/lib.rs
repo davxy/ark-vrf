@@ -196,16 +196,19 @@ pub trait Suite: Copy {
 
     /// Security level in bits.
     ///
-    /// Sizes the challenge ([`Self::CHALLENGE_LEN`]), the delinearization and
-    /// batch verification scalars, the nonce expansion and the hash-to-curve
-    /// field expansion, so that each modular reduction has a bias of at most
-    /// `2^-SECURITY_PARAMETER`. The built-in suites use the default.
+    /// Sizes the delinearization and batch verification scalars, the nonce
+    /// expansion and the hash-to-curve field expansion, so that each modular
+    /// reduction has a bias of at most `2^-SECURITY_PARAMETER`, and the
+    /// default of [`Self::CHALLENGE_LEN`]. The built-in suites use the default.
     const SECURITY_PARAMETER: usize = 128;
 
-    /// Challenge length in bytes, [`Self::SECURITY_PARAMETER`] over eight.
+    /// Challenge length in bytes.
     ///
-    /// Derived; do not override. It must not exceed the scalar field byte
-    /// length: the Tiny proof encodes the challenge on this length.
+    /// Defaults to [`Self::SECURITY_PARAMETER`] over eight, the RFC 9381
+    /// `cLen`. A suite may set a wider challenge, up to the scalar field byte
+    /// length, for a tighter Fiat-Shamir bound; the Tiny proof encodes `c` on
+    /// this length. A challenge shorter than the level, or wider than the
+    /// scalar field, does not compile.
     const CHALLENGE_LEN: usize = Self::SECURITY_PARAMETER / 8;
 
     /// Curve point in affine representation.
@@ -245,9 +248,9 @@ pub trait Suite: Copy {
     /// Absorbs curve points into the transcript and squeezes a scalar.
     /// The transcript typically carries shared state from `vrf_transcript`.
     /// The default takes [`Self::CHALLENGE_LEN`] bytes of the squeeze, the
-    /// RFC 9381 `cLen`, so the challenge carries `SECURITY_PARAMETER` bits
-    /// inside a full scalar. The Tiny proof encodes those bytes only, so an
-    /// override must truncate the same way.
+    /// RFC 9381 `cLen`, so the challenge carries that many bytes inside a
+    /// full scalar. The Tiny proof encodes those bytes only, so an override
+    /// must truncate the same way.
     ///
     /// Defaults to [`utils::challenge`] (inspired by RFC-9381 section 5.4.3).
     #[inline(always)]

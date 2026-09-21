@@ -55,8 +55,24 @@ pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     scalar
 }
 
+/// Squeeze the challenge: [`Suite::CHALLENGE_LEN`] bytes, at least the
+/// security level, reduced into a scalar.
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    const {
+        assert!(
+            8 * S::CHALLENGE_LEN >= S::SECURITY_PARAMETER,
+            "Suite::CHALLENGE_LEN is shorter than the security level"
+        )
+    };
     stack_buf!(buf, S::CHALLENGE_LEN);
+    t.squeeze_raw(buf);
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
+}
+
+/// Squeeze a random weight of [`Suite::SECURITY_PARAMETER`] bits, for the
+/// delinearization scalars and the batch verification weights.
+pub(crate) fn weight_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    stack_buf!(buf, S::SECURITY_PARAMETER / 8);
     t.squeeze_raw(buf);
     ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
@@ -293,7 +309,7 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> Sc
 /// squeeze stream.
 ///
 /// The first scalar is always `1` (z_0 = 1); subsequent scalars are
-/// [`Suite::CHALLENGE_LEN`] byte values squeezed from the transcript.
+/// [`Suite::SECURITY_PARAMETER`] bit values squeezed from the transcript.
 pub(crate) struct DelinearizeScalars<S: Suite> {
     transcript: S::Transcript,
     first: bool,
@@ -320,7 +336,7 @@ impl<S: Suite> DelinearizeScalars<S> {
             self.first = false;
             ScalarField::<S>::one()
         } else {
-            challenge_scalar::<S>(&mut self.transcript)
+            weight_scalar::<S>(&mut self.transcript)
         }
     }
 
@@ -453,18 +469,21 @@ mod tests {
         }
     }
 
-    /// Every squeezed width follows `Suite::SECURITY_PARAMETER`: the
-    /// challenge, the nonce expansion and the delinearization scalars. A
-    /// suite at 256 bits must not get 128-bit values from any of them.
+    /// The nonce expansion and the delinearization scalars follow
+    /// `Suite::SECURITY_PARAMETER`; the challenge follows
+    /// `Suite::CHALLENGE_LEN`, which defaults to the level and may exceed it.
+    /// A suite at 256 bits must not get 128-bit values, and a wider challenge
+    /// must not widen the delinearization scalars.
     #[test]
     fn widths_follow_security_parameter() {
-        use crate::suites::testing::TestSuite256;
+        use crate::suites::testing::{TestSuite256, TestSuiteC32};
 
         let high_half_set = |scalar: ScalarField<TestSuite256>| {
             scalar.into_bigint().as_ref()[2..]
                 .iter()
                 .any(|limb| *limb != 0)
         };
+        assert_eq!(TestSuite::CHALLENGE_LEN, 16);
         assert_eq!(TestSuite256::CHALLENGE_LEN, 32);
         assert_eq!(expanded_scalar_len::<TestSuite256>(), 64);
         assert_eq!(expanded_scalar_len::<TestSuite>(), 48);
@@ -474,5 +493,13 @@ mod tests {
         let t = <TestSuite256 as Suite>::Transcript::new(TestSuite256::SUITE_ID);
         let zs = DelinearizeScalars::<TestSuite256>::new(t).take(2);
         assert!(high_half_set(zs[1]));
+
+        assert_eq!(TestSuiteC32::CHALLENGE_LEN, 32);
+        assert_eq!(expanded_scalar_len::<TestSuiteC32>(), 48);
+        let mut t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
+        assert!(high_half_set(challenge_scalar::<TestSuiteC32>(&mut t)));
+        let t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
+        let zs = DelinearizeScalars::<TestSuiteC32>::new(t).take(2);
+        assert!(!high_half_set(zs[1]));
     }
 }

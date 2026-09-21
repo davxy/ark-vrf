@@ -22,9 +22,11 @@ Breaking release. Every entry under Changed alters the public API.
   `from_rand_insecure`. Whoever generates the KZG trapdoor can forge ring
   proofs; a deployment loads a trusted setup SRS with `from_pcs_params`.
 - Fallible constructors: `Input::new` and `VerifierKeyBuilder::new`.
-- `Suite::SECURITY_PARAMETER` (default 128) and the derived
-  `Suite::CHALLENGE_LEN` size the challenge, the delinearization and batch
-  scalars, the nonce expansion and the hash-to-curve field expansion.
+- `Suite::SECURITY_PARAMETER` (default 128) sizes the delinearization and
+  batch scalars, the nonce expansion and the hash-to-curve field expansion.
+  `Suite::CHALLENGE_LEN` (default `SECURITY_PARAMETER / 8`) sizes the
+  challenge and may exceed the level up to the scalar width; the Tiny
+  decoder then rejects a challenge encoding above the field order.
   `utils::CHALLENGE_LEN` is gone.
 
 ### Fixed
