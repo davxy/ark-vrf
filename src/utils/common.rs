@@ -558,6 +558,24 @@ mod tests {
         }
     }
 
+    /// The Schnorr pair sits at index 0 and draws the scalar one. The Thin
+    /// batch verifier drops the `z_0` factor from its two Schnorr terms, so a
+    /// stream that starts with any other value breaks that equation with no
+    /// sign in the code.
+    #[test]
+    fn schnorr_pair_scalar_is_one() {
+        use ark_ff::One;
+
+        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let ios = sample_ios(2);
+        let (_, zs) =
+            vrf_transcript_scalars_with_schnorr::<TestSuite>(DomSep::ThinVrf, public, &ios, b"ad");
+
+        assert_eq!(zs.len(), 3);
+        assert_eq!(zs[0], ScalarField::<TestSuite>::one());
+        assert_ne!(zs[1], ScalarField::<TestSuite>::one());
+    }
+
     /// Verify that the scheme tag produces distinct transcripts.
     #[test]
     fn scheme_tag_domain_separation() {

@@ -284,7 +284,10 @@ impl<S: ThinSuite> BatchVerifier<S> {
     /// Batch-verify all collected proofs using a single multi-scalar multiplication.
     ///
     /// For each proof j, the expanded verification equation is:
-    ///   R_j + c_j*z0_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*z0_j*G - sum_i(s_j*z_ij*I_ij) == 0
+    ///   R_j + c_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*G - sum_i(s_j*z_ij*I_ij) == 0
+    ///
+    /// The Schnorr pair `(G, pk_j)` is the first pair of the transcript, so its
+    /// delinearization scalar `z_0` is one and does not appear above.
     ///
     /// With random weights w_j, G is accumulated as a shared base, yielding a
     /// `(sum_j(2 + 2*M_j) + 1)`-point MSM (where M_j is the number of VRF
@@ -338,12 +341,12 @@ impl<S: ThinSuite> BatchVerifier<S> {
             bases.push(item.r);
             scalars.push(w);
 
-            // pk_j with scalar w_j*c_j*z0_j
+            // pk_j with scalar w_j*c_j
             bases.push(item.pk.0);
-            scalars.push(wc * item.zs[0]);
+            scalars.push(wc);
 
-            // Accumulate G scalar: -w_j*s_j*z0_j
-            g_scalar -= ws * item.zs[0];
+            // Accumulate G scalar: -w_j*s_j
+            g_scalar -= ws;
 
             // Per VRF pair: O_i with w*c*z_i, I_i with -w*s*z_i
             for (i, io) in item.ios.iter().enumerate() {
