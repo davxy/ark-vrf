@@ -1,4 +1,5 @@
-#![allow(unused)]
+// Shared by feature-gated test modules; the default feature set uses part of it.
+#![allow(dead_code)]
 #[cfg(not(feature = "std"))]
 use ark_std::{vec, vec::Vec};
 
@@ -53,14 +54,6 @@ pub const BN254_PCS_SRS_FILE: &str = concat!(
 
 // Test vectors folder
 pub const VECTORS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/vectors");
-
-/// Execute a closure and print its execution time.
-pub fn timed<T, F: FnOnce() -> T>(desc: &str, f: F) -> T {
-    let start = std::time::Instant::now();
-    let result = f();
-    println!("{}: {:?}", desc, start.elapsed());
-    result
-}
 
 /// Generate a vector of random values.
 pub fn random_vec<T: UniformRand>(n: usize, rng: Option<&mut dyn RngCore>) -> Vec<T> {

@@ -1,5 +1,3 @@
-#![allow(unused_macros, dead_code)]
-
 use ark_vrf::Suite;
 
 pub trait SuiteExt: Suite {
@@ -12,7 +10,19 @@ pub trait SuiteExt: Suite {
 impl<T: Suite> SuiteExt for T {}
 
 /// Dispatches a benchmark function for all enabled suites.
+///
+/// The `ring` form dispatches for the enabled ring-capable suites only. One
+/// macro serves both forms, so every bench binary uses it and none needs an
+/// `unused_macros` exemption.
 macro_rules! for_each_suite {
+    (ring, $c:expr, $fn:ident) => {
+        #[cfg(feature = "bandersnatch")]
+        $fn::<ark_vrf::suites::bandersnatch::BandersnatchSha512Ell2>($c);
+        #[cfg(feature = "jubjub")]
+        $fn::<ark_vrf::suites::jubjub::JubJubSha512Tai>($c);
+        #[cfg(feature = "baby-jubjub")]
+        $fn::<ark_vrf::suites::baby_jubjub::BabyJubJubSha512Tai>($c);
+    };
     ($c:expr, $fn:ident) => {
         #[cfg(feature = "bandersnatch")]
         $fn::<ark_vrf::suites::bandersnatch::BandersnatchSha512Ell2>($c);
@@ -26,17 +36,5 @@ macro_rules! for_each_suite {
         $fn::<ark_vrf::suites::ed25519::Ed25519Sha512Tai>($c);
         #[cfg(feature = "secp256r1")]
         $fn::<ark_vrf::suites::secp256r1::Secp256r1Sha256Tai>($c);
-    };
-}
-
-/// Dispatches a benchmark function for all enabled ring-capable suites.
-macro_rules! for_each_ring_suite {
-    ($c:expr, $fn:ident) => {
-        #[cfg(feature = "bandersnatch")]
-        $fn::<ark_vrf::suites::bandersnatch::BandersnatchSha512Ell2>($c);
-        #[cfg(feature = "jubjub")]
-        $fn::<ark_vrf::suites::jubjub::JubJubSha512Tai>($c);
-        #[cfg(feature = "baby-jubjub")]
-        $fn::<ark_vrf::suites::baby_jubjub::BabyJubJubSha512Tai>($c);
     };
 }

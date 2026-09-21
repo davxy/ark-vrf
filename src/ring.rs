@@ -70,6 +70,7 @@ use ark_ec::{
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
 };
 use ark_std::{borrow::Cow, ops::Range};
+use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::canonical::deserialize_canonical;
 use utils::te_sw_map::TEMapping;
@@ -100,10 +101,12 @@ pub trait RingSuite:
     /// Accumulator base.
     ///
     /// Point with unknown discrete log relative to the generator. It must not
-    /// be the identity. Membership in the prime order subgroup is not
-    /// required: built-in Twisted Edwards suites hash [`ACCUMULATOR_BASE_SEED`]
-    /// to the curve, while the Short Weierstrass Bandersnatch suite adds a
-    /// fixed point outside the prime order subgroup to the hashed point.
+    /// be the identity. The backend accumulates from it in affine Twisted
+    /// Edwards coordinates. The built-in suites do not need membership in the
+    /// prime order subgroup: the Twisted Edwards ones hash
+    /// [`ACCUMULATOR_BASE_SEED`] to the curve, and the Short Weierstrass
+    /// Bandersnatch suite adds a fixed point outside the subgroup to the
+    /// hashed point and passes its vectors with it.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
     /// Padding point.
@@ -537,30 +540,50 @@ impl<S: RingSuite> RingSetup<S> {
         })
     }
 
+    /// Create both keys for the given ring of public keys.
+    ///
+    /// The backend builds the two keys in one pass. [`Self::prover_key`] and
+    /// [`Self::verifier_key`] each drop one half, so a party that needs both
+    /// keys pays twice if it calls them.
+    ///
+    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
+    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
+    /// Twisted Edwards form.
+    pub fn keys(
+        &self,
+        pks: &[AffinePoint<S>],
+    ) -> Result<(RingProverKey<S>, RingVerifierKey<S>), Error> {
+        if pks.len() > self.ring_ctx.max_ring_size() {
+            return Err(Error::RingCapacityExceeded);
+        }
+        let pks = ring_members_te::<S>(pks)?;
+        Ok(ring_proof::index(
+            &self.pcs_params,
+            &self.ring_ctx.piop_params,
+            &pks,
+        ))
+    }
+
     /// Create a prover key for the given ring of public keys.
+    ///
+    /// Use [`Self::keys`] if the verifier key is needed too.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
     pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).0)
+        Ok(self.keys(pks)?.0)
     }
 
     /// Create a verifier key for the given ring of public keys.
+    ///
+    /// Use [`Self::keys`] if the prover key is needed too.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
     pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
-        Ok(ring_proof::index(&self.pcs_params, &self.ring_ctx.piop_params, &pks).1)
+        Ok(self.keys(pks)?.1)
     }
 
     /// Create a verifier key from a precomputed ring commitment.
@@ -765,6 +788,26 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
     }
 }
 
+/// What the backend expects from its SRS lookup closure.
+type SrsSegment<S> = Result<Vec<G1Affine<S>>, ()>;
+
+/// The backend asks its lookup closure for one range, once, and panics on an
+/// error. This fetches that range through the caller's fallible [`SrsLookup`]
+/// up front and returns a closure that serves it once and fails otherwise.
+fn prefetched_lookup<S: RingSuite>(
+    lookup: impl SrsLookup<S>,
+    range: Range<usize>,
+) -> Result<impl Fn(Range<usize>) -> SrsSegment<S>, Error> {
+    let points = lookup.lookup(range.clone()).ok_or(Error::SrsLookupFailed)?;
+    let points = Cell::new(Some(points));
+    Ok(move |asked| {
+        if asked != range {
+            return Err(());
+        }
+        points.take().ok_or(())
+    })
+}
+
 impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// Create a new empty ring verifier key builder.
     ///
@@ -772,17 +815,11 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// `max_ring_size..piop_domain_size`, the part of the SRS behind the keys.
     pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Result<Self, Error> {
         let keys = ring_setup.ring_ctx.max_ring_size();
-        let tail = lookup
-            .lookup(keys..piop_domain_size::<S>(keys))
-            .ok_or(Error::SrsLookupFailed)?;
-        let lookup = |range: Range<usize>| {
-            debug_assert_eq!(tail.len(), range.len());
-            Ok(tail.clone())
-        };
+        let srs = prefetched_lookup(lookup, keys..piop_domain_size::<S>(keys))?;
         let pcs_params = ring_setup.pcs_verifier_params();
         let partial = PartialRingCommitment::<S>::empty(
             &ring_setup.ring_ctx.piop_params,
-            lookup,
+            srs,
             pcs_params.g1.into_group(),
         );
         Ok(VerifierKeyBuilder {
@@ -820,17 +857,12 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         if self.free_slots() < pks.len() {
             return Err(Error::RingCapacityExceeded);
         }
-        // Currently `ring-proof` backend panics if lookup fails.
-        // This workaround makes lookup failures a bit less harsh.
-        let segment = lookup
-            .lookup(self.partial.curr_keys..self.partial.curr_keys + pks.len())
-            .ok_or(Error::SrsLookupFailed)?;
-        let lookup = |range: Range<usize>| {
-            debug_assert_eq!(segment.len(), range.len());
-            Ok(segment.clone())
-        };
+        let srs = prefetched_lookup(
+            lookup,
+            self.partial.curr_keys..self.partial.curr_keys + pks.len(),
+        )?;
         let pks = ring_members_te::<S>(pks)?;
-        self.partial.append(&pks, lookup);
+        self.partial.append(&pks, srs);
         Ok(())
     }
 
@@ -1107,6 +1139,23 @@ pub(crate) mod testing {
 
     const MAX_AD_LEN: usize = 100;
 
+    /// The backend asks its lookup closure for one range, once, and panics
+    /// on an error. The closure must serve the prefetched range and nothing
+    /// else: another range, the same range a second time, or a lookup that
+    /// failed up front must surface instead of feeding the backend wrong or
+    /// stale points.
+    pub fn prefetched_lookup_serves_the_range_once<S: RingSuite>() {
+        let points = vec![G1Affine::<S>::generator(); 4];
+        let srs = prefetched_lookup::<S>(|_: Range<usize>| Some(points.clone()), 3..7).unwrap();
+        assert_eq!(srs(2..6), Err(()));
+        assert_eq!(srs(3..8), Err(()));
+        assert_eq!(srs(3..7), Ok(points.clone()));
+        assert_eq!(srs(3..7), Err(()));
+
+        let failed = prefetched_lookup::<S>(|_: Range<usize>| None, 3..7).map(|_| ());
+        assert!(matches!(failed, Err(Error::SrsLookupFailed)));
+    }
+
     fn find_complement_point<C: SWCurveConfig>() -> SWAffine<C> {
         use ark_ff::{One, Zero};
         assert!(!C::cofactor_is_one());
@@ -1351,41 +1400,16 @@ pub(crate) mod testing {
             assert!(res.is_ok());
         }
 
-        println!("Batch size = {BATCH_SIZE}");
-
-        println!("============================================================");
-
+        // Prepared items
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let start = std::time::Instant::now();
-        common::timed("Proofs push", || {
-            for item in batch.iter() {
-                batch_verifier
-                    .push(&verifier, item.io, &item.ad, &item.proof)
-                    .unwrap();
-            }
-        });
-        common::timed("Unprepared batch verification", || batch_verifier.verify());
-        println!("Total time: {:?}", start.elapsed());
-
-        println!("============================================================");
-
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let start = std::time::Instant::now();
-        let prepared = common::timed("Proofs prepare", || {
-            batch
-                .par_iter()
-                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
-                .collect::<Vec<_>>()
-        });
-        common::timed("Proofs push prepared", || {
-            prepared
-                .into_iter()
-                .for_each(|p| batch_verifier.push_prepared(p))
-        });
-        common::timed("Prepared batch verification", || batch_verifier.verify());
-        println!("Total time: {:?}", start.elapsed());
-
-        println!("============================================================");
+        let prepared: Vec<_> = batch
+            .par_iter()
+            .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
+            .collect();
+        prepared
+            .into_iter()
+            .for_each(|p| batch_verifier.push_prepared(p));
+        assert!(batch_verifier.verify().is_ok());
 
         // Multi-ring batch: build a second ring sharing the same KZG SRS,
         // then aggregate proofs from both rings into a single batch verifier.
@@ -1415,8 +1439,7 @@ pub(crate) mod testing {
                 .push(&verifier_b, item.io, &item.ad, &item.proof)
                 .unwrap();
         }
-        common::timed("Multi-ring batch verification", || batch_verifier.verify())
-            .expect("multi-ring batch verifies");
+        batch_verifier.verify().expect("multi-ring batch verifies");
 
         // Negative case: pushing a ring-B proof against verifier_a must not
         // produce a batch that verifies. This guards against the per-item
@@ -1449,6 +1472,10 @@ pub(crate) mod testing {
             ring_setup.verifier_key(&pks),
             Err(Error::RingCapacityExceeded)
         ));
+        assert!(matches!(
+            ring_setup.keys(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
 
         // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity.
         let pcs_params = ring_setup.pcs_params.clone();
@@ -1475,6 +1502,7 @@ pub(crate) mod testing {
             ring_setup.verifier_key(&pks),
             Err(Error::InvalidData)
         ));
+        assert!(matches!(ring_setup.keys(&pks), Err(Error::InvalidData)));
 
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
         let free_slots = vk_builder.free_slots();
@@ -1830,6 +1858,11 @@ pub(crate) mod testing {
                 #[test]
                 fn prove_verify() {
                     $crate::ring::testing::prove_verify::<$suite>()
+                }
+
+                #[test]
+                fn prefetched_lookup_serves_the_range_once() {
+                    $crate::ring::testing::prefetched_lookup_serves_the_range_once::<$suite>()
                 }
 
                 #[test]

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Breaking release. Every entry under Changed alters the public API.
 
+### Added
+
+- `RingSetup::keys` returns the prover key and the verifier key from one
+  indexing pass. `prover_key` and `verifier_key` each dropped one half, so a
+  party that needs both paid twice: 74 ms against 38 ms at ring size 255.
+
 ### Changed
 
 - Opaque types. `Public`, `Input` and `Output` are aliases of
@@ -48,6 +54,15 @@ Breaking release. Every entry under Changed alters the public API.
   arkworks BLS12-381 decoder accepts. Call `Valid::check` after decoding a
   `RingVerifierKey`, `RingCommitment` or `PcsVerifierParams` from untrusted
   bytes.
+
+### Performance
+
+- Tiny and Thin verification with one I/O pair runs one Straus pass over the
+  four raw points instead of merging the pairs first. Bandersnatch, one
+  thread, `asm`: Tiny verify 196 us to 128 us, Thin verify 176 us to 124 us.
+- The provers merge the I/O inputs only. The merged output had no user.
+  Bandersnatch, one thread, `asm`, one I/O pair: Tiny prove 186 us to 130 us,
+  Thin prove 180 us to 132 us. Pedersen prove needs two or more pairs to gain.
 
 ## [0.5.3] - 2026-08-18
 

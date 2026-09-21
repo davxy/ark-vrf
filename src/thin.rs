@@ -22,10 +22,7 @@
 //! let result = public.verify(io, b"aux data", &proof);
 //! ```
 
-use crate::{
-    utils::canonical::deserialize_point, utils::common::DomSep, utils::straus::short_msm,
-    utils::weight_scalar, *,
-};
+use crate::{utils::canonical::deserialize_point, utils::common::DomSep, utils::weight_scalar, *};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -78,12 +75,12 @@ impl<S: ThinSuite> ark_serialize::Valid for Proof<S> {
 }
 
 #[inline(always)]
-fn vrf_transcript<S: ThinSuite>(
+fn vrf_transcript_input<S: ThinSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
-) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_with_schnorr(DomSep::ThinVrf, public, ios, ad)
+) -> (S::Transcript, Input<S>) {
+    utils::vrf_transcript_input_with_schnorr(DomSep::ThinVrf, public, ios, ad)
 }
 
 #[inline(always)]
@@ -147,13 +144,13 @@ pub trait Verifier<S: ThinSuite> {
 
 impl<S: ThinSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(self.public.0, ios, ad);
 
         // Nonce
         let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m (secret nonce on merged input)
-        let r = smul!(merged.input.0, k).into_affine();
+        let r = smul!(input.0, k).into_affine();
 
         // Challenge
         let c = S::challenge(&[&r], t);
@@ -189,13 +186,13 @@ impl<S: ThinSuite> Verifier<S> for Public<S> {
         }
 
         let Proof { r, s } = proof;
-        let (t, merged) = vrf_transcript::<S>(self.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(self.0, ios, ad);
 
         // Challenge
         let c = S::challenge(&[r], t);
 
         // Verification: s * I_m - c * O_m == R
-        let lhs = short_msm(&[merged.input.0, merged.output.0], &[*s, -c], 2);
+        let lhs = utils::schnorr_lhs::<S>(self.0, ios, &zs, *s, c);
         if lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }
@@ -287,7 +284,10 @@ impl<S: ThinSuite> BatchVerifier<S> {
     /// Batch-verify all collected proofs using a single multi-scalar multiplication.
     ///
     /// For each proof j, the expanded verification equation is:
-    ///   R_j + c_j*z0_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*z0_j*G - sum_i(s_j*z_ij*I_ij) == 0
+    ///   R_j + c_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*G - sum_i(s_j*z_ij*I_ij) == 0
+    ///
+    /// The Schnorr pair `(G, pk_j)` is the first pair of the transcript, so its
+    /// delinearization scalar `z_0` is one and does not appear above.
     ///
     /// With random weights w_j, G is accumulated as a shared base, yielding a
     /// `(sum_j(2 + 2*M_j) + 1)`-point MSM (where M_j is the number of VRF
@@ -341,12 +341,12 @@ impl<S: ThinSuite> BatchVerifier<S> {
             bases.push(item.r);
             scalars.push(w);
 
-            // pk_j with scalar w_j*c_j*z0_j
+            // pk_j with scalar w_j*c_j
             bases.push(item.pk.0);
-            scalars.push(wc * item.zs[0]);
+            scalars.push(wc);
 
-            // Accumulate G scalar: -w_j*s_j*z0_j
-            g_scalar -= ws * item.zs[0];
+            // Accumulate G scalar: -w_j*s_j
+            g_scalar -= ws;
 
             // Per VRF pair: O_i with w*c*z_i, I_i with -w*s*z_i
             for (i, io) in item.ios.iter().enumerate() {

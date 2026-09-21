@@ -138,7 +138,8 @@ let key_commitment = proof.key_commitment();
 
 _Verify_
 ```rust,ignore
-use ark_vrf::pedersen::Verifier;
+use ark_ec::CurveGroup;
+use ark_vrf::pedersen::{PedersenSuite, Verifier};
 
 // Verify without knowing which specific public key was used.
 // Verifies that the secret key used to generate `output` is the same as
@@ -237,6 +238,13 @@ let verifier = ring_ctx.ring_verifier(verifier_key);
 let result = Public::verify(io, b"aux data", &proof, &verifier);
 ```
 
+_Both keys_
+```rust,ignore
+// A party that needs both keys indexes the ring once. The two calls above
+// each build both keys and drop one half, so they cost twice as much.
+let (prover_key, verifier_key) = ring_setup.keys(&ring).unwrap();
+```
+
 _Verifier key from commitment_
 ```rust,ignore
 // For efficiency, a commitment to the ring can be shared
@@ -249,7 +257,9 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 
 ## Features
 
-- `default`: `std`
+- `default`: `std`. The test suite needs it: `cargo test --no-default-features`
+  stops with one error that says so. The `no_std` build is checked with
+  `cargo check --no-default-features --features full`.
 - `full`: All the curves below plus `ring`.
 - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
