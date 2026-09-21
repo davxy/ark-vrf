@@ -54,6 +54,9 @@ Breaking release. Every entry under Changed alters the public API.
 - Tiny and Thin verification with one I/O pair runs one Straus pass over the
   four raw points instead of merging the pairs first. Bandersnatch, one
   thread, `asm`: Tiny verify 196 us to 128 us, Thin verify 176 us to 124 us.
+- The provers merge the I/O inputs only. The merged output had no user.
+  Bandersnatch, one thread, `asm`, one I/O pair: Tiny prove 186 us to 130 us,
+  Thin prove 180 us to 132 us. Pedersen prove needs two or more pairs to gain.
 
 ## [0.5.3] - 2026-08-18
 

@@ -196,7 +196,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, ScalarField<S>) {
-        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let (mut t, input) = utils::vrf_transcript_input::<S>(DomSep::PedersenVrf, ios, ad);
 
         // Build blinding factor from T.fork()
         let blinding = S::blinding(&self.scalar, t.clone());
@@ -218,7 +218,7 @@ impl<S: PedersenSuite> Prover<S> for Secret<S> {
         let r = kg + kbb;
 
         // Ok = k*I
-        let ok = smul!(io.input.0, k);
+        let ok = smul!(input.0, k);
 
         let norms = CurveGroup::normalize_batch(&[r, ok]);
         let (r, ok) = (norms[0], norms[1]);

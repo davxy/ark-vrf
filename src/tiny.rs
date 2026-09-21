@@ -34,12 +34,12 @@ pub trait TinySuite: Suite {}
 impl<T> TinySuite for T where T: Suite {}
 
 #[inline(always)]
-fn vrf_transcript<S: TinySuite>(
+fn vrf_transcript_input<S: TinySuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
-) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_with_schnorr(DomSep::TinyVrf, public, ios, ad)
+) -> (S::Transcript, Input<S>) {
+    utils::vrf_transcript_input_with_schnorr(DomSep::TinyVrf, public, ios, ad)
 }
 
 #[inline(always)]
@@ -187,12 +187,12 @@ pub trait Verifier<S: TinySuite> {
 
 impl<S: TinySuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (t, io) = vrf_transcript::<S>(self.public.0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(self.public.0, ios, ad);
 
         let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m
-        let r = smul!(io.input.0, k).into_affine();
+        let r = smul!(input.0, k).into_affine();
 
         let c = S::challenge(&[&r], t);
         let mut cx = c * self.scalar;

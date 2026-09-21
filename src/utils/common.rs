@@ -194,6 +194,24 @@ fn vrf_transcript_merged<S: Suite>(
     (t, io)
 }
 
+/// Same as [`vrf_transcript_merged`], but merges the inputs only.
+///
+/// The provers commit their nonce to the merged input alone, so the merged
+/// output is never built.
+fn vrf_transcript_merged_input<S: Suite>(
+    scheme: DomSep,
+    ios: Ios<'_, S>,
+    ad: &[u8],
+) -> (S::Transcript, Input<S>) {
+    let (t, mut scalars) = vrf_transcript_base(scheme, ios, ad);
+    let input = match ios.len() {
+        0 => Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+        1 => ios.iter().next().expect("one pair").input,
+        n => merge_inputs(ios, &scalars.take(n)),
+    };
+    (t, input)
+}
+
 /// Build a VRF transcript returning raw delinearization scalars.
 ///
 /// Same transcript construction as [`vrf_transcript_merged`] but returns
@@ -217,18 +235,28 @@ pub(crate) fn vrf_transcript<S: Suite>(
     vrf_transcript_merged(scheme, Ios::plain(ios.as_ref()), ad.as_ref())
 }
 
-/// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF transcript.
-pub(crate) fn vrf_transcript_with_schnorr<S: Suite>(
+/// Same as [`vrf_transcript`], but returns the merged input alone.
+pub(crate) fn vrf_transcript_input<S: Suite>(
+    scheme: DomSep,
+    ios: impl AsRef<[VrfIo<S>]>,
+    ad: impl AsRef<[u8]>,
+) -> (S::Transcript, Input<S>) {
+    vrf_transcript_merged_input(scheme, Ios::plain(ios.as_ref()), ad.as_ref())
+}
+
+/// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF
+/// transcript and the merged input.
+pub(crate) fn vrf_transcript_input_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
-) -> (S::Transcript, VrfIo<S>) {
-    vrf_transcript_merged(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
+) -> (S::Transcript, Input<S>) {
+    vrf_transcript_merged_input(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
 }
 
-/// Same as [`vrf_transcript_with_schnorr`] but returns the raw
-/// delinearization scalars instead of the merged pair.
+/// Same as [`vrf_transcript_input_with_schnorr`] but returns the raw
+/// delinearization scalars instead of the merged input.
 pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
@@ -405,31 +433,44 @@ fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
 /// Fold is faster below this threshold; MSM wins above it.
 pub(crate) const MSM_THRESHOLD: usize = 16;
 
+/// Fold/MSM `sum(z_i * P_i)` over the points with pre-computed
+/// delinearization scalars.
+///
+/// Caller must ensure that `points` yields exactly `zs.len()` values.
+fn merge_points<S: Suite>(
+    points: impl Iterator<Item = AffinePoint<S>>,
+    zs: &[ScalarField<S>],
+) -> <AffinePoint<S> as AffineRepr>::Group {
+    if zs.len() < MSM_THRESHOLD {
+        let zero = AffinePoint::<S>::zero().into_group();
+        points.zip(zs).fold(zero, |acc, (p, z)| acc + p * z)
+    } else {
+        use ark_ec::VariableBaseMSM;
+        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
+        let points: Vec<_> = points.collect();
+        Group::<S>::msm_unchecked(&points, zs)
+    }
+}
+
 /// Fold/MSM I/O pairs using pre-computed delinearization scalars.
 ///
 /// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
 fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
-    let zero = AffinePoint::<S>::zero().into_group();
-    let (input, output) = if zs.len() < MSM_THRESHOLD {
-        ios.iter()
-            .zip(zs)
-            .fold((zero, zero), |(h_acc, g_acc), (io, z)| {
-                (h_acc + io.input.0 * z, g_acc + io.output.0 * z)
-            })
-    } else {
-        let (inputs, outputs): (Vec<_>, Vec<_>) =
-            ios.iter().map(|io| (io.input.0, io.output.0)).unzip();
-        use ark_ec::VariableBaseMSM;
-        type Group<S> = <AffinePoint<S> as AffineRepr>::Group;
-        let input = Group::<S>::msm_unchecked(&inputs, zs);
-        let output = Group::<S>::msm_unchecked(&outputs, zs);
-        (input, output)
-    };
+    let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
+    let output = merge_points::<S>(ios.iter().map(|io| io.output.0), zs);
     let norms = CurveGroup::normalize_batch(&[input, output]);
     VrfIo {
         input: Input::from_affine_unchecked(norms[0]),
         output: Output::from_affine_unchecked(norms[1]),
     }
+}
+
+/// Merge the inputs only, for the provers, which never use the merged output.
+///
+/// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
+fn merge_inputs<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> Input<S> {
+    let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
+    Input::from_affine_unchecked(input.into_affine())
 }
 
 #[cfg(test)]
@@ -476,6 +517,44 @@ mod tests {
                 });
             let expected = input * s - output * c;
             assert_eq!(schnorr_lhs::<TestSuite>(public, &ios, &zs, s, c), expected);
+        }
+    }
+
+    /// The provers merge the inputs only, so the merged input must equal the
+    /// plain delinearized sum `sum(z_i * I_i)`. The verifier rebuilds the same
+    /// value from the full pairs, so a merge that drifts here gives a proof
+    /// that no verifier accepts. Covers the empty, the single, the fold and
+    /// the MSM branch, with and without the prepended Schnorr pair.
+    #[test]
+    fn merged_input_matches_the_plain_sum() {
+        type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
+
+        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let plain_sum = |ios: Ios<'_, TestSuite>, zs: &[ScalarField<TestSuite>]| {
+            ios.iter()
+                .zip(zs)
+                .map(|(io, z)| io.input.0 * z)
+                .sum::<Group>()
+                .into_affine()
+        };
+
+        for n in [0, 1, MSM_THRESHOLD - 1, MSM_THRESHOLD] {
+            let ios = sample_ios(n);
+
+            let plain = Ios::plain(&ios);
+            let (_, zs) = vrf_transcript_scalars::<TestSuite>(DomSep::PedersenVrf, plain, b"ad");
+            let (_, input) = vrf_transcript_input::<TestSuite>(DomSep::PedersenVrf, &ios, b"ad");
+            assert_eq!(input.0, plain_sum(plain, &zs), "plain, n={n}");
+
+            let schnorr = Ios::with_schnorr(public, &ios);
+            let (_, zs) = vrf_transcript_scalars::<TestSuite>(DomSep::TinyVrf, schnorr, b"ad");
+            let (_, input) = vrf_transcript_input_with_schnorr::<TestSuite>(
+                DomSep::TinyVrf,
+                public,
+                &ios,
+                b"ad",
+            );
+            assert_eq!(input.0, plain_sum(schnorr, &zs), "schnorr, n={n}");
         }
     }
 

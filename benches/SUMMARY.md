@@ -29,7 +29,7 @@ Criterion: 0.5.1, `--quick` mode. One run per benchmark, except `ring_prove` and
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| tiny_prove             | 185.9 us |
+| tiny_prove             | 130.2 us |
 | tiny_verify            | 128.5 us |
 
 ## Pedersen VRF Operations (`pedersen.rs`)
@@ -50,7 +50,7 @@ Criterion: 0.5.1, `--quick` mode. One run per benchmark, except `ring_prove` and
 
 | Benchmark              |     Time |
 |:-----------------------|---------:|
-| thin_prove             | 180.4 us |
+| thin_prove             | 132.5 us |
 | thin_verify            | 124.2 us |
 
 ### Batch Verification

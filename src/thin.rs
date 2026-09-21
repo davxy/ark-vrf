@@ -75,12 +75,12 @@ impl<S: ThinSuite> ark_serialize::Valid for Proof<S> {
 }
 
 #[inline(always)]
-fn vrf_transcript<S: ThinSuite>(
+fn vrf_transcript_input<S: ThinSuite>(
     public: AffinePoint<S>,
     ios: impl AsRef<[VrfIo<S>]>,
     ad: impl AsRef<[u8]>,
-) -> (S::Transcript, VrfIo<S>) {
-    utils::vrf_transcript_with_schnorr(DomSep::ThinVrf, public, ios, ad)
+) -> (S::Transcript, Input<S>) {
+    utils::vrf_transcript_input_with_schnorr(DomSep::ThinVrf, public, ios, ad)
 }
 
 #[inline(always)]
@@ -144,13 +144,13 @@ pub trait Verifier<S: ThinSuite> {
 
 impl<S: ThinSuite> Prover<S> for Secret<S> {
     fn prove(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
-        let (t, merged) = vrf_transcript::<S>(self.public.0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(self.public.0, ios, ad);
 
         // Nonce
         let mut k = S::nonce(&self.scalar, t.clone());
 
         // R = k * I_m (secret nonce on merged input)
-        let r = smul!(merged.input.0, k).into_affine();
+        let r = smul!(input.0, k).into_affine();
 
         // Challenge
         let c = S::challenge(&[&r], t);
