@@ -109,6 +109,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The crate ships no lock file. Audit the newest resolution, the one a
+      # downstream build gets; the MSRV-aware resolver would hold back crates
+      # that no build of this crate compiles.
+      - name: Resolve the dependencies
+        run: cargo generate-lockfile
+        env:
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
