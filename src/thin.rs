@@ -23,8 +23,8 @@
 //! ```
 
 use crate::{
-    utils::canonical::deserialize_point, utils::challenge_scalar, utils::common::DomSep,
-    utils::straus::short_msm, *,
+    utils::canonical::deserialize_point, utils::common::DomSep, utils::straus::short_msm,
+    utils::weight_scalar, *,
 };
 
 /// Marker trait for suites that support the Thin VRF scheme.
@@ -331,8 +331,8 @@ impl<S: ThinSuite> BatchVerifier<S> {
         let mut g_scalar = ScalarField::<S>::zero();
 
         for item in items.iter() {
-            // 128-bit random weights for Schwartz-Zippel soundness.
-            let w = challenge_scalar::<S>(&mut t);
+            // Random weights of SECURITY_PARAMETER bits for Schwartz-Zippel soundness.
+            let w = weight_scalar::<S>(&mut t);
 
             let wc = w * item.c;
             let ws = w * item.s;

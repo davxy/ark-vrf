@@ -432,18 +432,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             t.absorb_serialize(&e.s);
             t.absorb_serialize(&e.sb);
         }
-        // Sample 2N random 128-bit scalars (t_i for eq1, u_i for eq2).
-        // 128-bit scalars are sufficient for the Schwartz-Zippel soundness argument
-        // (error probability 2^{-128}) and roughly halve the MSM cost compared to
-        // full-width field elements, since fewer doublings are needed in the
-        // Pippenger/Straus window.
+        // Sample 2N random weights of SECURITY_PARAMETER bits (t_i for eq1, u_i
+        // for eq2): enough for the Schwartz-Zippel soundness argument, and
+        // shorter than full-width field elements, so the MSM needs fewer
+        // doublings.
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
-                let mut buf = [0u8; 32];
-                t.squeeze_raw(&mut buf);
-                let t = ScalarField::<S>::from_le_bytes_mod_order(&buf[..16]);
-                let u = ScalarField::<S>::from_le_bytes_mod_order(&buf[16..]);
-                (t, u)
+                (
+                    utils::weight_scalar::<S>(&mut t),
+                    utils::weight_scalar::<S>(&mut t),
+                )
             })
             .collect();
 

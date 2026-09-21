@@ -12,16 +12,6 @@ use ark_ff::PrimeField;
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
-/// Target security level in bits.
-///
-/// Used to size scalar expansions (see [`expanded_scalar_len`]) and hash-to-field
-/// outputs so that modular reduction bias is at most `2^{-k}` where `k` is this
-/// value. Also determines the challenge encoding length ([`CHALLENGE_LEN`]).
-///
-/// Set to 128, matching the security level of the curves we target (Bandersnatch,
-/// Ed25519, JubJub).
-pub(crate) const SECURITY_PARAMETER: usize = 128;
-
 /// Stack buffer size for small serialized objects (compressed points, scalars).
 pub(crate) const STACK_BUF_SIZE: usize = 128;
 
@@ -33,47 +23,58 @@ pub(crate) const STACK_BUF_SIZE: usize = 128;
 macro_rules! stack_buf {
     ($name:ident, $len:expr) => {
         let _sb_len: usize = $len;
+        let _sb_cap = $crate::utils::common::STACK_BUF_SIZE;
         assert!(
-            _sb_len <= STACK_BUF_SIZE,
-            "requested {_sb_len} bytes exceeds STACK_BUF_SIZE ({STACK_BUF_SIZE})"
+            _sb_len <= _sb_cap,
+            "requested {_sb_len} bytes exceeds STACK_BUF_SIZE ({_sb_cap})"
         );
-        let mut _sb_backing = [0u8; STACK_BUF_SIZE];
+        let mut _sb_backing = [0u8; $crate::utils::common::STACK_BUF_SIZE];
         let $name = &mut _sb_backing[.._sb_len];
     };
 }
-
-/// Challenge encoding length in bytes (128-bit security).
-pub const CHALLENGE_LEN: usize = SECURITY_PARAMETER / 8;
+pub(crate) use stack_buf;
 
 /// Number of bytes to squeeze for an unbiased scalar via `from_le_bytes_mod_order`.
 ///
-/// Returns `ceil((ceil(log2(p)) + sec_bits) / 8)` where `p` is the scalar field
-/// modulus. The extra `sec_bits` padding ensures that the bias from modular
-/// reduction is at most `2^{-sec_bits}`.
+/// Returns `ceil((ceil(log2(p)) + SECURITY_PARAMETER) / 8)` where `p` is the
+/// scalar field modulus. The extra padding keeps the bias from modular
+/// reduction at most `2^-SECURITY_PARAMETER`.
 ///
 /// See sections 5.1 and 5.3 of the
 /// [IETF hash-to-curve draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/).
-pub const fn expanded_scalar_len<S: Suite>(sec_bits: usize) -> usize {
-    // ceil(log(p))
+pub const fn expanded_scalar_len<S: Suite>() -> usize {
     let base_field_size_in_bits = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
-    // ceil(log(p)) + security_parameter
-    let base_field_size_with_security_padding_in_bits = base_field_size_in_bits + sec_bits;
-    // ceil( (ceil(log(p)) + security_parameter) / 8)
-    base_field_size_with_security_padding_in_bits.div_ceil(8)
+    (base_field_size_in_bits + S::SECURITY_PARAMETER).div_ceil(8)
 }
 
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
-    stack_buf!(buf, expanded_scalar_len::<S>(SECURITY_PARAMETER));
+    stack_buf!(buf, expanded_scalar_len::<S>());
     t.squeeze_raw(buf);
     let scalar = ScalarField::<S>::from_le_bytes_mod_order(buf);
     buf.zeroize();
     scalar
 }
 
+/// Squeeze the challenge: [`Suite::CHALLENGE_LEN`] bytes, at least the
+/// security level, reduced into a scalar.
 pub fn challenge_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
-    let mut buf = [0u8; SECURITY_PARAMETER / 8];
-    t.squeeze_raw(&mut buf);
-    ScalarField::<S>::from_le_bytes_mod_order(&buf)
+    const {
+        assert!(
+            8 * S::CHALLENGE_LEN >= S::SECURITY_PARAMETER,
+            "Suite::CHALLENGE_LEN is shorter than the security level"
+        )
+    };
+    stack_buf!(buf, S::CHALLENGE_LEN);
+    t.squeeze_raw(buf);
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
+}
+
+/// Squeeze a random weight of [`Suite::SECURITY_PARAMETER`] bits, for the
+/// delinearization scalars and the batch verification weights.
+pub(crate) fn weight_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
+    stack_buf!(buf, S::SECURITY_PARAMETER / 8);
+    t.squeeze_raw(buf);
+    ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
 
 /// Internal domain separation tags for protocol hashing.
@@ -308,7 +309,7 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> Sc
 /// squeeze stream.
 ///
 /// The first scalar is always `1` (z_0 = 1); subsequent scalars are
-/// 128-bit values squeezed from the transcript.
+/// [`Suite::SECURITY_PARAMETER`] bit values squeezed from the transcript.
 pub(crate) struct DelinearizeScalars<S: Suite> {
     transcript: S::Transcript,
     first: bool,
@@ -335,7 +336,7 @@ impl<S: Suite> DelinearizeScalars<S> {
             self.first = false;
             ScalarField::<S>::one()
         } else {
-            challenge_scalar::<S>(&mut self.transcript)
+            weight_scalar::<S>(&mut self.transcript)
         }
     }
 
@@ -466,5 +467,39 @@ mod tests {
             assert_eq!(merged.input.0, plain_sum(inputs), "input, n={n}");
             assert_eq!(merged.output.0, plain_sum(outputs), "output, n={n}");
         }
+    }
+
+    /// The nonce expansion and the delinearization scalars follow
+    /// `Suite::SECURITY_PARAMETER`; the challenge follows
+    /// `Suite::CHALLENGE_LEN`, which defaults to the level and may exceed it.
+    /// A suite at 256 bits must not get 128-bit values, and a wider challenge
+    /// must not widen the delinearization scalars.
+    #[test]
+    fn widths_follow_security_parameter() {
+        use crate::suites::testing::{TestSuite256, TestSuiteC32};
+
+        let high_half_set = |scalar: ScalarField<TestSuite256>| {
+            scalar.into_bigint().as_ref()[2..]
+                .iter()
+                .any(|limb| *limb != 0)
+        };
+        assert_eq!(TestSuite::CHALLENGE_LEN, 16);
+        assert_eq!(TestSuite256::CHALLENGE_LEN, 32);
+        assert_eq!(expanded_scalar_len::<TestSuite256>(), 64);
+        assert_eq!(expanded_scalar_len::<TestSuite>(), 48);
+
+        let mut t = <TestSuite256 as Suite>::Transcript::new(TestSuite256::SUITE_ID);
+        assert!(high_half_set(challenge_scalar::<TestSuite256>(&mut t)));
+        let t = <TestSuite256 as Suite>::Transcript::new(TestSuite256::SUITE_ID);
+        let zs = DelinearizeScalars::<TestSuite256>::new(t).take(2);
+        assert!(high_half_set(zs[1]));
+
+        assert_eq!(TestSuiteC32::CHALLENGE_LEN, 32);
+        assert_eq!(expanded_scalar_len::<TestSuiteC32>(), 48);
+        let mut t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
+        assert!(high_half_set(challenge_scalar::<TestSuiteC32>(&mut t)));
+        let t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
+        let zs = DelinearizeScalars::<TestSuiteC32>::new(t).take(2);
+        assert!(!high_half_set(zs[1]));
     }
 }

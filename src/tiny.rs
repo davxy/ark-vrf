@@ -24,7 +24,7 @@
 //! ```
 
 use super::*;
-use utils::common::DomSep;
+use utils::common::{DomSep, stack_buf};
 use utils::straus::short_msm;
 
 /// Marker trait for suites that support the Tiny VRF scheme.
@@ -50,8 +50,9 @@ fn vrf_transcript<S: TinySuite>(
 /// - `s`: Response scalar (`s = k + c * x`)
 ///
 /// Construct it with [`Prover::prove`] or by deserialization. Serialization
-/// encodes `c` on [`utils::CHALLENGE_LEN`] bytes and `s` as a full scalar. The
-/// proof holds no curve points, so deserialization involves no subgroup checks.
+/// encodes `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full scalar, and
+/// accepts one encoding per `c`. The proof holds no curve points, so
+/// deserialization involves no subgroup checks.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
     /// Challenge scalar.
@@ -60,29 +61,38 @@ pub struct Proof<S: TinySuite> {
     pub(crate) s: ScalarField<S>,
 }
 
+const fn scalar_len<S: TinySuite>() -> usize {
+    ScalarField::<S>::MODULUS_BIT_SIZE.div_ceil(8) as usize
+}
+
+/// [`Suite::CHALLENGE_LEN`], checked against the scalar field byte length
+/// at compile time: the proof encodes `c` on that length.
+const fn challenge_len<S: TinySuite>() -> usize {
+    assert!(
+        S::CHALLENGE_LEN <= scalar_len::<S>(),
+        "Suite::CHALLENGE_LEN exceeds the scalar field byte length"
+    );
+    S::CHALLENGE_LEN
+}
+
 impl<S: TinySuite> CanonicalSerialize for Proof<S> {
     fn serialize_with_mode<W: ark_serialize::Write>(
         &self,
         mut writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        let scalar_len = ScalarField::<S>::MODULUS_BIT_SIZE.div_ceil(8) as usize;
-        if scalar_len < utils::common::CHALLENGE_LEN {
-            // Encoded scalar length must be at least utils::common::CHALLENGE_LEN
-            return Err(ark_serialize::SerializationError::InvalidData);
-        }
-        let mut c_buf = [0; 128];
+        stack_buf!(c_buf, scalar_len::<S>());
         self.c
             .serialize_compressed(&mut c_buf[..])
             .expect("c_buf is big enough");
-        let c_buf = &c_buf[..utils::common::CHALLENGE_LEN];
-        writer.write_all(c_buf)?;
+        writer.write_all(&c_buf[..const { challenge_len::<S>() }])?;
         self.s.serialize_with_mode(&mut writer, compress)?;
         Ok(())
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        utils::common::CHALLENGE_LEN + self.s.serialized_size(compress)
+        let challenge_len = const { challenge_len::<S>() };
+        challenge_len + self.s.serialized_size(compress)
     }
 }
 
@@ -92,11 +102,17 @@ impl<S: TinySuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let mut c_buf = [0u8; utils::common::CHALLENGE_LEN];
+        stack_buf!(c_buf, const { challenge_len::<S>() });
         if reader.read_exact(&mut c_buf[..]).is_err() {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
-        let c = ScalarField::<S>::from_le_bytes_mod_order(&c_buf);
+        let c = ScalarField::<S>::from_le_bytes_mod_order(c_buf);
+        stack_buf!(canonical, scalar_len::<S>());
+        c.serialize_compressed(&mut canonical[..])
+            .expect("canonical is big enough");
+        if canonical[..c_buf.len()] != c_buf[..] {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,
@@ -458,7 +474,7 @@ pub mod testing {
 
         fn to_map(&self) -> common::TestVectorMap {
             let buf = common::scalar_encode::<S>(&self.c);
-            let proof_c = &buf[..utils::common::CHALLENGE_LEN];
+            let proof_c = &buf[..S::CHALLENGE_LEN];
             let items = [
                 ("proof_c", hex::encode(proof_c)),
                 ("proof_s", hex::encode(common::scalar_encode::<S>(&self.s))),
@@ -484,5 +500,57 @@ pub mod testing {
             let pk = Public::<S>::from_affine_unchecked(self.base.pk);
             assert!(pk.verify(io, &self.base.ad, &proof).is_ok());
         }
+    }
+
+    /// `Suite::SECURITY_PARAMETER` sizes the challenge and the Tiny encoding
+    /// of it: a suite at 256 bits writes `c` on 32 bytes and reads it back.
+    #[test]
+    fn challenge_encoding_follows_security_parameter() {
+        use crate::suites::testing::TestSuite256 as S;
+
+        assert_eq!(S::CHALLENGE_LEN, 32);
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let io = secret.vrf_io(Input::new(b"wide").unwrap());
+        let proof = secret.prove(io, b"ad");
+        let c_bytes = common::scalar_encode::<S>(&proof.c);
+        assert!(c_bytes[16..].iter().any(|byte| *byte != 0));
+
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).unwrap();
+        assert_eq!(bytes.len(), 64);
+        assert_eq!(bytes.len(), proof.compressed_size());
+        let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
+        assert!(public.verify(io, b"ad", &decoded).is_ok());
+    }
+
+    /// `Suite::CHALLENGE_LEN` may exceed the level, up to the scalar width.
+    /// At the full width a byte string at or above the field order reduces
+    /// to a valid `c`, so the decoder must reject it: one proof, one encoding.
+    #[test]
+    fn challenge_len_can_exceed_the_level() {
+        use crate::suites::testing::TestSuiteC32 as S;
+        use ark_ff::BigInteger;
+
+        assert_eq!(S::SECURITY_PARAMETER, 128);
+        assert_eq!(S::CHALLENGE_LEN, 32);
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let public = secret.public();
+        let io = secret.vrf_io(Input::new(b"wide").unwrap());
+        let proof = secret.prove(io, b"ad");
+        let c_bytes = common::scalar_encode::<S>(&proof.c);
+        assert!(c_bytes[16..].iter().any(|byte| *byte != 0));
+
+        let mut bytes = Vec::new();
+        proof.serialize_compressed(&mut bytes).unwrap();
+        assert_eq!(bytes.len(), 64);
+        let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
+        assert!(public.verify(io, b"ad", &decoded).is_ok());
+
+        let mut alias = proof.c.into_bigint();
+        assert!(!alias.add_with_carry(&ScalarField::<S>::MODULUS));
+        bytes[..32].copy_from_slice(&alias.to_bytes_le());
+        assert!(Proof::<S>::deserialize_compressed(&bytes[..]).is_err());
+        assert!(Proof::<S>::deserialize_compressed_unchecked(&bytes[..]).is_err());
     }
 }
