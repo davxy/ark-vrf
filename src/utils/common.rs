@@ -147,8 +147,9 @@ impl<'a, S: Suite> Ios<'a, S> {
     }
 }
 
-/// Common VRF transcript construction: absorb scheme tag, I/O pairs, fork for
-/// delinearization scalars, absorb additional data.
+/// Common VRF transcript construction: absorb the scheme tag, the I/O pairs
+/// and the length-prefixed additional data, then fork for the
+/// delinearization scalars.
 ///
 /// Returns the transcript (with ad absorbed) and the delinearization scalar
 /// stream.
@@ -168,10 +169,10 @@ fn vrf_transcript_base<S: Suite>(
 
 /// Build a shared VRF transcript from I/O pairs and additional data.
 ///
-/// Absorbs the scheme tag and raw I/O pairs into the transcript, derives
-/// delinearization scalars from a fork (so pairs are absorbed only once),
-/// merges the pairs into a single I/O, then absorbs the length-prefixed
-/// additional data.
+/// Absorbs the scheme tag, the raw I/O pairs and the length-prefixed
+/// additional data into the transcript, then derives the delinearization
+/// scalars from a fork (so pairs are absorbed only once) and merges the
+/// pairs into a single I/O.
 fn vrf_transcript_merged<S: Suite>(
     scheme: DomSep,
     ios: Ios<'_, S>,

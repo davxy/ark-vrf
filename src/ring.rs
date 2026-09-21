@@ -100,10 +100,12 @@ pub trait RingSuite:
     /// Accumulator base.
     ///
     /// Point with unknown discrete log relative to the generator. It must not
-    /// be the identity. Membership in the prime order subgroup is not
-    /// required: built-in Twisted Edwards suites hash [`ACCUMULATOR_BASE_SEED`]
-    /// to the curve, while the Short Weierstrass Bandersnatch suite adds a
-    /// fixed point outside the prime order subgroup to the hashed point.
+    /// be the identity. The backend accumulates from it in affine Twisted
+    /// Edwards coordinates. The built-in suites do not need membership in the
+    /// prime order subgroup: the Twisted Edwards ones hash
+    /// [`ACCUMULATOR_BASE_SEED`] to the curve, and the Short Weierstrass
+    /// Bandersnatch suite adds a fixed point outside the subgroup to the
+    /// hashed point and passes its vectors with it.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
     /// Padding point.
@@ -1351,41 +1353,16 @@ pub(crate) mod testing {
             assert!(res.is_ok());
         }
 
-        println!("Batch size = {BATCH_SIZE}");
-
-        println!("============================================================");
-
+        // Prepared items
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let start = std::time::Instant::now();
-        common::timed("Proofs push", || {
-            for item in batch.iter() {
-                batch_verifier
-                    .push(&verifier, item.io, &item.ad, &item.proof)
-                    .unwrap();
-            }
-        });
-        common::timed("Unprepared batch verification", || batch_verifier.verify());
-        println!("Total time: {:?}", start.elapsed());
-
-        println!("============================================================");
-
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let start = std::time::Instant::now();
-        let prepared = common::timed("Proofs prepare", || {
-            batch
-                .par_iter()
-                .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
-                .collect::<Vec<_>>()
-        });
-        common::timed("Proofs push prepared", || {
-            prepared
-                .into_iter()
-                .for_each(|p| batch_verifier.push_prepared(p))
-        });
-        common::timed("Prepared batch verification", || batch_verifier.verify());
-        println!("Total time: {:?}", start.elapsed());
-
-        println!("============================================================");
+        let prepared: Vec<_> = batch
+            .par_iter()
+            .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
+            .collect();
+        prepared
+            .into_iter()
+            .for_each(|p| batch_verifier.push_prepared(p));
+        assert!(batch_verifier.verify().is_ok());
 
         // Multi-ring batch: build a second ring sharing the same KZG SRS,
         // then aggregate proofs from both rings into a single batch verifier.
@@ -1415,8 +1392,7 @@ pub(crate) mod testing {
                 .push(&verifier_b, item.io, &item.ad, &item.proof)
                 .unwrap();
         }
-        common::timed("Multi-ring batch verification", || batch_verifier.verify())
-            .expect("multi-ring batch verifies");
+        batch_verifier.verify().expect("multi-ring batch verifies");
 
         // Negative case: pushing a ring-B proof against verifier_a must not
         // produce a batch that verifies. This guards against the per-item

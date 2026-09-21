@@ -124,6 +124,11 @@ pub mod ring;
 #[cfg(test)]
 mod testing;
 
+#[cfg(all(test, not(feature = "std")))]
+compile_error!(
+    "the test suite needs the `std` feature: run `cargo test` with the default features"
+);
+
 /// Re-export stuff that may be useful downstream.
 pub mod reexports {
     pub use ark_ec;

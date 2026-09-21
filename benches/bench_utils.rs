@@ -1,4 +1,5 @@
-#![allow(unused_macros, dead_code)]
+// Each bench binary uses one of the two macros.
+#![allow(unused_macros)]
 
 use ark_vrf::Suite;
 

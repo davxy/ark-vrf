@@ -9,8 +9,9 @@
 //! ## Usage
 //!
 //! ```rust,ignore
+//! use ark_ec::CurveGroup;
+//! use ark_vrf::pedersen::{PedersenSuite, Prover, Verifier};
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::pedersen::{Prover, Verifier};
 //!
 //! let secret = Secret::from_seed([0; 32]);
 //! let public = secret.public();
