@@ -34,6 +34,8 @@ Breaking release. Every entry under Changed alters the public API.
   challenge and may exceed the level up to the scalar width; the Tiny
   decoder then rejects a challenge encoding above the field order.
   `utils::CHALLENGE_LEN` is gone.
+- `rust-version = "1.85"` declares the minimum supported Rust: edition 2024,
+  checked in CI.
 
 ### Fixed
 

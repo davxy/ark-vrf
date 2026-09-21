@@ -14,3 +14,8 @@ Cargo.lock
 *.pdb
 
 output
+
+# Agent and editor files, release notes
+.agent/
+.claude/
+.helix/

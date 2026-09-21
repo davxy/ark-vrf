@@ -1,7 +1,7 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io;
 use digest::Digest;
-use generic_array::GenericArray;
+use digest::generic_array::GenericArray;
 use sha2::Sha512;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

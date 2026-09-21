@@ -2,6 +2,7 @@
 name = "ark-vrf"
 version = "0.5.3"
 edition = "2024"
+rust-version = "1.85"
 authors = [ "Davide Galassi <davxy@datawok.net>" ]
 license = "MIT"
 description = "Elliptic curve VRF with additional data"
@@ -17,7 +18,6 @@ ark-std = { version = "0.6", default-features = false }
 ark-serialize = { version = "0.6", default-features = false }
 zeroize = { version = "1.8", default-features = false }
 digest = { version = "0.10", default-features = false }
-generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
@@ -44,27 +44,32 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "common"
 harness = false
+required-features = ["full"]
 
 [[bench]]
 name = "tiny"
 harness = false
+required-features = ["full"]
 
 [[bench]]
 name = "thin"
 harness = false
+required-features = ["full"]
 
 [[bench]]
 name = "pedersen"
 harness = false
+required-features = ["full"]
 
 [[bench]]
 name = "ring"
 harness = false
-required-features = ["ring"]
+required-features = ["full"]
 
 [[bench]]
 name = "straus"
 harness = false
+required-features = ["full"]
 
 [features]
 default = [ "std" ]
