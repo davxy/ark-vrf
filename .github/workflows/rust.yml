@@ -74,6 +74,7 @@ jobs:
         target:
           - x86_64-unknown-linux-gnu
           - wasm32-unknown-unknown
+          - x86_64-unknown-none
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -84,6 +85,10 @@ jobs:
           key: ${{ matrix.target }}
       - name: Check without std
         run: cargo check --no-default-features --features full --target ${{ matrix.target }}
+      # x86_64-unknown-none has no std crate, so this step also proves that
+      # secret-split pulls none in. The application selects the getrandom backend.
+      - name: Check an application with secret-split
+        run: cargo check --manifest-path .github/no-std-check/Cargo.toml --target-dir target --target ${{ matrix.target }}
 
   msrv:
     runs-on: ubuntu-latest

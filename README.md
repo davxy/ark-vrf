@@ -259,14 +259,19 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 
 - `default`: `std`. The test suite needs it: `cargo test --no-default-features`
   stops with one error that says so. The `no_std` build is checked with
-  `cargo check --no-default-features --features full`.
+  `cargo check --no-default-features --features full`, and with `secret-split`
+  by the application crate in `.github/no-std-check` on `x86_64-unknown-none`.
 - `full`: All the curves below plus `ring`.
 - `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
    of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
    secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
    derivation, output, nonce and blinding), but provides side channel defenses for them.
    The split draws from `OsRng` on every secret scalar multiplication, `Secret`
-   deserialization included, and panics where `getrandom` has no source.
+   deserialization included. The feature is `no_std`. It enables
+   `rand/getrandom`, so the application must give `getrandom` a backend where
+   it has none: `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom`
+   or `getrandom/rdrand` on bare metal. `OsRng` panics where the backend fails
+   at run time.
    The multiplication stays variable time with the feature and without it.
    Ring proof witness generation is not covered by this feature: it relies on the
    branch-free handling of the secret bits

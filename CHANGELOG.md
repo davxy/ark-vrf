@@ -43,6 +43,11 @@ Breaking release. Every entry under Changed alters the public API.
   member key, a ring size of 0, an SRS of the wrong length (decode a raw SRS
   file as `PcsParams` and call `from_pcs_params`) and a builder with more
   keys than slots. A prover index beyond the ring capacity wraps.
+- `secret-split` builds `no_std`. It enabled `ark-std/getrandom`, which turns
+  on `rand/std`; it now enables `rand/getrandom` and the application picks
+  the `getrandom` backend: `getrandom/js` on `wasm32-unknown-unknown`,
+  `getrandom/custom` or `rdrand` on bare metal. CI checks the build on
+  `x86_64-unknown-none`.
 
 ### Security
 
