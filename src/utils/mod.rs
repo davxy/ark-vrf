@@ -45,7 +45,7 @@ mod secret_split {
         ($p:expr, $s:expr) => {{
             #[inline(always)]
             fn get_rand<T: ark_std::UniformRand>(_: &T) -> T {
-                T::rand(&mut ark_std::rand::rngs::OsRng)
+                T::rand(&mut rand::rngs::OsRng)
             }
             let mut x1 = get_rand(&$s);
             let mut x2 = $s - x1;

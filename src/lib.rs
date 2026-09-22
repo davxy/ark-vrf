@@ -71,7 +71,11 @@
 //!   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
 //!   derivation, output, nonce and blinding), but provides side channel defenses for them.
 //!   The split draws from `OsRng` on every secret scalar multiplication, `Secret`
-//!   deserialization included, and panics where `getrandom` has no source.
+//!   deserialization included. The feature is `no_std`. It enables
+//!   `rand/getrandom`, so the application must give `getrandom` a backend where
+//!   it has none: `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom`
+//!   or `getrandom/rdrand` on bare metal. `OsRng` panics where the backend fails
+//!   at run time.
 //!   The multiplication stays variable time with the feature and without it.
 //!   Ring proof witness generation is not covered by this feature: it relies on the
 //!   branch-free handling of the secret bits
