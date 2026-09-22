@@ -1,0 +1,9 @@
+[package]
+name = "no-std-check"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ark-vrf = { path = "../..", default-features = false, features = ["full", "secret-split"] }
+getrandom = { version = "0.2", features = ["rdrand", "js"] }
