@@ -48,6 +48,8 @@ pub const fn expanded_scalar_len<S: Suite>() -> usize {
     (base_field_size_in_bits + S::SECURITY_PARAMETER).div_ceil(8)
 }
 
+/// Squeeze [`expanded_scalar_len`] bytes and reduce them into a scalar.
+/// The bytes are zeroized after the reduction.
 pub fn nonce_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     stack_buf!(buf, expanded_scalar_len::<S>());
     t.squeeze_raw(buf);

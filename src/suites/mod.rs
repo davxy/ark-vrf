@@ -1,4 +1,4 @@
-//! # Cipher Suites
+//! # Built-in Cipher Suites
 //!
 //! This module provides pre-configured cipher suites for various elliptic curves.
 //! Each suite is conditionally compiled based on its corresponding feature flag.

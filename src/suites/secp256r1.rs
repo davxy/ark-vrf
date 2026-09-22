@@ -50,6 +50,7 @@
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
+/// Secp256r1 (NIST P-256), SHA-256, try-and-increment hash-to-curve.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Secp256r1Sha256Tai;
 

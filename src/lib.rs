@@ -104,6 +104,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_code)]
+#![cfg_attr(not(test), warn(missing_docs))]
 
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{PrimeField, Zero};
@@ -612,7 +613,9 @@ impl<S: Suite> Output<S> {
 /// does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VrfIo<S: Suite> {
+    /// Input point, from [`Input::new`].
     pub input: Input<S>,
+    /// Output point: the input times the secret scalar.
     pub output: Output<S>,
 }
 
@@ -636,34 +639,49 @@ impl<S: Suite> VrfIo<S> {
 #[macro_export]
 macro_rules! suite_types {
     ($suite:ident) => {
+        /// Secret key.
         #[allow(dead_code)]
         pub type Secret = $crate::Secret<$suite>;
+        /// Public key.
         #[allow(dead_code)]
         pub type Public = $crate::Public<$suite>;
+        /// VRF input point.
         #[allow(dead_code)]
         pub type Input = $crate::Input<$suite>;
+        /// VRF output point.
         #[allow(dead_code)]
         pub type Output = $crate::Output<$suite>;
+        /// Affine curve point.
         #[allow(dead_code)]
         pub type AffinePoint = $crate::AffinePoint<$suite>;
+        /// Scalar field.
         #[allow(dead_code)]
         pub type ScalarField = $crate::ScalarField<$suite>;
+        /// Base field.
         #[allow(dead_code)]
         pub type BaseField = $crate::BaseField<$suite>;
+        /// Tiny VRF proof.
         #[allow(dead_code)]
         pub type TinyProof = $crate::tiny::Proof<$suite>;
+        /// Pedersen VRF proof.
         #[allow(dead_code)]
         pub type PedersenProof = $crate::pedersen::Proof<$suite>;
+        /// Pedersen VRF batch verification item.
         #[allow(dead_code)]
         pub type PedersenBatchItem = $crate::pedersen::BatchItem<$suite>;
+        /// Pedersen VRF batch verifier.
         #[allow(dead_code)]
         pub type PedersenBatchVerifier = $crate::pedersen::BatchVerifier<$suite>;
+        /// Thin VRF proof.
         #[allow(dead_code)]
         pub type ThinProof = $crate::thin::Proof<$suite>;
+        /// Thin VRF batch verification item.
         #[allow(dead_code)]
         pub type ThinBatchItem = $crate::thin::BatchItem<$suite>;
+        /// Thin VRF batch verifier.
         #[allow(dead_code)]
         pub type ThinBatchVerifier = $crate::thin::BatchVerifier<$suite>;
+        /// VRF input-output pair.
         #[allow(dead_code)]
         pub type VrfIo = $crate::VrfIo<$suite>;
     };

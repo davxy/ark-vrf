@@ -21,6 +21,7 @@
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
+/// Bandersnatch in Twisted Edwards form, SHAKE128, Elligator2 hash-to-curve.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BandersnatchShake128Ell2;
 

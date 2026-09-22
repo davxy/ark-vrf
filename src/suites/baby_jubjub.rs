@@ -1,4 +1,4 @@
-//! ECVRF Baby-JubJub SHA-512 TAI suite
+//! # ECVRF Baby-JubJub SHA-512 TAI suite
 //!
 //! Configuration:
 //!
@@ -46,6 +46,7 @@
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
+/// Baby-JubJub, SHA-512, try-and-increment hash-to-curve.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BabyJubJubSha512Tai;
 

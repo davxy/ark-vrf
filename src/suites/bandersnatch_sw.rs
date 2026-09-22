@@ -1,4 +1,4 @@
-//! `ECVRF Bandersnatch-SW SHA-512 Try and Increment` suite.
+//! # ECVRF Bandersnatch-SW SHA-512 TAI suite.
 //!
 //! Configuration:
 //!
@@ -49,6 +49,7 @@
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;
 
+/// Bandersnatch in Short Weierstrass form, SHA-512, try-and-increment hash-to-curve.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BandersnatchSha512Tai;
 

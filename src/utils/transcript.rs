@@ -1,3 +1,5 @@
+//! Fiat-Shamir transcripts.
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io;
 use digest::Digest;

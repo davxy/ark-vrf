@@ -988,32 +988,46 @@ impl<S: RingSuite> BatchVerifier<S> {
 #[macro_export]
 macro_rules! ring_suite_types {
     ($suite:ident) => {
+        /// KZG parameters, the powers of tau SRS.
         #[allow(dead_code)]
         pub type PcsParams = $crate::ring::PcsParams<$suite>;
+        /// KZG verifier parameters.
         #[allow(dead_code)]
         pub type PcsVerifierParams = $crate::ring::PcsVerifierParams<$suite>;
+        /// PIOP parameters.
         #[allow(dead_code)]
         pub type PiopParams = $crate::ring::PiopParams<$suite>;
+        /// Ring context.
         #[allow(dead_code)]
         pub type RingContext = $crate::ring::RingContext<$suite>;
+        /// Ring setup.
         #[allow(dead_code)]
         pub type RingSetup = $crate::ring::RingSetup<$suite>;
+        /// Ring prover key.
         #[allow(dead_code)]
         pub type RingProverKey = $crate::ring::RingProverKey<$suite>;
+        /// Ring verifier key.
         #[allow(dead_code)]
         pub type RingVerifierKey = $crate::ring::RingVerifierKey<$suite>;
+        /// Ring keys commitment.
         #[allow(dead_code)]
         pub type RingCommitment = $crate::ring::RingCommitment<$suite>;
+        /// Ring prover.
         #[allow(dead_code)]
         pub type RingProver = $crate::ring::RingProver<$suite>;
+        /// Ring verifier.
         #[allow(dead_code)]
         pub type RingVerifier = $crate::ring::RingVerifier<$suite>;
+        /// Ring VRF proof.
         #[allow(dead_code)]
         pub type RingProof = $crate::ring::Proof<$suite>;
+        /// Incremental ring verifier key builder.
         #[allow(dead_code)]
         pub type RingVerifierKeyBuilder = $crate::ring::VerifierKeyBuilder<$suite>;
+        /// Ring VRF batch verification item.
         #[allow(dead_code)]
         pub type RingBatchItem = $crate::ring::BatchItem<$suite>;
+        /// Ring VRF batch verifier.
         #[allow(dead_code)]
         pub type RingBatchVerifier = $crate::ring::BatchVerifier<$suite>;
     };

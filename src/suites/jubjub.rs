@@ -47,6 +47,7 @@
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;
 
+/// JubJub, SHA-512, try-and-increment hash-to-curve.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct JubJubSha512Tai;
 
