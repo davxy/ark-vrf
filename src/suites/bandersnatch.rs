@@ -66,17 +66,18 @@ impl Suite for ThisSuite {
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
-        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512, utils::ArkworksCompat>(data)
+        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "23335687741101763108036518445642207119627658113885888016488710494487028845889"
+            "17638779463981703257024232969105388646911395063733460320920179720743770753630"
         );
-        const Y: BaseField =
-            MontFp!("5552214580375038693022409684979828600325210968745774080859660443337357929963");
+        const Y: BaseField = MontFp!(
+            "43412064883199366458194534351728261914394039555474967635990234742472338103665"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -87,20 +88,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "14056632001415368875257708737821299882600475929746323097150942355715730684350"
+            "40491514051566626997660191275481402633028619220985639345189701840760973773876"
         );
         const Y: BaseField = MontFp!(
-            "10322661992765989500407719465917595459409463902187386706652408883505670839210"
+            "30656473616574028893331120350555815475572115533831243689136786502363899874226"
         );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "26913883415342152801331916189968962157924271221160514298872262294143390094043"
+            "36880292816015504914760276407095125078764838679354034448146164617114507060377"
         );
         const Y: BaseField = MontFp!(
-            "30874728313203001508631936119690348239461579770372782660098261717479009115354"
+            "42881976946106967947876454617806466371421329384961230126625568686348457494844"
         );
         AffinePoint::new_unchecked(X, Y)
     };

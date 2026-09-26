@@ -87,8 +87,7 @@ where
 ///
 /// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
 /// Any salting of `data` must be applied by the caller.
-/// `P` sets the length of the `Z_pad` prefix, see [`XmdPadding`].
-pub fn hash_to_curve_ell2_xmd<S: Suite, H, P: XmdPadding>(data: &[u8]) -> Option<AffinePoint<S>>
+pub fn hash_to_curve_ell2_xmd<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -96,7 +95,7 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    hash_to_curve_ell2::<S, XmdFieldHasher<H, S, P>>(data)
+    hash_to_curve_ell2::<S, XmdFieldHasher<H, S, Rfc9380>>(data)
 }
 
 /// Elligator2 hash-to-curve using an XOF (extendable output function).
@@ -116,13 +115,13 @@ where
 }
 
 /// Length of the `Z_pad` prefix of `expand_message_xmd`.
-pub trait XmdPadding {
+trait XmdPadding {
     /// Length in bytes, given the expanded length of one base field element.
     fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize;
 }
 
 /// `Z_pad` of RFC 9380 section 5.3.1: the input block size of the hash.
-pub struct Rfc9380;
+struct Rfc9380;
 
 impl XmdPadding for Rfc9380 {
     fn z_pad_len<H: digest::core_api::BlockSizeUser>(_len_per_base_elem: usize) -> usize {
@@ -137,8 +136,10 @@ impl XmdPadding for Rfc9380 {
 /// Arkworks fixes this in <https://github.com/arkworks-rs/algebra/pull/1140>.
 /// After that release, `DefaultFieldHasher` matches [`Rfc9380`] and not this
 /// type.
-pub struct ArkworksCompat;
+#[cfg(test)]
+struct ArkworksCompat;
 
+#[cfg(test)]
 impl XmdPadding for ArkworksCompat {
     fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize {
         len_per_base_elem
@@ -284,8 +285,7 @@ mod tests {
 
     /// `ArkworksCompat` keeps the output of the arkworks 0.6
     /// `DefaultFieldHasher`, whose `Z_pad` is the element length and not the
-    /// hash block size. The Bandersnatch Elligator2 vectors depend on these
-    /// bytes. When an arkworks release contains
+    /// hash block size. When an arkworks release contains
     /// <https://github.com/arkworks-rs/algebra/pull/1140>, this test fails:
     /// compare `Rfc9380` with `DefaultFieldHasher` then.
     #[test]
@@ -395,9 +395,8 @@ mod tests {
             type Transcript = <Narrow as Suite>::Transcript;
         }
 
-        let narrow =
-            hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512, ArkworksCompat>(b"data").unwrap();
-        let wide = hash_to_curve_ell2_xmd::<Wide, sha2::Sha512, ArkworksCompat>(b"data").unwrap();
+        let narrow = hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512>(b"data").unwrap();
+        let wide = hash_to_curve_ell2_xmd::<Wide, sha2::Sha512>(b"data").unwrap();
         assert_ne!(narrow, wide);
         assert!(wide.is_on_curve() && wide.is_in_correct_subgroup_assuming_on_curve());
 
