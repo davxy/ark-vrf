@@ -87,16 +87,16 @@ where
 ///
 /// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
 /// Any salting of `data` must be applied by the caller.
-///
-pub fn hash_to_curve_ell2_xmd<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
+/// `P` sets the length of the `Z_pad` prefix, see [`XmdPadding`].
+pub fn hash_to_curve_ell2_xmd<S: Suite, H, P: XmdPadding>(data: &[u8]) -> Option<AffinePoint<S>>
 where
-    H: digest::FixedOutputReset + Default + Clone,
+    H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
     CurveConfig<S>: Elligator2Config,
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    hash_to_curve_ell2::<S, XmdFieldHasher<H, S>>(data)
+    hash_to_curve_ell2::<S, XmdFieldHasher<H, S, P>>(data)
 }
 
 /// Elligator2 hash-to-curve using an XOF (extendable output function).
@@ -115,22 +115,51 @@ where
     hash_to_curve_ell2::<S, XofFieldHasher<H, S>>(data)
 }
 
-/// Field hasher implementing `expand_message_xmd` from RFC 9380 section 5.3.1.
-///
-/// The `Z_pad` prefix has the expanded element length, not the input block
-/// size of `H`, to keep the output of the arkworks 0.6 `DefaultFieldHasher`.
-/// The expansion length follows [`Suite::SECURITY_PARAMETER`].
-struct XmdFieldHasher<H, S> {
-    dst: Vec<u8>,
-    len_per_base_elem: usize,
-    _marker: PhantomData<(H, S)>,
+/// Length of the `Z_pad` prefix of `expand_message_xmd`.
+pub trait XmdPadding {
+    /// Length in bytes, given the expanded length of one base field element.
+    fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize;
 }
 
-impl<F, H, S> HashToField<F> for XmdFieldHasher<H, S>
+/// `Z_pad` of RFC 9380 section 5.3.1: the input block size of the hash.
+pub struct Rfc9380;
+
+impl XmdPadding for Rfc9380 {
+    fn z_pad_len<H: digest::core_api::BlockSizeUser>(_len_per_base_elem: usize) -> usize {
+        H::block_size()
+    }
+}
+
+/// `Z_pad` of the arkworks 0.6 `DefaultFieldHasher`: the expanded element
+/// length. Not RFC 9380 compliant when this length differs from the block
+/// size.
+///
+/// Arkworks fixes this in <https://github.com/arkworks-rs/algebra/pull/1140>.
+/// After that release, `DefaultFieldHasher` matches [`Rfc9380`] and not this
+/// type.
+pub struct ArkworksCompat;
+
+impl XmdPadding for ArkworksCompat {
+    fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize {
+        len_per_base_elem
+    }
+}
+
+/// Field hasher implementing `expand_message_xmd` from RFC 9380 section 5.3.1.
+///
+/// The expansion length follows [`Suite::SECURITY_PARAMETER`].
+struct XmdFieldHasher<H, S, P> {
+    dst: Vec<u8>,
+    len_per_base_elem: usize,
+    _marker: PhantomData<(H, S, P)>,
+}
+
+impl<F, H, S, P> HashToField<F> for XmdFieldHasher<H, S, P>
 where
     F: ark_ff::Field,
-    H: digest::FixedOutputReset + Default + Clone,
+    H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
     S: Suite,
+    P: XmdPadding,
 {
     fn new(dst: &[u8]) -> Self {
         assert!(dst.len() <= 255, "DST longer than 255 bytes");
@@ -153,7 +182,7 @@ where
         let dst_prime = [&self.dst[..], &[self.dst.len() as u8]].concat();
 
         let mut h = H::default();
-        h.update(&vec![0u8; self.len_per_base_elem]);
+        h.update(&vec![0u8; P::z_pad_len::<H>(self.len_per_base_elem)]);
         h.update(msg);
         h.update(&(len_in_bytes as u16).to_be_bytes());
         h.update(&[0]);
@@ -253,22 +282,25 @@ mod tests {
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())
     }
 
-    /// The local XMD hasher keeps the output of the arkworks 0.6
+    /// `ArkworksCompat` keeps the output of the arkworks 0.6
     /// `DefaultFieldHasher`, whose `Z_pad` is the element length and not the
-    /// hash block size. The suite vectors depend on these bytes, and a later
-    /// arkworks release must not change them.
+    /// hash block size. The Bandersnatch Elligator2 vectors depend on these
+    /// bytes. When an arkworks release contains
+    /// <https://github.com/arkworks-rs/algebra/pull/1140>, this test fails:
+    /// compare `Rfc9380` with `DefaultFieldHasher` then.
     #[test]
-    fn xmd_field_hasher_matches_arkworks() {
+    fn xmd_field_hasher_arkworks_compat_matches_arkworks() {
         use crate::suites::testing::TestSuite256;
         use ark_ff::field_hashers::DefaultFieldHasher;
 
         fn check<H, S, const SEC_PARAM: usize>()
         where
-            H: digest::FixedOutputReset + Default + Clone,
+            H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
             S: Suite,
         {
             let dst = [S::SUITE_ID, &[DomSep::HashToCurve as u8]].concat();
-            let local = <XmdFieldHasher<H, S> as HashToField<BaseField<S>>>::new(&dst);
+            let local =
+                <XmdFieldHasher<H, S, ArkworksCompat> as HashToField<BaseField<S>>>::new(&dst);
             let arkworks =
                 <DefaultFieldHasher<H, SEC_PARAM> as HashToField<BaseField<S>>>::new(&dst);
             for msg_len in [0, 1, 63, 64, 65, 127, 128, 129, 1000] {
@@ -282,6 +314,66 @@ mod tests {
         check::<sha2::Sha512, TestSuite, { TestSuite::SECURITY_PARAMETER }>();
         check::<sha2::Sha512, TestSuite256, { TestSuite256::SECURITY_PARAMETER }>();
         check::<sha2::Sha256, TestSuite, { TestSuite::SECURITY_PARAMETER }>();
+    }
+
+    /// `Rfc9380` pads with the hash block size. P-256 with SHA-256 has a 48
+    /// byte element and a 64 byte block, so a pad of the element length
+    /// fails here. The vectors are the `u` values of RFC 9380 Appendix J.1.1.
+    #[cfg(feature = "secp256r1")]
+    #[test]
+    fn xmd_field_hasher_rfc9380_matches_rfc_vectors() {
+        use crate::suites::secp256r1::Secp256r1Sha256Tai as P256;
+        use ark_ff::PrimeField;
+
+        let q128 = [b"q128_".as_slice(), &[b'q'; 128]].concat();
+        let a512 = [b"a512_".as_slice(), &[b'a'; 512]].concat();
+        let vectors: [(&[u8], [&str; 2]); 5] = [
+            (
+                b"",
+                [
+                    "ad5342c66a6dd0ff080df1da0ea1c04b96e0330dd89406465eeba11582515009",
+                    "8c0f1d43204bd6f6ea70ae8013070a1518b43873bcd850aafa0a9e220e2eea5a",
+                ],
+            ),
+            (
+                b"abc",
+                [
+                    "afe47f2ea2b10465cc26ac403194dfb68b7f5ee865cda61e9f3e07a537220af1",
+                    "379a27833b0bfe6f7bdca08e1e83c760bf9a338ab335542704edcd69ce9e46e0",
+                ],
+            ),
+            (
+                b"abcdef0123456789",
+                [
+                    "0fad9d125a9477d55cf9357105b0eb3a5c4259809bf87180aa01d651f53d312c",
+                    "b68597377392cd3419d8fcc7d7660948c8403b19ea78bbca4b133c9d2196c0fb",
+                ],
+            ),
+            (
+                &q128,
+                [
+                    "3bbc30446f39a7befad080f4d5f32ed116b9534626993d2cc5033f6f8d805919",
+                    "76bb02db019ca9d3c1e02f0c17f8baf617bbdae5c393a81d9ce11e3be1bf1d33",
+                ],
+            ),
+            (
+                &a512,
+                [
+                    "4ebc95a6e839b1ae3c63b847798e85cb3c12d3817ec6ebc10af6ee51adb29fec",
+                    "4e21af88e22ea80156aff790750121035b3eefaa96b425a8716e0d20b4e269ee",
+                ],
+            ),
+        ];
+
+        let dst = b"QUUX-V01-CS02-with-P256_XMD:SHA-256_SSWU_RO_";
+        let hasher =
+            <XmdFieldHasher<sha2::Sha256, P256, Rfc9380> as HashToField<BaseField<P256>>>::new(dst);
+        for (msg, want) in vectors {
+            let got: [BaseField<P256>; 2] = hasher.hash_to_field(msg);
+            let want =
+                want.map(|u| BaseField::<P256>::from_be_bytes_mod_order(&hex::decode(u).unwrap()));
+            assert_eq!(got, want, "msg length {}", msg.len());
+        }
     }
 
     /// A suite at 256 bits expands more bytes per field element, so its
@@ -303,8 +395,9 @@ mod tests {
             type Transcript = <Narrow as Suite>::Transcript;
         }
 
-        let narrow = hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512>(b"data").unwrap();
-        let wide = hash_to_curve_ell2_xmd::<Wide, sha2::Sha512>(b"data").unwrap();
+        let narrow =
+            hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512, ArkworksCompat>(b"data").unwrap();
+        let wide = hash_to_curve_ell2_xmd::<Wide, sha2::Sha512, ArkworksCompat>(b"data").unwrap();
         assert_ne!(narrow, wide);
         assert!(wide.is_on_curve() && wide.is_in_correct_subgroup_assuming_on_curve());
 
