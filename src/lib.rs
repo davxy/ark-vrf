@@ -471,8 +471,17 @@ impl<S: Suite> Secret<S> {
 /// and do not reject trailing bytes.
 ///
 /// [`Self::point`] reads the affine point.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
+
+// Not derived: the derive would require `S: PartialEq` of the suite marker.
+impl<S: Suite, K> PartialEq for PointWrapper<S, K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<S: Suite, K> Eq for PointWrapper<S, K> {}
 
 /// Role marker of [`Public`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -33,10 +33,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         Secret::from_seed(seed).public().point()
+//!         Secret::from_seed(seed).public()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = public.point();
+//! ring[prover_key_index] = public;
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
@@ -69,7 +69,7 @@ use ark_ec::{
     pairing::Pairing,
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
 };
-use ark_std::{borrow::Cow, ops::Range};
+use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::canonical::deserialize_canonical;
@@ -452,14 +452,35 @@ pub struct RingSetup<S: RingSuite> {
     ring_ctx: RingContext<S>,
 }
 
-/// The ring proof backend asserts on the identity, so it is rejected here.
-fn ring_members_te<S: RingSuite>(
-    pks: &[AffinePoint<S>],
-) -> Result<Cow<'_, [TEAffine<CurveConfig<S>>]>, Error> {
-    if pks.iter().any(AffineRepr::is_zero) {
-        return Err(Error::InvalidData);
+/// Collects at most `capacity` ring members as Twisted Edwards points. The
+/// ring proof backend asserts on the identity, so it is rejected here.
+fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
+    pks: impl IntoIterator<Item = P>,
+    capacity: usize,
+) -> Result<Vec<TEAffine<CurveConfig<S>>>, Error> {
+    let pks = pks.into_iter();
+    let mut members = Vec::with_capacity(pks.size_hint().0.min(capacity));
+    for pk in pks {
+        if members.len() == capacity {
+            return Err(Error::RingCapacityExceeded);
+        }
+        let point = pk.borrow().0;
+        if point.is_zero() {
+            return Err(Error::InvalidData);
+        }
+        members.push(point.into_te().ok_or(Error::InvalidData)?);
     }
-    TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)
+    Ok(members)
+}
+
+impl<S: RingSuite> Public<S> {
+    /// The padding point [`RingSuite::PADDING`] as a ring member.
+    ///
+    /// Nobody knows its discrete log, so it can take the place of any key in
+    /// the ring, for example the key of a removed member.
+    pub fn padding() -> Self {
+        Self::from_affine_unchecked(S::PADDING)
+    }
 }
 
 impl<S: RingSuite> RingSetup<S> {
@@ -529,17 +550,20 @@ impl<S: RingSuite> RingSetup<S> {
     /// [`Self::verifier_key`] each drop one half, so a party that needs both
     /// keys pays twice if it calls them.
     ///
+    /// `pks` is any iterator of keys or of references to keys, for example
+    /// `&ring` for a `Vec<Public<S>>`. The keys are assumed to be in the
+    /// prime-order subgroup, which the checked constructors and the checked
+    /// deserialization of [`Public`] guarantee; a key built without a check
+    /// places that check on the caller.
+    ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn keys(
+    pub fn keys<P: Borrow<Public<S>>>(
         &self,
-        pks: &[AffinePoint<S>],
+        pks: impl IntoIterator<Item = P>,
     ) -> Result<(RingProverKey<S>, RingVerifierKey<S>), Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
+        let pks = ring_members_te::<S, P>(pks, self.ring_ctx.max_ring_size())?;
         Ok(ring_proof::index(
             &self.pcs_params,
             &self.ring_ctx.piop_params,
@@ -549,23 +573,31 @@ impl<S: RingSuite> RingSetup<S> {
 
     /// Create a prover key for the given ring of public keys.
     ///
-    /// Use [`Self::keys`] if the verifier key is needed too.
+    /// Use [`Self::keys`] if the verifier key is needed too. `pks` is as for
+    /// [`Self::keys`].
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
+    pub fn prover_key<P: Borrow<Public<S>>>(
+        &self,
+        pks: impl IntoIterator<Item = P>,
+    ) -> Result<RingProverKey<S>, Error> {
         Ok(self.keys(pks)?.0)
     }
 
     /// Create a verifier key for the given ring of public keys.
     ///
-    /// Use [`Self::keys`] if the prover key is needed too.
+    /// Use [`Self::keys`] if the prover key is needed too. `pks` is as for
+    /// [`Self::keys`].
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
+    pub fn verifier_key<P: Borrow<Public<S>>>(
+        &self,
+        pks: impl IntoIterator<Item = P>,
+    ) -> Result<RingVerifierKey<S>, Error> {
         Ok(self.keys(pks)?.1)
     }
 
@@ -818,24 +850,21 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 
     /// Add public keys to the ring being built.
     ///
-    /// On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
+    /// `pks` is as for [`RingSetup::keys`]. On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
     /// keys do not fit in the ring ([`Self::free_slots`] gives the remaining
     /// capacity), `Error::SrsLookupFailed` if the SRS lookup fails,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn append(
+    pub fn append<P: Borrow<Public<S>>>(
         &mut self,
-        pks: &[AffinePoint<S>],
+        pks: impl IntoIterator<Item = P>,
         lookup: impl SrsLookup<S>,
     ) -> Result<(), Error> {
-        if self.free_slots() < pks.len() {
-            return Err(Error::RingCapacityExceeded);
-        }
+        let pks = ring_members_te::<S, P>(pks, self.free_slots())?;
         let srs = prefetched_lookup(
             lookup,
             self.partial.curr_keys..self.partial.curr_keys + pks.len(),
         )?;
-        let pks = ring_members_te::<S>(pks)?;
         self.partial.append(&pks, srs);
         Ok(())
     }
@@ -1214,6 +1243,16 @@ pub(crate) mod testing {
         }
     }
 
+    fn random_ring<S: RingSuite>(
+        size: usize,
+        rng: &mut dyn ark_std::rand::RngCore,
+    ) -> Vec<Public<S>> {
+        common::random_vec::<AffinePoint<S>>(size, Some(rng))
+            .into_iter()
+            .map(Public::from_affine_unchecked)
+            .collect()
+    }
+
     #[allow(unused)]
     pub fn prove_verify<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
@@ -1222,17 +1261,16 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
         let item = TestItem::<S>::new(&secret, &prover, rng);
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
         let result = item.proof.verify(item.io, &item.ad, &verifier);
         assert!(result.is_ok());
@@ -1246,12 +1284,13 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public().0;
+        pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
-        let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
-        let verifier = ring_ctx.ring_verifier(ring_setup.verifier_key(&pks).unwrap());
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
+        let prover = ring_ctx.ring_prover(prover_key, prover_idx);
+        let verifier = ring_ctx.ring_verifier(verifier_key);
 
         let ios: [VrfIo<S>; 0] = [];
         let proof = secret.prove_ring(ios, b"foo", &prover);
@@ -1306,15 +1345,14 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
         let mut ios: Vec<VrfIo<S>> = (0..3u8)
@@ -1352,12 +1390,12 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
         // Generate proofs in parallel
@@ -1368,7 +1406,6 @@ pub(crate) mod testing {
             })
             .collect();
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
         // Batch verify all proofs
@@ -1398,12 +1435,11 @@ pub(crate) mod testing {
 
         // Multi-ring batch: build a second ring sharing the same KZG SRS,
         // then aggregate proofs from both rings into a single batch verifier.
-        let mut pks_b = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks_b = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx_b = 1;
-        pks_b[prover_idx_b] = public.0;
-        let prover_key_b = ring_setup.prover_key(&pks_b).unwrap();
+        pks_b[prover_idx_b] = public;
+        let (prover_key_b, verifier_key_b) = ring_setup.keys(&pks_b).unwrap();
         let prover_b = ring_ctx.ring_prover(prover_key_b, prover_idx_b);
-        let verifier_key_b = ring_setup.verifier_key(&pks_b).unwrap();
         let verifier_b = ring_ctx.ring_verifier(verifier_key_b);
 
         let batch_b: Vec<_> = (0..TEST_RING_SIZE)
@@ -1448,7 +1484,7 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let max_ring_size = ring_setup.ring_context().max_ring_size();
-        let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
+        let pks = random_ring::<S>(max_ring_size + 1, rng);
         assert!(matches!(
             ring_setup.prover_key(&pks),
             Err(Error::RingCapacityExceeded)
@@ -1459,6 +1495,14 @@ pub(crate) mod testing {
         ));
         assert!(matches!(
             ring_setup.keys(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
+
+        // The key functions stop at the capacity, so an endless iterator ends
+        // with an error, not with unbounded memory use.
+        let endless = core::iter::repeat(Public::<S>::padding());
+        assert!(matches!(
+            ring_setup.keys(endless),
             Err(Error::RingCapacityExceeded)
         ));
 
@@ -1476,8 +1520,8 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
-        pks[0] = AffinePoint::<S>::zero();
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
+        pks[0] = Public::from_affine_unchecked(AffinePoint::<S>::zero());
 
         assert!(matches!(
             ring_setup.prover_key(&pks),
@@ -1525,9 +1569,9 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public().0;
+        pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
@@ -1631,6 +1675,11 @@ pub(crate) mod testing {
 
         // Check that the point is on curve.
         assert!(S::PADDING.check(true).is_ok());
+
+        // Callers put the padding in the ring in place of a missing key, so
+        // it must be a valid `Public`: in the subgroup and not the identity.
+        assert!(Public::<S>::from_affine(S::PADDING).is_ok());
+        assert_eq!(Public::<S>::padding().point(), S::PADDING);
     }
 
     #[allow(unused)]
@@ -1658,17 +1707,17 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_setup
             .ring_context()
             .ring_prover(prover_key, prover_idx);
         let item = TestItem::<S>::new(&secret, &prover, rng);
 
-        let commitment = ring_setup.verifier_key(&pks).unwrap().commitment();
+        let commitment = verifier_key.commitment();
 
         // Round-trip the params to mimic a verifier-only user holding just
         // the serialized params, the ring commitment and the ring size.
@@ -1700,8 +1749,8 @@ pub(crate) mod testing {
         let ring_ctx = ring_setup.ring_context();
         let ring_size = ring_ctx.max_ring_size();
         let prover_idx = random_val::<usize>(Some(rng)) % ring_size;
-        let mut pks = random_vec::<AffinePoint<S>>(ring_size, Some(rng));
-        pks[prover_idx] = public.0;
+        let mut pks = random_ring::<S>(ring_size, rng);
+        pks[prover_idx] = public;
 
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
@@ -1710,14 +1759,23 @@ pub(crate) mod testing {
         // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
         assert_eq!(vk_builder.free_slots(), pks.len());
+
+        // `append` stops at the free slots, so an endless iterator ends with
+        // an error, not with unbounded memory use, and appends nothing.
+        let endless = core::iter::repeat(Public::<S>::padding());
+        assert_eq!(
+            vk_builder.append(endless, &lookup).unwrap_err(),
+            Error::RingCapacityExceeded
+        );
+        assert_eq!(vk_builder.free_slots(), pks.len());
         assert_eq!(
             vk_builder.pcs_verifier_params(),
             ring_setup.pcs_verifier_params()
         );
 
-        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
-            vk_builder.append(&[extra_pk], |_| None).unwrap_err(),
+            vk_builder.append([extra_pk], |_| None).unwrap_err(),
             Error::SrsLookupFailed
         );
 
@@ -1728,9 +1786,9 @@ pub(crate) mod testing {
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
         // No more space left; `free_slots` reports the remaining capacity.
-        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
-            vk_builder.append(&[extra_pk], &lookup).unwrap_err(),
+            vk_builder.append([extra_pk], &lookup).unwrap_err(),
             Error::RingCapacityExceeded
         );
         assert_eq!(vk_builder.free_slots(), 0);
@@ -1951,7 +2009,7 @@ pub(crate) mod testing {
 
     pub struct TestVector<S: RingSuite> {
         pub pedersen: pedersen::testing::TestVector<S>,
-        pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
+        pub ring_pks: [Public<S>; TEST_RING_SIZE],
         pub ring_pks_com: RingCommitment<S>,
         pub ring_proof: RingBareProof<S>,
     }
@@ -1989,16 +2047,15 @@ pub(crate) mod testing {
             use ark_std::rand::SeedableRng;
             let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
             let prover_idx = 3;
-            let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
-            ring_pks[prover_idx] = public.0;
+            let mut ring_pks = random_ring::<S>(TEST_RING_SIZE, rng);
+            ring_pks[prover_idx] = public;
 
             // Blinding is disabled to make the proof reproducible
             let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
-            let prover_key = ring_setup.prover_key(&ring_pks).unwrap();
+            let (prover_key, verifier_key) = ring_setup.keys(&ring_pks).unwrap();
             let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
             let proof = secret.prove_ring(io, ad, &prover);
 
-            let verifier_key = ring_setup.verifier_key(&ring_pks).unwrap();
             let ring_pks_com = verifier_key.commitment();
 
             {
@@ -2020,7 +2077,7 @@ pub(crate) mod testing {
         fn from_map(map: &common::TestVectorMap) -> Self {
             let pedersen = pedersen::testing::TestVector::from_map(map);
 
-            let ring_pks = map.get::<[AffinePoint<S>; TEST_RING_SIZE]>("ring_pks");
+            let ring_pks = map.get::<[Public<S>; TEST_RING_SIZE]>("ring_pks");
             let ring_pks_com = map.get::<RingCommitment<S>>("ring_pks_com");
             let ring_proof = map.get::<RingBareProof<S>>("ring_proof");
 
@@ -2053,14 +2110,13 @@ pub(crate) mod testing {
 
             let ring_setup = <S as RingSuiteExt>::ring_setup();
 
-            let prover_idx = self.ring_pks.iter().position(|&pk| pk == public.0).unwrap();
+            let prover_idx = self.ring_pks.iter().position(|pk| *pk == public).unwrap();
 
             // Blinding is disabled to reproduce the exact proof in the vector
             let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
-            let prover_key = ring_setup.prover_key(&self.ring_pks).unwrap();
+            let (prover_key, verifier_key) = ring_setup.keys(self.ring_pks).unwrap();
             let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-            let verifier_key = ring_setup.verifier_key(&self.ring_pks).unwrap();
             let verifier = ring_ctx.ring_verifier(verifier_key);
 
             let proof = secret.prove_ring(io, &self.pedersen.base.ad, &prover);

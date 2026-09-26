@@ -156,8 +156,6 @@ The Ring VRF provides anonymity within a set of public keys using zero-knowledge
 
 _Ring construction_
 ```rust,ignore
-use ark_vrf::ring::RingSuite;
-
 const RING_SIZE: usize = 100;
 let prover_key_index = 3;
 
@@ -166,15 +164,15 @@ let mut ring = (0..RING_SIZE)
     .map(|i| {
         let mut seed = [0u8; 32];
         seed[..8].copy_from_slice(&i.to_le_bytes());
-        Secret::from_seed(seed).public().point()
+        Secret::from_seed(seed).public()
     })
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover
-ring[prover_key_index] = public.point();
+ring[prover_key_index] = public;
 
 // Any key can be replaced with the padding point
-ring[0] = BandersnatchSha512Ell2::PADDING;
+ring[0] = Public::padding();
 
 // Create parameters for the ring proof system.
 // These parameters are reusable across multiple proofs.

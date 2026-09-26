@@ -27,6 +27,13 @@ proofs and ring commitments made with 0.5.3 do not verify.
   shortcuts: `Secret::prove_tiny`, `prove_thin`, `prove_pedersen`,
   `prove_ring`, `Public::verify_tiny` and `verify_thin`. The Thin and Ring
   `BatchItem::new` and `BatchVerifier::push` take the key last.
+- Ring members are `Public` keys. `RingSetup::keys`, `prover_key`,
+  `verifier_key` and `VerifierKeyBuilder::append` take any iterator of
+  `Public` or `&Public` (for example `&ring`) instead of `&[AffinePoint]`, so
+  the subgroup check of a key happens once, when the key is decoded.
+  `Public::padding()` gives the ring padding point as a key. `==` on
+  `Public`, `Input` and `Output` no longer needs `PartialEq` on the suite
+  type, so it works in code generic over the suite.
 - `Error` is `#[non_exhaustive]`: a `match` on it needs a wildcard arm, and
   a new variant is no longer a breaking change.
 - Opaque types. `Public`, `Input` and `Output` are aliases of
