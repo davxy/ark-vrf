@@ -36,12 +36,9 @@ Breaking release. Every entry under Changed alters the public API.
   `utils::CHALLENGE_LEN` is gone.
 - `rust-version = "1.85"` declares the minimum supported Rust: edition 2024,
   checked in CI.
-- `hash_to_curve_ell2_xmd` takes a padding type `P: XmdPadding`, and `H`
-  needs `BlockSizeUser`. `Rfc9380` pads `expand_message_xmd` with the hash
-  block size. `ArkworksCompat` pads with the element length, as the arkworks
-  0.6 `DefaultFieldHasher` does. The expansion is local, so an arkworks
-  update cannot change the output. `BandersnatchSha512Ell2` uses
-  `ArkworksCompat`; its output is the same.
+- `hash_to_curve_ell2_xmd` follows the RFC 9380 `expand_message_xmd`
+  padding, and `H` needs `BlockSizeUser`. Every `BandersnatchSha512Ell2`
+  output changes, with the same `SUITE_ID`.
 
 ### Fixed
 
