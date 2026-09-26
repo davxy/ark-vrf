@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 Breaking release. Every entry under Changed alters the public API.
+`BandersnatchSha512Ell2` also changes its outputs under the same `SUITE_ID`:
+proofs and ring commitments made with 0.5.3 do not verify.
 
 ### Added
 
@@ -34,8 +36,12 @@ Breaking release. Every entry under Changed alters the public API.
   challenge and may exceed the level up to the scalar width; the Tiny
   decoder then rejects a challenge encoding above the field order.
   `utils::CHALLENGE_LEN` is gone.
-- `rust-version = "1.85"` declares the minimum supported Rust: edition 2024,
-  checked in CI.
+- Scheme change, `SUITE_ID` unchanged. `hash_to_curve_ell2_xmd` pads
+  `expand_message_xmd` with the hash block size (128 bytes for SHA-512), as
+  RFC 9380 requires. The arkworks `DefaultFieldHasher` used before pads with
+  the field element length (48 bytes). For `BandersnatchSha512Ell2`, input
+  points, VRF outputs, `BLINDING_BASE`, `ACCUMULATOR_BASE`, `PADDING`, ring
+  commitments and the test vectors change.
 
 ### Fixed
 
