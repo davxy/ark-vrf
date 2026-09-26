@@ -300,7 +300,7 @@ pub trait Suite: Copy {
 /// challenge products and, with `secret-split`, the split scalars. This is
 /// best effort: temporaries inside arkworks and the ring proof backend are
 /// not wiped. The Pedersen prover returns the blinding factor to the caller,
-/// who owns it from then on (see [`pedersen::Prover::prove`]).
+/// who owns it from then on (see [`pedersen::Proof::prove`]).
 ///
 /// Scalar multiplications over the secret run in variable time: the arkworks
 /// double-and-add loop follows the bits of the scalar. `secret-split` hides
@@ -692,7 +692,6 @@ macro_rules! suite_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tiny::{Prover, Verifier};
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
     use testing::{TEST_SEED, random_val};
@@ -903,17 +902,21 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        assert!(public.verify(malicious_io, ad.as_bytes(), &proof).is_ok());
+        assert!(
+            public
+                .verify_tiny(malicious_io, ad.as_bytes(), &proof)
+                .is_ok()
+        );
 
         // 5. Verify the honest proof still works
         let honest_io = VrfIo {
             input,
             output: honest_output,
         };
-        let honest_proof = secret.prove(honest_io, ad.as_bytes());
+        let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
         assert!(
             public
-                .verify(honest_io, ad.as_bytes(), &honest_proof)
+                .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
                 .is_ok()
         );
 

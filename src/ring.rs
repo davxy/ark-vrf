@@ -23,7 +23,7 @@
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::ring::{Prover, Verifier};
+//! use ark_vrf::ring::Proof;
 //!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
@@ -46,12 +46,12 @@
 //! let prover_key = ring_setup.prover_key(&ring).unwrap();
 //! let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
 //! let io = secret.vrf_io(input);
-//! let proof = secret.prove(io, b"aux data", &prover);
+//! let proof = Proof::prove(io, b"aux data", &secret, &prover);
 //!
 //! // Verification
 //! let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 //! let verifier = ring_ctx.ring_verifier(verifier_key);
-//! let result = Public::verify(io, b"aux data", &proof, &verifier);
+//! let result = proof.verify(io, b"aux data", &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -187,7 +187,7 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
 /// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
 ///
-/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// Construct it with [`Proof::prove`] or by deserialization. Deserialization
 /// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
@@ -245,74 +245,19 @@ impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
     }
 }
 
-/// Trait for types that can generate Ring VRF proofs.
-pub trait Prover<S: RingSuite> {
+impl<S: RingSuite> Proof<S> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    /// `prover` must be built for the ring and for the position of this key in
-    /// it (see [`RingContext::ring_prover`]).
-    fn prove(
-        &self,
+    /// `ring_prover` must be built for the ring and for the position of the
+    /// key of `secret` in it (see [`RingContext::ring_prover`]).
+    pub fn prove(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        prover: &RingProver<S>,
-    ) -> Proof<S>;
-}
-
-/// Trait for types that can verify Ring VRF proofs.
-///
-/// Verifies that a VRF output was correctly derived using a secret key
-/// belonging to one of the ring's public keys, without revealing which one.
-///
-/// All curve points involved in verification (I/O pairs and proof points)
-/// are assumed to be in the prime-order subgroup. This is guaranteed when
-/// points are constructed through checked constructors ([`Input::from_affine`],
-/// [`Output::from_affine`]) or through trusted operations like [`Input::new`]
-/// (hash-to-curve) and [`Secret::vrf_io`]. Proof points are guaranteed valid
-/// when deserialized via [`CanonicalDeserialize`] (which includes subgroup
-/// checks) or produced by [`Prover::prove`].
-///
-/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
-/// the burden of subgroup validation on the caller. Passing points with
-/// cofactor components leads to undefined verification behavior.
-///
-/// The group identity is checked unconditionally, for the key commitment and
-/// for every I/O pair, by the embedded Pedersen verification (see
-/// [`pedersen::Verifier`]).
-pub trait Verifier<S: RingSuite> {
-    /// Verify a proof for the given VRF I/O pairs and additional data.
-    ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
-    /// `verifier` must be built for the ring the proof claims membership in
-    /// (see [`RingContext::ring_verifier`]).
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// key commitment or any I/O pair point is the group identity or the key
-    /// commitment cannot be mapped to Twisted Edwards form,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by the checked constructors and checked deserialization of
-    /// the point wrappers (see [`PointWrapper`]).
-    fn verify(
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-        verifier: &RingVerifier<S>,
-    ) -> Result<(), Error>;
-}
-
-impl<S: RingSuite> Prover<S> for Secret<S> {
-    fn prove(
-        &self,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
+        secret: &Secret<S>,
         ring_prover: &RingProver<S>,
-    ) -> Proof<S> {
-        use pedersen::Prover as PedersenProver;
-        let (pedersen_proof, mut secret_blinding) =
-            <Self as PedersenProver<S>>::prove(self, ios, ad);
+    ) -> Self {
+        let (pedersen_proof, mut secret_blinding) = PedersenProof::prove(ios, ad, secret);
         let ring_proof = ring_prover.prove(secret_blinding);
         secret_blinding.zeroize();
         Proof {
@@ -320,26 +265,64 @@ impl<S: RingSuite> Prover<S> for Secret<S> {
             ring_proof,
         }
     }
-}
 
-impl<S: RingSuite> Verifier<S> for Public<S> {
-    fn verify(
+    /// Verify the proof for the given VRF I/O pairs and additional data.
+    ///
+    /// Verifies that each VRF output was correctly derived using a secret key
+    /// belonging to one of the ring's public keys, without revealing which one.
+    /// Multiple I/O pairs are delinearized into a single merged pair before
+    /// verifying. `verifier` must be built for the ring the proof claims
+    /// membership in (see [`RingContext::ring_verifier`]).
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// key commitment or any I/O pair point is the group identity or the key
+    /// commitment cannot be mapped to Twisted Edwards form,
+    /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// All curve points involved in verification (I/O pairs and proof points)
+    /// are assumed to be in the prime-order subgroup. This is guaranteed when
+    /// points are constructed through checked constructors ([`Input::from_affine`],
+    /// [`Output::from_affine`]), checked deserialization (see [`PointWrapper`])
+    /// or through trusted operations like [`Input::new`] (hash-to-curve) and
+    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
+    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
+    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
+    ///
+    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// the burden of subgroup validation on the caller. Passing points with
+    /// cofactor components leads to undefined verification behavior.
+    ///
+    /// The group identity is checked unconditionally, for the key commitment and
+    /// for every I/O pair, by the embedded Pedersen verification (see
+    /// [`pedersen::Proof::verify`]).
+    pub fn verify(
+        &self,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
-        use pedersen::Verifier as PedersenVerifier;
-        <Self as PedersenVerifier<S>>::verify(ios, ad, &proof.pedersen_proof)?;
-        let key_commitment = proof
+        self.pedersen_proof.verify(ios, ad)?;
+        let key_commitment = self
             .pedersen_proof
             .key_commitment()
             .into_te()
             .ok_or(Error::InvalidData)?;
-        if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
+        if !verifier.verify(self.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
         Ok(())
+    }
+}
+
+impl<S: RingSuite> Secret<S> {
+    /// Generate a Ring VRF proof. Same as [`Proof::prove`].
+    pub fn prove_ring(
+        &self,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        ring_prover: &RingProver<S>,
+    ) -> Proof<S> {
+        Proof::prove(ios, ad, self, ring_prover)
     }
 }
 
@@ -886,10 +869,10 @@ impl<S: RingSuite> BatchItem<S> {
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
     /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn new(
-        verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
+        verifier: &RingVerifier<S>,
     ) -> Result<Self, Error> {
         let key_commitment = proof
             .pedersen_proof
@@ -908,7 +891,7 @@ impl<S: RingSuite> BatchItem<S> {
 /// and verifies them together, amortizing the cost of pairing checks and
 /// multi-scalar multiplications.
 ///
-/// The same subgroup membership assumptions as [`Verifier`] apply to all
+/// The same subgroup membership assumptions as [`Proof::verify`] apply to all
 /// points fed into the batch (I/O pairs and proof points).
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
@@ -944,12 +927,12 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn push(
         &mut self,
-        verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
+        verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
-        let item = BatchItem::new(verifier, ios, ad, proof)?;
+        let item = BatchItem::new(ios, ad, proof, verifier)?;
         self.push_prepared(item);
         Ok(())
     }
@@ -1226,7 +1209,7 @@ pub(crate) mod testing {
             let io = secret.vrf_io(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
-            let proof = secret.prove(io, &ad, prover);
+            let proof = secret.prove_ring(io, &ad, prover);
             Self { io, ad, proof }
         }
     }
@@ -1251,7 +1234,7 @@ pub(crate) mod testing {
 
         let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = Public::verify(item.io, &item.ad, &item.proof, &verifier);
+        let result = item.proof.verify(item.io, &item.ad, &verifier);
         assert!(result.is_ok());
     }
 
@@ -1259,7 +1242,6 @@ pub(crate) mod testing {
     /// several byte strings. The ring part goes through the same check.
     pub fn proof_encoding_is_canonical<S: RingSuite>() {
         use ark_serialize::Compress;
-        use ring::{Prover, Verifier};
 
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
@@ -1272,13 +1254,13 @@ pub(crate) mod testing {
         let verifier = ring_ctx.ring_verifier(ring_setup.verifier_key(&pks).unwrap());
 
         let ios: [VrfIo<S>; 0] = [];
-        let proof = secret.prove(ios, b"foo", &prover);
+        let proof = secret.prove_ring(ios, b"foo", &prover);
         assert!(proof.pedersen_proof.ok.is_zero());
 
         let mut bytes = Vec::new();
         proof.serialize_compressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
-        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
+        assert!(decoded.verify(ios, b"foo", &verifier).is_ok());
         let mut reencoded = Vec::new();
         decoded.serialize_compressed(&mut reencoded).unwrap();
         assert_eq!(bytes, reencoded);
@@ -1301,7 +1283,7 @@ pub(crate) mod testing {
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_uncompressed(&bytes[..]).unwrap();
-        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
+        assert!(decoded.verify(ios, b"foo", &verifier).is_ok());
         let ring_part = proof.pedersen_proof.uncompressed_size();
         let first_point = ring_part..ring_part + G1Affine::<S>::zero().uncompressed_size();
         common::assert_aliases_rejected::<G1Affine<S>>(
@@ -1318,8 +1300,6 @@ pub(crate) mod testing {
     /// N=3 multi proof via ring prove/verify.
     #[allow(unused)]
     pub fn prove_verify_multi<S: RingSuite>() {
-        use ring::{Prover, Verifier};
-
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
@@ -1348,16 +1328,16 @@ pub(crate) mod testing {
             output: Output::from_affine_unchecked(public.0),
         });
 
-        let proof = secret.prove(&ios[..], b"bar", &prover);
-        assert!(Public::verify(&ios[..], b"bar", &proof, &verifier).is_ok());
+        let proof = secret.prove_ring(&ios[..], b"bar", &prover);
+        assert!(proof.verify(&ios[..], b"bar", &verifier).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
-        assert!(Public::verify(&bad_ios[..], b"bar", &proof, &verifier).is_err());
+        assert!(proof.verify(&bad_ios[..], b"bar", &verifier).is_err());
 
         // Tamper: wrong ad
-        assert!(Public::verify(&ios[..], b"baz", &proof, &verifier).is_err());
+        assert!(proof.verify(&ios[..], b"baz", &verifier).is_err());
     }
 
     #[allow(unused)]
@@ -1399,7 +1379,7 @@ pub(crate) mod testing {
         // Prove incrementally constructed batches
         for item in batch.iter() {
             batch_verifier
-                .push(&verifier, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
             let res = batch_verifier.verify();
             assert!(res.is_ok());
@@ -1409,7 +1389,7 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let prepared: Vec<_> = batch
             .par_iter()
-            .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
+            .map(|item| BatchItem::<S>::new(item.io, &item.ad, &item.proof, &verifier).unwrap())
             .collect();
         prepared
             .into_iter()
@@ -1436,12 +1416,12 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         for item in batch.iter() {
             batch_verifier
-                .push(&verifier, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
         }
         for item in batch_b.iter() {
             batch_verifier
-                .push(&verifier_b, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier_b)
                 .unwrap();
         }
         batch_verifier.verify().expect("multi-ring batch verifies");
@@ -1452,7 +1432,7 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let item_b = &batch_b[0];
         batch_verifier
-            .push(&verifier, item_b.io, &item_b.ad, &item_b.proof)
+            .push(item_b.io, &item_b.ad, &item_b.proof, &verifier)
             .unwrap();
         assert!(
             batch_verifier.verify().is_err(),
@@ -1542,8 +1522,6 @@ pub(crate) mod testing {
     where
         G1Affine<S>: OffCurveAlias,
     {
-        use ring::Prover;
-
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
@@ -1553,7 +1531,7 @@ pub(crate) mod testing {
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
-        let proof = secret.prove(secret.vrf_io(input), b"foo", &prover);
+        let proof = secret.prove_ring(secret.vrf_io(input), b"foo", &prover);
 
         let point_len = G1Affine::<S>::zero().uncompressed_size();
         let replace_with_alias = |bytes: &mut [u8], start: usize| {
@@ -1704,7 +1682,7 @@ pub(crate) mod testing {
         let ring_ctx = RingContext::<S>::new(TEST_RING_SIZE);
         let verifier_key = super::verifier_key_from_commitment::<S>(commitment, pcs_params);
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        assert!(Public::verify(item.io, &item.ad, &item.proof, &verifier).is_ok());
+        assert!(item.proof.verify(item.io, &item.ad, &verifier).is_ok());
     }
 
     #[allow(unused)]
@@ -1727,7 +1705,7 @@ pub(crate) mod testing {
 
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
-        let proof = secret.prove(io, b"foo", &prover);
+        let proof = secret.prove_ring(io, b"foo", &prover);
 
         // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
@@ -1758,7 +1736,7 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), 0);
         let verifier_key = vk_builder.finalize();
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = Public::verify(io, b"foo", &proof, &verifier);
+        let result = proof.verify(io, b"foo", &verifier);
         assert!(result.is_ok());
     }
 
@@ -1996,7 +1974,6 @@ pub(crate) mod testing {
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
-            use super::Prover;
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
@@ -2019,7 +1996,7 @@ pub(crate) mod testing {
             let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
             let prover_key = ring_setup.prover_key(&ring_pks).unwrap();
             let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
-            let proof = secret.prove(io, ad, &prover);
+            let proof = secret.prove_ring(io, ad, &prover);
 
             let verifier_key = ring_setup.verifier_key(&ring_pks).unwrap();
             let ring_pks_com = verifier_key.commitment();
@@ -2086,7 +2063,7 @@ pub(crate) mod testing {
             let verifier_key = ring_setup.verifier_key(&self.ring_pks).unwrap();
             let verifier = ring_ctx.ring_verifier(verifier_key);
 
-            let proof = secret.prove(io, &self.pedersen.base.ad, &prover);
+            let proof = secret.prove_ring(io, &self.pedersen.base.ad, &prover);
 
             {
                 // Check if Pedersen proof matches
@@ -2104,7 +2081,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            assert!(Public::verify(io, &self.pedersen.base.ad, &proof, &verifier).is_ok());
+            assert!(proof.verify(io, &self.pedersen.base.ad, &verifier).is_ok());
         }
     }
 }

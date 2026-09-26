@@ -67,22 +67,21 @@ Compact VRF-AD producing a short `(c, s)` proof.
 
 _Prove_
 ```rust,ignore
-use ark_vrf::tiny::Prover;
-
 let io = secret.vrf_io(input);
 
 // Generate a proof that binds the input-output pair and auxiliary data
-let proof = secret.prove(io, b"aux data");
+let proof = TinyProof::prove(io, b"aux data", &secret);
 ```
 
 _Verify_
 ```rust,ignore
-use ark_vrf::tiny::Verifier;
-
 // Verify the proof against the public key
-let result = public.verify(io, b"aux data", &proof);
+let result = proof.verify(io, b"aux data", &public);
 assert!(result.is_ok());
 ```
+
+The keys have the same operations as methods: `secret.prove_tiny(io, ad)` and
+`public.verify_tiny(io, ad, &proof)`.
 
 ### Thin-VRF
 
@@ -92,30 +91,27 @@ proof (R, s).
 
 _Prove_
 ```rust,ignore
-use ark_vrf::thin::Prover;
-
 let io = secret.vrf_io(input);
-let proof = secret.prove(io, b"aux data");
+let proof = ThinProof::prove(io, b"aux data", &secret);
 ```
 
 _Verify_
 ```rust,ignore
-use ark_vrf::thin::Verifier;
-
-let result = public.verify(io, b"aux data", &proof);
+let result = proof.verify(io, b"aux data", &public);
 assert!(result.is_ok());
 ```
 
+As for Tiny, the keys have the same operations as methods: `secret.prove_thin`
+and `public.verify_thin`.
+
 _Batch verify_
 ```rust,ignore
-use ark_vrf::thin::{Prover, BatchVerifier};
+let proof1 = ThinProof::prove(io, b"data1", &secret);
+let proof2 = ThinProof::prove(io, b"data2", &secret);
 
-let proof1 = secret.prove(io, b"data1");
-let proof2 = secret.prove(io, b"data2");
-
-let mut batch = BatchVerifier::new();
-batch.push(&public, io, b"data1", &proof1);
-batch.push(&public, io, b"data2", &proof2);
+let mut batch = ThinBatchVerifier::new();
+batch.push(io, b"data1", &proof1, &public);
+batch.push(io, b"data2", &proof2, &public);
 assert!(batch.verify().is_ok());
 ```
 
@@ -125,12 +121,10 @@ Key-hiding VRF that replaces the public key with a Pedersen commitment to the se
 
 _Prove_
 ```rust,ignore
-use ark_vrf::pedersen::Prover;
-
 let io = secret.vrf_io(input);
 
 // Generate a proof with a blinding factor
-let (proof, blinding) = secret.prove(io, b"aux data");
+let (proof, blinding) = PedersenProof::prove(io, b"aux data", &secret);
 
 // The proof includes a commitment to the public key
 let key_commitment = proof.key_commitment();
@@ -139,12 +133,12 @@ let key_commitment = proof.key_commitment();
 _Verify_
 ```rust,ignore
 use ark_ec::CurveGroup;
-use ark_vrf::pedersen::{PedersenSuite, Verifier};
+use ark_vrf::pedersen::PedersenSuite;
 
 // Verify without knowing which specific public key was used.
 // Verifies that the secret key used to generate `output` is the same as
 // the secret key used to generate `proof.key_commitment()`.
-let result = Public::verify(io, b"aux data", &proof);
+let result = proof.verify(io, b"aux data");
 assert!(result.is_ok());
 
 // Verify the proof was created using a specific public key.
@@ -152,6 +146,9 @@ assert!(result.is_ok());
 let expected = (public.point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 assert_eq!(proof.key_commitment(), expected);
 ```
+
+The secret key has the same operation as a method: `secret.prove_pedersen`.
+Verification needs no public key, so `Public` has no Pedersen method.
 
 ### Ring-VRF
 
@@ -203,8 +200,6 @@ let ring_setup = RingSetup::from_pcs_params(RING_SIZE, pcs_params).unwrap();
 
 _Prove_
 ```rust,ignore
-use ark_vrf::ring::Prover;
-
 // Create a prover key specific to this ring
 let prover_key = ring_setup.prover_key(&ring).unwrap();
 
@@ -219,13 +214,11 @@ let io = secret.vrf_io(input);
 // Generate a zero-knowledge proof that:
 // 1. The prover knows a secret key for one of the public keys in the ring
 // 2. That secret key was used to generate the VRF output
-let proof = secret.prove(io, b"aux data", &prover);
+let proof = RingProof::prove(io, b"aux data", &secret, &prover);
 ```
 
 _Verify_
 ```rust,ignore
-use ark_vrf::ring::Verifier;
-
 // Create a verifier key for this ring
 let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 
@@ -237,8 +230,10 @@ let verifier = ring_ctx.ring_verifier(verifier_key);
 // 1. The proof was created by someone who knows a secret key in the ring
 // 2. The VRF output is correct for the given input
 // But it does NOT reveal which ring member created the proof
-let result = Public::verify(io, b"aux data", &proof, &verifier);
+let result = proof.verify(io, b"aux data", &verifier);
 ```
+
+The secret key has the same operation as a method: `secret.prove_ring`.
 
 _Both keys_
 ```rust,ignore

@@ -19,6 +19,14 @@ proofs and ring commitments made with 0.5.3 do not verify.
 
 ### Changed
 
+- Proving and verification are functions of the proof types. The `Prover` and
+  `Verifier` traits of the four schemes are gone: `Proof::prove(ios, ad,
+  &secret)` (the Ring one also takes the `RingProver`) and
+  `proof.verify(ios, ad, key)`, where the key is the `Public` for Tiny and
+  Thin, nothing for Pedersen and the `RingVerifier` for Ring. The keys keep
+  shortcuts: `Secret::prove_tiny`, `prove_thin`, `prove_pedersen`,
+  `prove_ring`, `Public::verify_tiny` and `verify_thin`. The Thin and Ring
+  `BatchItem::new` and `BatchVerifier::push` take the key last.
 - Opaque types. `Public`, `Input` and `Output` are aliases of
   `PointWrapper<S, K>`. Its point and the fields of the proof types, of
   `RingSetup` and of `RingContext` are private, with accessors.
