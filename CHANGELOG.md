@@ -84,6 +84,10 @@ proofs and ring commitments made with 0.5.3 do not verify.
   arkworks BLS12-381 decoder accepts. Call `Valid::check` after decoding a
   `RingVerifierKey`, `RingCommitment` or `PcsVerifierParams` from untrusted
   bytes.
+- `VerifierKeyBuilder` deserialization rejects a padding point other than
+  `RingSuite::PADDING` and a capacity that no PIOP domain gives. A builder
+  still defines the ring: load it only from a source trusted like a verifier
+  key.
 
 ### Performance
 

@@ -720,6 +720,12 @@ type PartialRingCommitment<S> =
 ///
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
+///
+/// A serialized builder holds the ring commitment built so far, so it defines
+/// the ring like a verifier key does. Load a builder only from a source that
+/// you trust as much as a verifier key. Decoding rejects a padding point other
+/// than [`RingSuite::PADDING`] and a capacity that no PIOP domain gives, but it
+/// cannot check the commitment itself.
 #[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
@@ -737,7 +743,16 @@ impl<S: RingSuite> CanonicalDeserialize for VerifierKeyBuilder<S> {
             compress,
             ark_serialize::Validate::No,
         )?;
-        if partial.curr_keys > partial.max_keys {
+        // A capacity is a power-of-two domain minus the overhead, checked
+        // without the overflow that rounding up a hostile value would cause.
+        let is_capacity = partial
+            .max_keys
+            .checked_add(dom_utils::piop_overhead::<S>())
+            .is_some_and(usize::is_power_of_two);
+        if !is_capacity
+            || partial.curr_keys > partial.max_keys
+            || S::PADDING.into_te() != Some(partial.padding)
+        {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
         let pcs_params = PcsVerifierParams::<S>::deserialize_with_mode(
@@ -1607,6 +1622,33 @@ pub(crate) mod testing {
         assert!(ark_serialize::Valid::check(&unchecked).is_err());
     }
 
+    /// A builder checkpoint carries the padding point and the ring capacity.
+    /// The encoder writes the suite padding and a capacity that a PIOP domain
+    /// gives. Any other value must fail to decode, on the unchecked path too:
+    /// `append` would subtract the wrong padding from every key, and
+    /// `free_slots` would report a false capacity.
+    pub fn builder_decode_rejects_foreign_ring_shape<S: RingSuiteExt + 'static>() {
+        let (builder, _) = S::ring_setup().verifier_key_builder();
+        let decode = |builder: &VerifierKeyBuilder<S>| {
+            let mut bytes = Vec::new();
+            builder.serialize_compressed(&mut bytes).unwrap();
+            VerifierKeyBuilder::<S>::deserialize_compressed_unchecked(&bytes[..])
+        };
+        assert!(decode(&builder).is_ok());
+
+        let mut foreign_padding = builder.clone();
+        foreign_padding.partial.padding = S::BLINDING_BASE.into_te().unwrap();
+        assert!(decode(&foreign_padding).is_err());
+
+        // `usize::MAX` would overflow a capacity computation that rounds up
+        // to the next power of two.
+        for max_keys in [builder.partial.max_keys + 1, usize::MAX] {
+            let mut foreign_capacity = builder.clone();
+            foreign_capacity.partial.max_keys = max_keys;
+            assert!(decode(&foreign_capacity).is_err());
+        }
+    }
+
     /// The G1 length carries the ring capacity. A restored setup keeps its
     /// bytes and capacity; any other G1 length is a decode error, or a raw
     /// SRS file would decode as a setup of another domain.
@@ -1929,6 +1971,11 @@ pub(crate) mod testing {
                 #[test]
                 fn off_curve_pairing_point_rejected() {
                     $crate::ring::testing::off_curve_pairing_point_rejected::<$suite>()
+                }
+
+                #[test]
+                fn builder_decode_rejects_foreign_ring_shape() {
+                    $crate::ring::testing::builder_decode_rejects_foreign_ring_shape::<$suite>()
                 }
 
                 #[test]
