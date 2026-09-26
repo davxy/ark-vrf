@@ -628,15 +628,6 @@ impl<S: RingSuite> RingSetup<S> {
     pub fn ring_context(&self) -> &RingContext<S> {
         &self.ring_ctx
     }
-
-    /// Get the padding point.
-    ///
-    /// This is a point of unknown dlog that can be used in place of any key during
-    /// ring construction.
-    #[inline(always)]
-    pub const fn padding_point() -> AffinePoint<S> {
-        S::PADDING
-    }
 }
 
 /// Create a verifier key from a precomputed ring commitment and the PCS
