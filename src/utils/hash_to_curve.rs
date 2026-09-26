@@ -59,7 +59,7 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
 /// Elligator2 hash-to-curve generic over the field hasher.
 ///
 /// Both [`hash_to_curve_ell2_xmd`] and [`hash_to_curve_ell2_xof`] delegate to this,
-/// differing only in the `H2F` type parameter (`DefaultFieldHasher` vs `XofFieldHasher`).
+/// differing only in the `H2F` type parameter (`XmdFieldHasher` vs `XofFieldHasher`).
 ///
 /// Domain Separation Tag is `S::SUITE_ID || DomSep::HashToCurve`, mirroring the
 /// per-operation tagging used by transcript-based paths.
@@ -88,13 +88,7 @@ where
 /// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
 /// Any salting of `data` must be applied by the caller.
 ///
-/// `SEC_PARAM` must equal [`Suite::SECURITY_PARAMETER`], checked at compile
-/// time: the arkworks field hasher takes it as a const generic, which generic
-/// code cannot fill from a suite constant. Call it as
-/// `hash_to_curve_ell2_xmd::<Self, H, { Self::SECURITY_PARAMETER }>`.
-pub fn hash_to_curve_ell2_xmd<S: Suite, H, const SEC_PARAM: usize>(
-    data: &[u8],
-) -> Option<AffinePoint<S>>
+pub fn hash_to_curve_ell2_xmd<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::FixedOutputReset + Default + Clone,
     CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
@@ -102,14 +96,96 @@ where
     Elligator2Map<CurveConfig<S>>:
         ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
 {
-    use ark_ff::field_hashers::DefaultFieldHasher;
-    const {
-        assert!(
-            SEC_PARAM == S::SECURITY_PARAMETER,
-            "SEC_PARAM must equal Suite::SECURITY_PARAMETER"
-        )
-    };
-    hash_to_curve_ell2::<S, DefaultFieldHasher<H, SEC_PARAM>>(data)
+    hash_to_curve_ell2::<S, XmdFieldHasher<H, S>>(data)
+}
+
+/// Elligator2 hash-to-curve using an XOF (extendable output function).
+///
+/// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
+/// This is the natural expansion mode for XOF hash functions like BLAKE3 and SHAKE128.
+/// Any salting of `data` must be applied by the caller.
+pub fn hash_to_curve_ell2_xof<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
+where
+    H: digest::ExtendableOutput + Default + Clone,
+    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
+    CurveConfig<S>: Elligator2Config,
+    Elligator2Map<CurveConfig<S>>:
+        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
+{
+    hash_to_curve_ell2::<S, XofFieldHasher<H, S>>(data)
+}
+
+/// Field hasher implementing `expand_message_xmd` from RFC 9380 section 5.3.1.
+///
+/// The `Z_pad` prefix has the expanded element length, not the input block
+/// size of `H`, to keep the output of the arkworks 0.6 `DefaultFieldHasher`.
+/// The expansion length follows [`Suite::SECURITY_PARAMETER`].
+struct XmdFieldHasher<H, S> {
+    dst: Vec<u8>,
+    len_per_base_elem: usize,
+    _marker: PhantomData<(H, S)>,
+}
+
+impl<F, H, S> HashToField<F> for XmdFieldHasher<H, S>
+where
+    F: ark_ff::Field,
+    H: digest::FixedOutputReset + Default + Clone,
+    S: Suite,
+{
+    fn new(dst: &[u8]) -> Self {
+        assert!(dst.len() <= 255, "DST longer than 255 bytes");
+        let base_field_size_in_bits = F::BasePrimeField::MODULUS_BIT_SIZE as usize;
+        let len_per_base_elem = (base_field_size_in_bits + S::SECURITY_PARAMETER).div_ceil(8);
+        Self {
+            dst: dst.to_vec(),
+            len_per_base_elem,
+            _marker: PhantomData,
+        }
+    }
+
+    fn hash_to_field<const N: usize>(&self, msg: &[u8]) -> [F; N] {
+        let m = F::extension_degree() as usize;
+        let len_in_bytes = N * m * self.len_per_base_elem;
+        let hash_len = <H as digest::OutputSizeUser>::output_size();
+        let ell = len_in_bytes.div_ceil(hash_len);
+        assert!(ell <= 255, "ell exceeds 255");
+        assert!(len_in_bytes <= 65535, "len_in_bytes exceeds 65535");
+        let dst_prime = [&self.dst[..], &[self.dst.len() as u8]].concat();
+
+        let mut h = H::default();
+        h.update(&vec![0u8; self.len_per_base_elem]);
+        h.update(msg);
+        h.update(&(len_in_bytes as u16).to_be_bytes());
+        h.update(&[0]);
+        h.update(&dst_prime);
+        let b_0 = h.finalize_fixed_reset();
+
+        h.update(&b_0);
+        h.update(&[1]);
+        h.update(&dst_prime);
+        let mut b_i = h.finalize_fixed_reset();
+
+        let mut uniform_bytes = Vec::with_capacity(ell * hash_len);
+        uniform_bytes.extend_from_slice(&b_i);
+        for i in 2..=ell {
+            let xored: Vec<u8> = b_0.iter().zip(b_i.iter()).map(|(l, r)| l ^ r).collect();
+            h.update(&xored);
+            h.update(&[i as u8]);
+            h.update(&dst_prime);
+            b_i = h.finalize_fixed_reset();
+            uniform_bytes.extend_from_slice(&b_i);
+        }
+
+        ark_std::array::from_fn::<F, N, _>(|i| {
+            let base_prime_field_elem = |j: usize| {
+                let elm_offset = self.len_per_base_elem * (j + i * m);
+                F::BasePrimeField::from_be_bytes_mod_order(
+                    &uniform_bytes[elm_offset..][..self.len_per_base_elem],
+                )
+            };
+            F::from_base_prime_field_elems((0..m).map(base_prime_field_elem)).unwrap()
+        })
+    }
 }
 
 /// XOF-based field hasher implementing `expand_message_xof` from RFC 9380 section 5.3.2.
@@ -165,22 +241,6 @@ where
     }
 }
 
-/// Elligator2 hash-to-curve using an XOF (extendable output function).
-///
-/// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
-/// This is the natural expansion mode for XOF hash functions like BLAKE3 and SHAKE128.
-/// Any salting of `data` must be applied by the caller.
-pub fn hash_to_curve_ell2_xof<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
-where
-    H: digest::ExtendableOutput + Default + Clone,
-    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
-    CurveConfig<S>: Elligator2Config,
-    Elligator2Map<CurveConfig<S>>:
-        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
-{
-    hash_to_curve_ell2::<S, XofFieldHasher<H, S>>(data)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +251,37 @@ mod tests {
         let pt = hash_to_curve_tai::<TestSuite>(b"hello world").unwrap();
         assert!(pt.is_on_curve());
         assert!(pt.is_in_correct_subgroup_assuming_on_curve())
+    }
+
+    /// The local XMD hasher keeps the output of the arkworks 0.6
+    /// `DefaultFieldHasher`, whose `Z_pad` is the element length and not the
+    /// hash block size. The suite vectors depend on these bytes, and a later
+    /// arkworks release must not change them.
+    #[test]
+    fn xmd_field_hasher_matches_arkworks() {
+        use crate::suites::testing::TestSuite256;
+        use ark_ff::field_hashers::DefaultFieldHasher;
+
+        fn check<H, S, const SEC_PARAM: usize>()
+        where
+            H: digest::FixedOutputReset + Default + Clone,
+            S: Suite,
+        {
+            let dst = [S::SUITE_ID, &[DomSep::HashToCurve as u8]].concat();
+            let local = <XmdFieldHasher<H, S> as HashToField<BaseField<S>>>::new(&dst);
+            let arkworks =
+                <DefaultFieldHasher<H, SEC_PARAM> as HashToField<BaseField<S>>>::new(&dst);
+            for msg_len in [0, 1, 63, 64, 65, 127, 128, 129, 1000] {
+                let msg = vec![0xa5; msg_len];
+                let local: [BaseField<S>; 2] = local.hash_to_field(&msg);
+                let arkworks: [BaseField<S>; 2] = arkworks.hash_to_field(&msg);
+                assert_eq!(local, arkworks, "msg_len = {msg_len}");
+            }
+        }
+
+        check::<sha2::Sha512, TestSuite, { TestSuite::SECURITY_PARAMETER }>();
+        check::<sha2::Sha512, TestSuite256, { TestSuite256::SECURITY_PARAMETER }>();
+        check::<sha2::Sha256, TestSuite, { TestSuite::SECURITY_PARAMETER }>();
     }
 
     /// A suite at 256 bits expands more bytes per field element, so its
@@ -212,12 +303,8 @@ mod tests {
             type Transcript = <Narrow as Suite>::Transcript;
         }
 
-        let narrow =
-            hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512, { Narrow::SECURITY_PARAMETER }>(b"data")
-                .unwrap();
-        let wide =
-            hash_to_curve_ell2_xmd::<Wide, sha2::Sha512, { Wide::SECURITY_PARAMETER }>(b"data")
-                .unwrap();
+        let narrow = hash_to_curve_ell2_xmd::<Narrow, sha2::Sha512>(b"data").unwrap();
+        let wide = hash_to_curve_ell2_xmd::<Wide, sha2::Sha512>(b"data").unwrap();
         assert_ne!(narrow, wide);
         assert!(wide.is_on_curve() && wide.is_in_correct_subgroup_assuming_on_curve());
 

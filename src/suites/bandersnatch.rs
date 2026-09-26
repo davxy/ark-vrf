@@ -66,7 +66,7 @@ impl Suite for ThisSuite {
     type Transcript = utils::HashTranscript<sha2::Sha512>;
     /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
-        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512, { Self::SECURITY_PARAMETER }>(data)
+        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data)
     }
 }
 
