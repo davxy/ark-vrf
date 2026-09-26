@@ -153,6 +153,7 @@ pub type CurveConfig<S> = <AffinePoint<S> as AffineRepr>::Config;
 
 /// Crate error type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// Proof verification failed.
     VerificationFailure,

@@ -27,6 +27,8 @@ proofs and ring commitments made with 0.5.3 do not verify.
   shortcuts: `Secret::prove_tiny`, `prove_thin`, `prove_pedersen`,
   `prove_ring`, `Public::verify_tiny` and `verify_thin`. The Thin and Ring
   `BatchItem::new` and `BatchVerifier::push` take the key last.
+- `Error` is `#[non_exhaustive]`: a `match` on it needs a wildcard arm, and
+  a new variant is no longer a breaking change.
 - Opaque types. `Public`, `Input` and `Output` are aliases of
   `PointWrapper<S, K>`. Its point and the fields of the proof types, of
   `RingSetup` and of `RingContext` are private, with accessors.
