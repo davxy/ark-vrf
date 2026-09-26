@@ -2,37 +2,33 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret, Suite};
+use ark_vrf::{AffinePoint, Input, Secret, Suite, thin::Proof};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
-    use ark_vrf::thin::Prover;
-
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
     let name = format!("{}/thin_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| secret.prove(black_box(io), b"ad"));
+        b.iter(|| Proof::prove(black_box(io), b"ad", &secret));
     });
 }
 
 fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
-    use ark_vrf::thin::{Prover, Verifier};
-
     let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
-    let proof = secret.prove(io, b"ad");
+    let proof = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/thin_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
         b.iter(|| {
-            public
-                .verify(black_box(io), b"ad", black_box(&proof))
+            black_box(&proof)
+                .verify(black_box(io), b"ad", &public)
                 .unwrap()
         });
     });
@@ -41,7 +37,7 @@ fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
-    use ark_vrf::thin::{BatchItem, BatchVerifier, Prover};
+    use ark_vrf::thin::{BatchItem, BatchVerifier};
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let public = secret.public();
@@ -53,7 +49,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
             let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(&mut rng));
             let io = secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
-            let proof = secret.prove(io, &ad);
+            let proof = Proof::prove(io, &ad, &secret);
             (io, ad, proof)
         })
         .collect();
@@ -70,7 +66,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| BatchItem::<S>::new(&public, *io, ad, proof))
+                        .map(|(io, ad, proof)| BatchItem::<S>::new(*io, ad, proof, &public))
                         .collect();
                 });
             });
@@ -78,7 +74,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
         {
             let mut bv = BatchVerifier::<S>::new();
             for (io, ad, proof) in &batch_items[..batch_size] {
-                bv.push(&public, *io, ad, proof);
+                bv.push(*io, ad, proof, &public);
             }
 
             c.benchmark_group(&verify_group)

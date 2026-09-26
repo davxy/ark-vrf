@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-26
 
 Breaking release. Every entry under Changed alters the public API.
 `BandersnatchSha512Ell2` also changes its outputs under the same `SUITE_ID`:
@@ -19,6 +19,23 @@ proofs and ring commitments made with 0.5.3 do not verify.
 
 ### Changed
 
+- Proving and verification are functions of the proof types. The `Prover` and
+  `Verifier` traits of the four schemes are gone: `Proof::prove(ios, ad,
+  &secret)` (the Ring one also takes the `RingProver`) and
+  `proof.verify(ios, ad, key)`, where the key is the `Public` for Tiny and
+  Thin, nothing for Pedersen and the `RingVerifier` for Ring. The keys keep
+  shortcuts: `Secret::prove_tiny`, `prove_thin`, `prove_pedersen`,
+  `prove_ring`, `Public::verify_tiny` and `verify_thin`. The Thin and Ring
+  `BatchItem::new` and `BatchVerifier::push` take the key last.
+- Ring members are `Public` keys. `RingSetup::keys`, `prover_key`,
+  `verifier_key` and `VerifierKeyBuilder::append` take any iterator of
+  `Public` or `&Public` (for example `&ring`) instead of `&[AffinePoint]`, so
+  the subgroup check of a key happens once, when the key is decoded.
+  `Public::padding()` gives the ring padding point as a key. `==` on
+  `Public`, `Input` and `Output` no longer needs `PartialEq` on the suite
+  type, so it works in code generic over the suite.
+- `Error` is `#[non_exhaustive]`: a `match` on it needs a wildcard arm, and
+  a new variant is no longer a breaking change.
 - Opaque types. `Public`, `Input` and `Output` are aliases of
   `PointWrapper<S, K>`. Its point and the fields of the proof types, of
   `RingSetup` and of `RingContext` are private, with accessors.
@@ -67,6 +84,10 @@ proofs and ring commitments made with 0.5.3 do not verify.
   arkworks BLS12-381 decoder accepts. Call `Valid::check` after decoding a
   `RingVerifierKey`, `RingCommitment` or `PcsVerifierParams` from untrusted
   bytes.
+- `VerifierKeyBuilder` deserialization rejects a padding point other than
+  `RingSuite::PADDING` and a capacity that no PIOP domain gives. A builder
+  still defines the ring: load it only from a source trusted like a verifier
+  key.
 
 ### Performance
 
@@ -317,6 +338,7 @@ of the Bandersnatch VRF specification.
 - `no_std` support.
 - `parallel` and `asm` optimization features.
 
+[0.6.0]: https://github.com/davxy/ark-vrf/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/davxy/ark-vrf/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/davxy/ark-vrf/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/davxy/ark-vrf/compare/v0.5.0...v0.5.1

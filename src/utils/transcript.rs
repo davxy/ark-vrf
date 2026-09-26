@@ -1,6 +1,6 @@
 //! Fiat-Shamir transcripts.
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::CanonicalSerialize;
 use ark_std::io;
 use digest::Digest;
 use digest::generic_array::GenericArray;
@@ -52,14 +52,6 @@ pub trait Transcript: Clone + io::Read + io::Write {
         obj.serialize_compressed(self).unwrap();
     }
 
-    /// Squeeze and deserialize an object from the transcript.
-    ///
-    /// Reads bytes from the squeeze_raw stream via the [`io::Read`]
-    /// implementation and deserializes them directly.
-    fn squeeze_deserialize<T: CanonicalDeserialize>(&mut self) -> T {
-        T::deserialize_compressed(self).unwrap()
-    }
-
     /// Consume the transcript and return an RNG that draws from the squeeze stream.
     fn to_rng(self) -> TranscriptRng<Self>
     where
@@ -91,8 +83,6 @@ impl<T: Transcript> ark_std::rand::RngCore for TranscriptRng<T> {
         Ok(())
     }
 }
-
-impl<T: Transcript> ark_std::rand::CryptoRng for TranscriptRng<T> {}
 
 // ---------------------------------------------------------------------------
 // XofTranscript: single transcript implementation for all XOF-like hashers
