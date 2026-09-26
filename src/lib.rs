@@ -202,6 +202,8 @@ pub trait Suite: Copy {
     /// hash-to-curve DST prefix. The actual constructions a `SUITE_ID` stands
     /// for are defined by the suite specification (see each suite's module
     /// docs). Implementations targeting interop must use the same string.
+    /// Suites that hash to curve with Elligator2 need fewer than 255 bytes,
+    /// checked at compile time.
     const SUITE_ID: &'static [u8];
 
     /// Security level in bits.

@@ -73,6 +73,12 @@ where
 {
     use ark_ec::hashing::{HashToCurve, map_to_curve_hasher::MapToCurveBasedHasher};
 
+    const {
+        assert!(
+            S::SUITE_ID.len() < 255,
+            "SUITE_ID must be shorter than 255 bytes for the Elligator2 DST"
+        )
+    };
     let dst = [S::SUITE_ID, &[DomSep::HashToCurve as u8]].concat();
     MapToCurveBasedHasher::<
         <AffinePoint<S> as AffineRepr>::Group,
