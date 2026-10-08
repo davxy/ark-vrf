@@ -104,6 +104,22 @@ where
     hash_to_curve_ell2::<S, XmdFieldHasher<H, S, Rfc9380>>(data)
 }
 
+/// [`hash_to_curve_ell2_xmd`] with the `Z_pad` of the arkworks 0.6
+/// `DefaultFieldHasher`, kept for the deprecated `bandersnatch_v1` suite.
+#[cfg(feature = "bandersnatch")]
+pub(crate) fn hash_to_curve_ell2_xmd_arkworks_compat<S: Suite, H>(
+    data: &[u8],
+) -> Option<AffinePoint<S>>
+where
+    H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
+    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
+    CurveConfig<S>: Elligator2Config,
+    Elligator2Map<CurveConfig<S>>:
+        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
+{
+    hash_to_curve_ell2::<S, XmdFieldHasher<H, S, ArkworksCompat>>(data)
+}
+
 /// Elligator2 hash-to-curve using an XOF (extendable output function).
 ///
 /// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
@@ -142,10 +158,10 @@ impl XmdPadding for Rfc9380 {
 /// Arkworks fixes this in <https://github.com/arkworks-rs/algebra/pull/1140>.
 /// After that release, `DefaultFieldHasher` matches [`Rfc9380`] and not this
 /// type.
-#[cfg(test)]
+#[cfg(any(test, feature = "bandersnatch"))]
 struct ArkworksCompat;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "bandersnatch"))]
 impl XmdPadding for ArkworksCompat {
     fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize {
         len_per_base_elem

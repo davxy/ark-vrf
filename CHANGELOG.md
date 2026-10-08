@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.0] - 2026-09-26
 
 Breaking release. Every entry under Changed alters the public API.
-`BandersnatchSha512Ell2` also changes its outputs under the same `SUITE_ID`:
-proofs and ring commitments made with 0.5.3 do not verify.
+`BandersnatchSha512Ell2` is version 2 of the suite, with new outputs and
+keys; `suites::bandersnatch_v1` keeps version 1 of 0.5.3.
 
 ### Added
 
@@ -53,12 +53,20 @@ proofs and ring commitments made with 0.5.3 do not verify.
   challenge and may exceed the level up to the scalar width; the Tiny
   decoder then rejects a challenge encoding above the field order.
   `utils::CHALLENGE_LEN` is gone.
-- Scheme change, `SUITE_ID` unchanged. `hash_to_curve_ell2_xmd` pads
-  `expand_message_xmd` with the hash block size (128 bytes for SHA-512), as
-  RFC 9380 requires. The arkworks `DefaultFieldHasher` used before pads with
-  the field element length (48 bytes). For `BandersnatchSha512Ell2`, input
-  points, VRF outputs, `BLINDING_BASE`, `ACCUMULATOR_BASE`, `PADDING`, ring
-  commitments and the test vectors change.
+- `hash_to_curve_ell2_xmd` pads `expand_message_xmd` with the hash block
+  size (128 bytes for SHA-512), as RFC 9380 requires. The arkworks
+  `DefaultFieldHasher` used before pads with the field element length (48
+  bytes).
+- `BandersnatchSha512Ell2` uses this padding, and its `SUITE_ID` is
+  `Bandersnatch-SHA512-ELL2-v2`. Input points, VRF outputs, the keys that
+  `Secret::from_seed` derives, `BLINDING_BASE`, `ACCUMULATOR_BASE`,
+  `PADDING`, ring commitments and the test vectors change.
+
+### Deprecated
+
+- `suites::bandersnatch_v1`: the `BandersnatchSha512Ell2` of 0.5.3
+  (`Bandersnatch-SHA512-ELL2-v1`, 48 byte padding), with the same outputs,
+  keys and test vectors.
 
 ### Fixed
 
