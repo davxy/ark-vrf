@@ -382,6 +382,92 @@ mod tests {
         }
     }
 
+    /// The Elligator2 suites take the map, the rational map and the cofactor
+    /// clearing from arkworks, and RFC 9380 has no Bandersnatch vectors.
+    /// edwards25519 has RFC vectors (Appendix J.5.1). Its suite maps on
+    /// curve25519 and applies the RFC 7748 map, `x = sqrt(-486664) * s / t`,
+    /// while arkworks always derives the Montgomery curve and the map from
+    /// Appendix D.1. The test runs the arkworks code on the D.1 twisted
+    /// Edwards form of curve25519, then scales `x` onto edwards25519.
+    #[test]
+    fn ell2_xmd_matches_rfc_edwards25519_vectors() {
+        use ark_curve25519::{Curve25519Config, Fq, Fr};
+        use ark_ec::CurveConfig;
+        use ark_ec::hashing::HashToCurve;
+        use ark_ec::hashing::map_to_curve_hasher::{MapToCurve, MapToCurveBasedHasher};
+        use ark_ec::twisted_edwards::{Affine, MontCurveConfig, Projective, TECurveConfig};
+        use ark_ed25519::EdwardsAffine;
+        use ark_ff::{MontFp, PrimeField};
+
+        #[derive(Clone, Default, PartialEq, Eq)]
+        struct Curve25519Ell2;
+
+        impl CurveConfig for Curve25519Ell2 {
+            type BaseField = Fq;
+            type ScalarField = Fr;
+            const COFACTOR: &'static [u64] = Curve25519Config::COFACTOR;
+            const COFACTOR_INV: Fr = Curve25519Config::COFACTOR_INV;
+        }
+
+        impl TECurveConfig for Curve25519Ell2 {
+            const COEFF_A: Fq = <Curve25519Config as TECurveConfig>::COEFF_A;
+            const COEFF_D: Fq = Curve25519Config::COEFF_D;
+            const GENERATOR: Affine<Self> =
+                Affine::new_unchecked(ark_curve25519::GENERATOR_X, ark_curve25519::GENERATOR_Y);
+            type MontCurveConfig = Self;
+        }
+
+        impl MontCurveConfig for Curve25519Ell2 {
+            const COEFF_A: Fq = <Curve25519Config as MontCurveConfig>::COEFF_A;
+            const COEFF_B: Fq = Curve25519Config::COEFF_B;
+            type TECurveConfig = Self;
+        }
+
+        impl Elligator2Config for Curve25519Ell2 {
+            const Z: Fq = MontFp!("2");
+            const ONE_OVER_COEFF_B_SQUARE: Fq = MontFp!("1");
+            const COEFF_A_OVER_COEFF_B: Fq = MontFp!("486662");
+        }
+
+        // sqrt(-486664) with sgn0 = 0, as RFC 9380 Appendix G.2.2 requires.
+        const C1: Fq =
+            MontFp!("6853475219497561581579357271197624642482790079785650197046958215289687604742");
+        let to_edwards25519 =
+            |point: Affine<Curve25519Ell2>| EdwardsAffine::new_unchecked(C1 * point.x, point.y);
+
+        type FieldHasher = XmdFieldHasher<sha2::Sha512, TestSuite, Rfc9380>;
+        type Map = Elligator2Map<Curve25519Ell2>;
+        let suite: serde_json::Value = serde_json::from_str(include_str!(
+            "../../data/rfc9380/edwards25519_XMD-SHA-512_ELL2_RO_.json"
+        ))
+        .unwrap();
+        let field = |value: &serde_json::Value| {
+            let hex = value.as_str().unwrap().trim_start_matches("0x");
+            Fq::from_be_bytes_mod_order(&hex::decode(hex).unwrap())
+        };
+        let point = |value: &serde_json::Value| {
+            EdwardsAffine::new_unchecked(field(&value["x"]), field(&value["y"]))
+        };
+
+        Map::check_parameters().unwrap();
+        let dst = suite["dst"].as_str().unwrap().as_bytes();
+        let field_hasher = <FieldHasher as HashToField<Fq>>::new(dst);
+        let curve_hasher =
+            MapToCurveBasedHasher::<Projective<Curve25519Ell2>, FieldHasher, Map>::new(dst)
+                .unwrap();
+        for vector in suite["vectors"].as_array().unwrap() {
+            let msg = vector["msg"].as_str().unwrap().as_bytes();
+            let u: [Fq; 2] = field_hasher.hash_to_field(msg);
+            assert_eq!(u, [field(&vector["u"][0]), field(&vector["u"][1])]);
+            let q0 = to_edwards25519(Map::map_to_curve(u[0]).unwrap());
+            assert_eq!(q0, point(&vector["Q0"]), "Q0, msg length {}", msg.len());
+            let q1 = to_edwards25519(Map::map_to_curve(u[1]).unwrap());
+            assert_eq!(q1, point(&vector["Q1"]), "Q1, msg length {}", msg.len());
+            let p = to_edwards25519(curve_hasher.hash(msg).unwrap());
+            assert_eq!(p, point(&vector["P"]), "P, msg length {}", msg.len());
+        }
+    }
+
     /// A suite at 256 bits expands more bytes per field element, so its
     /// Elligator2 points differ from the 128 bit ones on both expansion
     /// paths and stay in the prime order subgroup.
