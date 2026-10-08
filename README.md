@@ -40,6 +40,9 @@ The library conditionally includes the following pre-configured suites (see feat
 - **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 - **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 
+The test vectors of each suite, the Ring VRF setup files and the RFC 9380
+vectors are in `data/`; see [`data/README.md`](data/README.md).
+
 ## Basic Usage
 
 ```rust,ignore
