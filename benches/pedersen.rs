@@ -4,42 +4,38 @@ mod bench_utils;
 use ark_std::UniformRand;
 use ark_vrf::{
     AffinePoint, Input, Secret,
-    pedersen::{BatchItem, PedersenSuite},
+    pedersen::{BatchItem, PedersenSuite, Proof},
 };
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
-    use ark_vrf::pedersen::Prover;
-
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
 
     let name = format!("{}/pedersen_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| secret.prove(black_box(io), b"ad"));
+        b.iter(|| Proof::prove(black_box(io), b"ad", &secret));
     });
 }
 
 fn bench_pedersen_verify<S: PedersenSuite>(c: &mut Criterion) {
-    use ark_vrf::pedersen::{Prover, Verifier};
-
     let secret = Secret::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.vrf_io(input);
-    let (proof, _blinding) = secret.prove(io, b"ad");
+    let (proof, _blinding) = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/pedersen_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| ark_vrf::Public::<S>::verify(black_box(io), b"ad", black_box(&proof)).unwrap());
+        b.iter(|| black_box(&proof).verify(black_box(io), b"ad").unwrap());
     });
 }
 
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
-    use ark_vrf::pedersen::{BatchVerifier, Prover};
+    use ark_vrf::pedersen::BatchVerifier;
 
     let secret = Secret::<S>::from_seed([0; 32]);
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
@@ -50,7 +46,7 @@ fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
             let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(&mut rng));
             let io = secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
-            let (proof, _) = secret.prove(io, &ad);
+            let (proof, _) = Proof::prove(io, &ad, &secret);
             (io, ad, proof)
         })
         .collect();

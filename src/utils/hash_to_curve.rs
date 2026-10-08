@@ -104,6 +104,22 @@ where
     hash_to_curve_ell2::<S, XmdFieldHasher<H, S, Rfc9380>>(data)
 }
 
+/// [`hash_to_curve_ell2_xmd`] with the `Z_pad` of the arkworks 0.6
+/// `DefaultFieldHasher`, kept for the deprecated `bandersnatch_v1` suite.
+#[cfg(feature = "bandersnatch")]
+pub(crate) fn hash_to_curve_ell2_xmd_arkworks_compat<S: Suite, H>(
+    data: &[u8],
+) -> Option<AffinePoint<S>>
+where
+    H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
+    CurveConfig<S>: ark_ec::twisted_edwards::TECurveConfig,
+    CurveConfig<S>: Elligator2Config,
+    Elligator2Map<CurveConfig<S>>:
+        ark_ec::hashing::map_to_curve_hasher::MapToCurve<<AffinePoint<S> as AffineRepr>::Group>,
+{
+    hash_to_curve_ell2::<S, XmdFieldHasher<H, S, ArkworksCompat>>(data)
+}
+
 /// Elligator2 hash-to-curve using an XOF (extendable output function).
 ///
 /// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
@@ -142,10 +158,10 @@ impl XmdPadding for Rfc9380 {
 /// Arkworks fixes this in <https://github.com/arkworks-rs/algebra/pull/1140>.
 /// After that release, `DefaultFieldHasher` matches [`Rfc9380`] and not this
 /// type.
-#[cfg(test)]
+#[cfg(any(test, feature = "bandersnatch"))]
 struct ArkworksCompat;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "bandersnatch"))]
 impl XmdPadding for ArkworksCompat {
     fn z_pad_len<H: digest::core_api::BlockSizeUser>(len_per_base_elem: usize) -> usize {
         len_per_base_elem
@@ -322,63 +338,118 @@ mod tests {
         check::<sha2::Sha256, TestSuite, { TestSuite::SECURITY_PARAMETER }>();
     }
 
+    fn rfc_field<F: ark_ff::PrimeField>(value: &serde_json::Value) -> F {
+        let hex = value.as_str().unwrap().trim_start_matches("0x");
+        F::from_be_bytes_mod_order(&hex::decode(hex).unwrap())
+    }
+
     /// `Rfc9380` pads with the hash block size. P-256 with SHA-256 has a 48
     /// byte element and a 64 byte block, so a pad of the element length
-    /// fails here. The vectors are the `u` values of RFC 9380 Appendix J.1.1.
-    #[cfg(feature = "secp256r1")]
+    /// fails here. The test checks the `u` values of RFC 9380 Appendix J.1.1.
+    ///
+    /// The JSON file is `poc/vectors/P256_XMD:SHA-256_SSWU_RO_.json` of
+    /// <https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve>, unchanged.
     #[test]
     fn xmd_field_hasher_rfc9380_matches_rfc_vectors() {
-        use crate::suites::secp256r1::Secp256r1Sha256Tai as P256;
-        use ark_ff::PrimeField;
+        use ark_secp256r1::Fq;
 
-        let q128 = [b"q128_".as_slice(), &[b'q'; 128]].concat();
-        let a512 = [b"a512_".as_slice(), &[b'a'; 512]].concat();
-        let vectors: [(&[u8], [&str; 2]); 5] = [
-            (
-                b"",
-                [
-                    "ad5342c66a6dd0ff080df1da0ea1c04b96e0330dd89406465eeba11582515009",
-                    "8c0f1d43204bd6f6ea70ae8013070a1518b43873bcd850aafa0a9e220e2eea5a",
-                ],
-            ),
-            (
-                b"abc",
-                [
-                    "afe47f2ea2b10465cc26ac403194dfb68b7f5ee865cda61e9f3e07a537220af1",
-                    "379a27833b0bfe6f7bdca08e1e83c760bf9a338ab335542704edcd69ce9e46e0",
-                ],
-            ),
-            (
-                b"abcdef0123456789",
-                [
-                    "0fad9d125a9477d55cf9357105b0eb3a5c4259809bf87180aa01d651f53d312c",
-                    "b68597377392cd3419d8fcc7d7660948c8403b19ea78bbca4b133c9d2196c0fb",
-                ],
-            ),
-            (
-                &q128,
-                [
-                    "3bbc30446f39a7befad080f4d5f32ed116b9534626993d2cc5033f6f8d805919",
-                    "76bb02db019ca9d3c1e02f0c17f8baf617bbdae5c393a81d9ce11e3be1bf1d33",
-                ],
-            ),
-            (
-                &a512,
-                [
-                    "4ebc95a6e839b1ae3c63b847798e85cb3c12d3817ec6ebc10af6ee51adb29fec",
-                    "4e21af88e22ea80156aff790750121035b3eefaa96b425a8716e0d20b4e269ee",
-                ],
-            ),
-        ];
-
-        let dst = b"QUUX-V01-CS02-with-P256_XMD:SHA-256_SSWU_RO_";
+        let suite: serde_json::Value = serde_json::from_str(include_str!(
+            "../../data/rfc9380/P256_XMD-SHA-256_SSWU_RO_.json"
+        ))
+        .unwrap();
+        let dst = suite["dst"].as_str().unwrap().as_bytes();
         let hasher =
-            <XmdFieldHasher<sha2::Sha256, P256, Rfc9380> as HashToField<BaseField<P256>>>::new(dst);
-        for (msg, want) in vectors {
-            let got: [BaseField<P256>; 2] = hasher.hash_to_field(msg);
-            let want =
-                want.map(|u| BaseField::<P256>::from_be_bytes_mod_order(&hex::decode(u).unwrap()));
-            assert_eq!(got, want, "msg length {}", msg.len());
+            <XmdFieldHasher<sha2::Sha256, TestSuite, Rfc9380> as HashToField<Fq>>::new(dst);
+        for vector in suite["vectors"].as_array().unwrap() {
+            let msg = vector["msg"].as_str().unwrap().as_bytes();
+            let u: [Fq; 2] = hasher.hash_to_field(msg);
+            let want = [rfc_field(&vector["u"][0]), rfc_field(&vector["u"][1])];
+            assert_eq!(u, want, "msg length {}", msg.len());
+        }
+    }
+
+    /// The Elligator2 suites take the map, the rational map and the cofactor
+    /// clearing from arkworks, and RFC 9380 has no Bandersnatch vectors.
+    /// edwards25519 has RFC vectors (Appendix J.5.1). Its suite maps on
+    /// curve25519 and applies the RFC 7748 map, `x = sqrt(-486664) * s / t`,
+    /// while arkworks always derives the Montgomery curve and the map from
+    /// Appendix D.1. The test runs the arkworks code on the D.1 twisted
+    /// Edwards form of curve25519, then scales `x` onto edwards25519.
+    ///
+    /// The JSON file is `poc/vectors/edwards25519_XMD:SHA-512_ELL2_RO_.json` of
+    /// <https://github.com/cfrg/draft-irtf-cfrg-hash-to-curve>, unchanged.
+    #[test]
+    fn ell2_xmd_matches_rfc_edwards25519_vectors() {
+        use ark_curve25519::{Curve25519Config, Fq, Fr};
+        use ark_ec::CurveConfig;
+        use ark_ec::hashing::HashToCurve;
+        use ark_ec::hashing::map_to_curve_hasher::{MapToCurve, MapToCurveBasedHasher};
+        use ark_ec::twisted_edwards::{Affine, MontCurveConfig, Projective, TECurveConfig};
+        use ark_ed25519::EdwardsAffine;
+        use ark_ff::MontFp;
+
+        #[derive(Clone, Default, PartialEq, Eq)]
+        struct Curve25519Ell2;
+
+        impl CurveConfig for Curve25519Ell2 {
+            type BaseField = Fq;
+            type ScalarField = Fr;
+            const COFACTOR: &'static [u64] = Curve25519Config::COFACTOR;
+            const COFACTOR_INV: Fr = Curve25519Config::COFACTOR_INV;
+        }
+
+        impl TECurveConfig for Curve25519Ell2 {
+            const COEFF_A: Fq = <Curve25519Config as TECurveConfig>::COEFF_A;
+            const COEFF_D: Fq = Curve25519Config::COEFF_D;
+            const GENERATOR: Affine<Self> =
+                Affine::new_unchecked(ark_curve25519::GENERATOR_X, ark_curve25519::GENERATOR_Y);
+            type MontCurveConfig = Self;
+        }
+
+        impl MontCurveConfig for Curve25519Ell2 {
+            const COEFF_A: Fq = <Curve25519Config as MontCurveConfig>::COEFF_A;
+            const COEFF_B: Fq = Curve25519Config::COEFF_B;
+            type TECurveConfig = Self;
+        }
+
+        impl Elligator2Config for Curve25519Ell2 {
+            const Z: Fq = MontFp!("2");
+            const ONE_OVER_COEFF_B_SQUARE: Fq = MontFp!("1");
+            const COEFF_A_OVER_COEFF_B: Fq = MontFp!("486662");
+        }
+
+        // sqrt(-486664) with sgn0 = 0, as RFC 9380 Appendix G.2.2 requires.
+        const C1: Fq =
+            MontFp!("6853475219497561581579357271197624642482790079785650197046958215289687604742");
+        let to_edwards25519 =
+            |point: Affine<Curve25519Ell2>| EdwardsAffine::new_unchecked(C1 * point.x, point.y);
+
+        type FieldHasher = XmdFieldHasher<sha2::Sha512, TestSuite, Rfc9380>;
+        type Map = Elligator2Map<Curve25519Ell2>;
+        let suite: serde_json::Value = serde_json::from_str(include_str!(
+            "../../data/rfc9380/edwards25519_XMD-SHA-512_ELL2_RO_.json"
+        ))
+        .unwrap();
+        let point = |value: &serde_json::Value| {
+            EdwardsAffine::new_unchecked(rfc_field(&value["x"]), rfc_field(&value["y"]))
+        };
+
+        Map::check_parameters().unwrap();
+        let dst = suite["dst"].as_str().unwrap().as_bytes();
+        let field_hasher = <FieldHasher as HashToField<Fq>>::new(dst);
+        let curve_hasher =
+            MapToCurveBasedHasher::<Projective<Curve25519Ell2>, FieldHasher, Map>::new(dst)
+                .unwrap();
+        for vector in suite["vectors"].as_array().unwrap() {
+            let msg = vector["msg"].as_str().unwrap().as_bytes();
+            let u: [Fq; 2] = field_hasher.hash_to_field(msg);
+            assert_eq!(u, [rfc_field(&vector["u"][0]), rfc_field(&vector["u"][1])]);
+            let q0 = to_edwards25519(Map::map_to_curve(u[0]).unwrap());
+            assert_eq!(q0, point(&vector["Q0"]), "Q0, msg length {}", msg.len());
+            let q1 = to_edwards25519(Map::map_to_curve(u[1]).unwrap());
+            assert_eq!(q1, point(&vector["Q1"]), "Q1, msg length {}", msg.len());
+            let p = to_edwards25519(curve_hasher.hash(msg).unwrap());
+            assert_eq!(p, point(&vector["P"]), "P, msg length {}", msg.len());
         }
     }
 

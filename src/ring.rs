@@ -23,7 +23,7 @@
 //!
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
-//! use ark_vrf::ring::{Prover, Verifier};
+//! use ark_vrf::ring::Proof;
 //!
 //! const RING_SIZE: usize = 100;
 //! let prover_key_index = 3;
@@ -33,10 +33,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         Secret::from_seed(seed).public().point()
+//!         Secret::from_seed(seed).public()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = public.point();
+//! ring[prover_key_index] = public;
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
@@ -46,12 +46,12 @@
 //! let prover_key = ring_setup.prover_key(&ring).unwrap();
 //! let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
 //! let io = secret.vrf_io(input);
-//! let proof = secret.prove(io, b"aux data", &prover);
+//! let proof = Proof::prove(io, b"aux data", &secret, &prover);
 //!
 //! // Verification
 //! let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 //! let verifier = ring_ctx.ring_verifier(verifier_key);
-//! let result = Public::verify(io, b"aux data", &proof, &verifier);
+//! let result = proof.verify(io, b"aux data", &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -69,7 +69,7 @@ use ark_ec::{
     pairing::Pairing,
     twisted_edwards::{Affine as TEAffine, TECurveConfig},
 };
-use ark_std::{borrow::Cow, ops::Range};
+use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::canonical::deserialize_canonical;
@@ -187,7 +187,7 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// - `pedersen_proof`: Key commitment and VRF correctness proof
 /// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
 ///
-/// Construct it with [`Prover::prove`] or by deserialization. Deserialization
+/// Construct it with [`Proof::prove`] or by deserialization. Deserialization
 /// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
@@ -245,74 +245,19 @@ impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
     }
 }
 
-/// Trait for types that can generate Ring VRF proofs.
-pub trait Prover<S: RingSuite> {
+impl<S: RingSuite> Proof<S> {
     /// Generate a proof for the given VRF I/O pairs and additional data.
     ///
     /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    /// `prover` must be built for the ring and for the position of this key in
-    /// it (see [`RingContext::ring_prover`]).
-    fn prove(
-        &self,
+    /// `ring_prover` must be built for the ring and for the position of the
+    /// key of `secret` in it (see [`RingContext::ring_prover`]).
+    pub fn prove(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        prover: &RingProver<S>,
-    ) -> Proof<S>;
-}
-
-/// Trait for types that can verify Ring VRF proofs.
-///
-/// Verifies that a VRF output was correctly derived using a secret key
-/// belonging to one of the ring's public keys, without revealing which one.
-///
-/// All curve points involved in verification (I/O pairs and proof points)
-/// are assumed to be in the prime-order subgroup. This is guaranteed when
-/// points are constructed through checked constructors ([`Input::from_affine`],
-/// [`Output::from_affine`]) or through trusted operations like [`Input::new`]
-/// (hash-to-curve) and [`Secret::vrf_io`]. Proof points are guaranteed valid
-/// when deserialized via [`CanonicalDeserialize`] (which includes subgroup
-/// checks) or produced by [`Prover::prove`].
-///
-/// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
-/// the burden of subgroup validation on the caller. Passing points with
-/// cofactor components leads to undefined verification behavior.
-///
-/// The group identity is checked unconditionally, for the key commitment and
-/// for every I/O pair, by the embedded Pedersen verification (see
-/// [`pedersen::Verifier`]).
-pub trait Verifier<S: RingSuite> {
-    /// Verify a proof for the given VRF I/O pairs and additional data.
-    ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before verifying.
-    /// `verifier` must be built for the ring the proof claims membership in
-    /// (see [`RingContext::ring_verifier`]).
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// key commitment or any I/O pair point is the group identity or the key
-    /// commitment cannot be mapped to Twisted Edwards form,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by the checked constructors and checked deserialization of
-    /// the point wrappers (see [`PointWrapper`]).
-    fn verify(
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
-        verifier: &RingVerifier<S>,
-    ) -> Result<(), Error>;
-}
-
-impl<S: RingSuite> Prover<S> for Secret<S> {
-    fn prove(
-        &self,
-        ios: impl AsRef<[VrfIo<S>]>,
-        ad: impl AsRef<[u8]>,
+        secret: &Secret<S>,
         ring_prover: &RingProver<S>,
-    ) -> Proof<S> {
-        use pedersen::Prover as PedersenProver;
-        let (pedersen_proof, mut secret_blinding) =
-            <Self as PedersenProver<S>>::prove(self, ios, ad);
+    ) -> Self {
+        let (pedersen_proof, mut secret_blinding) = PedersenProof::prove(ios, ad, secret);
         let ring_proof = ring_prover.prove(secret_blinding);
         secret_blinding.zeroize();
         Proof {
@@ -320,26 +265,64 @@ impl<S: RingSuite> Prover<S> for Secret<S> {
             ring_proof,
         }
     }
-}
 
-impl<S: RingSuite> Verifier<S> for Public<S> {
-    fn verify(
+    /// Verify the proof for the given VRF I/O pairs and additional data.
+    ///
+    /// Verifies that each VRF output was correctly derived using a secret key
+    /// belonging to one of the ring's public keys, without revealing which one.
+    /// Multiple I/O pairs are delinearized into a single merged pair before
+    /// verifying. `verifier` must be built for the ring the proof claims
+    /// membership in (see [`RingContext::ring_verifier`]).
+    ///
+    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
+    /// key commitment or any I/O pair point is the group identity or the key
+    /// commitment cannot be mapped to Twisted Edwards form,
+    /// `Err(Error::VerificationFailure)` otherwise.
+    ///
+    /// All curve points involved in verification (I/O pairs and proof points)
+    /// are assumed to be in the prime-order subgroup. This is guaranteed when
+    /// points are constructed through checked constructors ([`Input::from_affine`],
+    /// [`Output::from_affine`]), checked deserialization (see [`PointWrapper`])
+    /// or through trusted operations like [`Input::new`] (hash-to-curve) and
+    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
+    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
+    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
+    ///
+    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// the burden of subgroup validation on the caller. Passing points with
+    /// cofactor components leads to undefined verification behavior.
+    ///
+    /// The group identity is checked unconditionally, for the key commitment and
+    /// for every I/O pair, by the embedded Pedersen verification (see
+    /// [`pedersen::Proof::verify`]).
+    pub fn verify(
+        &self,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-        proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
-        use pedersen::Verifier as PedersenVerifier;
-        <Self as PedersenVerifier<S>>::verify(ios, ad, &proof.pedersen_proof)?;
-        let key_commitment = proof
+        self.pedersen_proof.verify(ios, ad)?;
+        let key_commitment = self
             .pedersen_proof
             .key_commitment()
             .into_te()
             .ok_or(Error::InvalidData)?;
-        if !verifier.verify(proof.ring_proof.clone(), key_commitment) {
+        if !verifier.verify(self.ring_proof.clone(), key_commitment) {
             return Err(Error::VerificationFailure);
         }
         Ok(())
+    }
+}
+
+impl<S: RingSuite> Secret<S> {
+    /// Generate a Ring VRF proof. Same as [`Proof::prove`].
+    pub fn prove_ring(
+        &self,
+        ios: impl AsRef<[VrfIo<S>]>,
+        ad: impl AsRef<[u8]>,
+        ring_prover: &RingProver<S>,
+    ) -> Proof<S> {
+        Proof::prove(ios, ad, self, ring_prover)
     }
 }
 
@@ -469,14 +452,35 @@ pub struct RingSetup<S: RingSuite> {
     ring_ctx: RingContext<S>,
 }
 
-/// The ring proof backend asserts on the identity, so it is rejected here.
-fn ring_members_te<S: RingSuite>(
-    pks: &[AffinePoint<S>],
-) -> Result<Cow<'_, [TEAffine<CurveConfig<S>>]>, Error> {
-    if pks.iter().any(AffineRepr::is_zero) {
-        return Err(Error::InvalidData);
+/// Collects at most `capacity` ring members as Twisted Edwards points. The
+/// ring proof backend asserts on the identity, so it is rejected here.
+fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
+    pks: impl IntoIterator<Item = P>,
+    capacity: usize,
+) -> Result<Vec<TEAffine<CurveConfig<S>>>, Error> {
+    let pks = pks.into_iter();
+    let mut members = Vec::with_capacity(pks.size_hint().0.min(capacity));
+    for pk in pks {
+        if members.len() == capacity {
+            return Err(Error::RingCapacityExceeded);
+        }
+        let point = pk.borrow().0;
+        if point.is_zero() {
+            return Err(Error::InvalidData);
+        }
+        members.push(point.into_te().ok_or(Error::InvalidData)?);
     }
-    TEMapping::to_te_slice(pks).ok_or(Error::InvalidData)
+    Ok(members)
+}
+
+impl<S: RingSuite> Public<S> {
+    /// The padding point [`RingSuite::PADDING`] as a ring member.
+    ///
+    /// Nobody knows its discrete log, so it can take the place of any key in
+    /// the ring, for example the key of a removed member.
+    pub fn padding() -> Self {
+        Self::from_affine_unchecked(S::PADDING)
+    }
 }
 
 impl<S: RingSuite> RingSetup<S> {
@@ -546,17 +550,20 @@ impl<S: RingSuite> RingSetup<S> {
     /// [`Self::verifier_key`] each drop one half, so a party that needs both
     /// keys pays twice if it calls them.
     ///
+    /// `pks` is any iterator of keys or of references to keys, for example
+    /// `&ring` for a `Vec<Public<S>>`. The keys are assumed to be in the
+    /// prime-order subgroup, which the checked constructors and the checked
+    /// deserialization of [`Public`] guarantee; a key built without a check
+    /// places that check on the caller.
+    ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn keys(
+    pub fn keys<P: Borrow<Public<S>>>(
         &self,
-        pks: &[AffinePoint<S>],
+        pks: impl IntoIterator<Item = P>,
     ) -> Result<(RingProverKey<S>, RingVerifierKey<S>), Error> {
-        if pks.len() > self.ring_ctx.max_ring_size() {
-            return Err(Error::RingCapacityExceeded);
-        }
-        let pks = ring_members_te::<S>(pks)?;
+        let pks = ring_members_te::<S, P>(pks, self.ring_ctx.max_ring_size())?;
         Ok(ring_proof::index(
             &self.pcs_params,
             &self.ring_ctx.piop_params,
@@ -566,23 +573,31 @@ impl<S: RingSuite> RingSetup<S> {
 
     /// Create a prover key for the given ring of public keys.
     ///
-    /// Use [`Self::keys`] if the verifier key is needed too.
+    /// Use [`Self::keys`] if the verifier key is needed too. `pks` is as for
+    /// [`Self::keys`].
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn prover_key(&self, pks: &[AffinePoint<S>]) -> Result<RingProverKey<S>, Error> {
+    pub fn prover_key<P: Borrow<Public<S>>>(
+        &self,
+        pks: impl IntoIterator<Item = P>,
+    ) -> Result<RingProverKey<S>, Error> {
         Ok(self.keys(pks)?.0)
     }
 
     /// Create a verifier key for the given ring of public keys.
     ///
-    /// Use [`Self::keys`] if the prover key is needed too.
+    /// Use [`Self::keys`] if the prover key is needed too. `pks` is as for
+    /// [`Self::keys`].
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn verifier_key(&self, pks: &[AffinePoint<S>]) -> Result<RingVerifierKey<S>, Error> {
+    pub fn verifier_key<P: Borrow<Public<S>>>(
+        &self,
+        pks: impl IntoIterator<Item = P>,
+    ) -> Result<RingVerifierKey<S>, Error> {
         Ok(self.keys(pks)?.1)
     }
 
@@ -627,15 +642,6 @@ impl<S: RingSuite> RingSetup<S> {
     /// Get a reference to the lightweight [`RingContext`].
     pub fn ring_context(&self) -> &RingContext<S> {
         &self.ring_ctx
-    }
-
-    /// Get the padding point.
-    ///
-    /// This is a point of unknown dlog that can be used in place of any key during
-    /// ring construction.
-    #[inline(always)]
-    pub const fn padding_point() -> AffinePoint<S> {
-        S::PADDING
     }
 }
 
@@ -714,6 +720,12 @@ type PartialRingCommitment<S> =
 ///
 /// Allows constructing a verifier key by adding public keys in batches,
 /// which is useful for large rings or memory-constrained environments.
+///
+/// A serialized builder holds the ring commitment built so far, so it defines
+/// the ring like a verifier key does. Load a builder only from a source that
+/// you trust as much as a verifier key. Decoding rejects a padding point other
+/// than [`RingSuite::PADDING`] and a capacity that no PIOP domain gives, but it
+/// cannot check the commitment itself.
 #[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
@@ -731,7 +743,16 @@ impl<S: RingSuite> CanonicalDeserialize for VerifierKeyBuilder<S> {
             compress,
             ark_serialize::Validate::No,
         )?;
-        if partial.curr_keys > partial.max_keys {
+        // A capacity is a power-of-two domain minus the overhead, checked
+        // without the overflow that rounding up a hostile value would cause.
+        let is_capacity = partial
+            .max_keys
+            .checked_add(dom_utils::piop_overhead::<S>())
+            .is_some_and(usize::is_power_of_two);
+        if !is_capacity
+            || partial.curr_keys > partial.max_keys
+            || S::PADDING.into_te() != Some(partial.padding)
+        {
             return Err(ark_serialize::SerializationError::InvalidData);
         }
         let pcs_params = PcsVerifierParams::<S>::deserialize_with_mode(
@@ -844,24 +865,21 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 
     /// Add public keys to the ring being built.
     ///
-    /// On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
+    /// `pks` is as for [`RingSetup::keys`]. On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
     /// keys do not fit in the ring ([`Self::free_slots`] gives the remaining
     /// capacity), `Error::SrsLookupFailed` if the SRS lookup fails,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
     /// Twisted Edwards form.
-    pub fn append(
+    pub fn append<P: Borrow<Public<S>>>(
         &mut self,
-        pks: &[AffinePoint<S>],
+        pks: impl IntoIterator<Item = P>,
         lookup: impl SrsLookup<S>,
     ) -> Result<(), Error> {
-        if self.free_slots() < pks.len() {
-            return Err(Error::RingCapacityExceeded);
-        }
+        let pks = ring_members_te::<S, P>(pks, self.free_slots())?;
         let srs = prefetched_lookup(
             lookup,
             self.partial.curr_keys..self.partial.curr_keys + pks.len(),
         )?;
-        let pks = ring_members_te::<S>(pks)?;
         self.partial.append(&pks, srs);
         Ok(())
     }
@@ -895,10 +913,10 @@ impl<S: RingSuite> BatchItem<S> {
     /// Returns `Error::InvalidData` if the proof's key commitment cannot be
     /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn new(
-        verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
+        verifier: &RingVerifier<S>,
     ) -> Result<Self, Error> {
         let key_commitment = proof
             .pedersen_proof
@@ -917,7 +935,7 @@ impl<S: RingSuite> BatchItem<S> {
 /// and verifies them together, amortizing the cost of pairing checks and
 /// multi-scalar multiplications.
 ///
-/// The same subgroup membership assumptions as [`Verifier`] apply to all
+/// The same subgroup membership assumptions as [`Proof::verify`] apply to all
 /// points fed into the batch (I/O pairs and proof points).
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
@@ -953,12 +971,12 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
     pub fn push(
         &mut self,
-        verifier: &RingVerifier<S>,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
+        verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
-        let item = BatchItem::new(verifier, ios, ad, proof)?;
+        let item = BatchItem::new(ios, ad, proof, verifier)?;
         self.push_prepared(item);
         Ok(())
     }
@@ -1235,9 +1253,19 @@ pub(crate) mod testing {
             let io = secret.vrf_io(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
-            let proof = secret.prove(io, &ad, prover);
+            let proof = secret.prove_ring(io, &ad, prover);
             Self { io, ad, proof }
         }
+    }
+
+    fn random_ring<S: RingSuite>(
+        size: usize,
+        rng: &mut dyn ark_std::rand::RngCore,
+    ) -> Vec<Public<S>> {
+        common::random_vec::<AffinePoint<S>>(size, Some(rng))
+            .into_iter()
+            .map(Public::from_affine_unchecked)
+            .collect()
     }
 
     #[allow(unused)]
@@ -1248,19 +1276,18 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
         let item = TestItem::<S>::new(&secret, &prover, rng);
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = Public::verify(item.io, &item.ad, &item.proof, &verifier);
+        let result = item.proof.verify(item.io, &item.ad, &verifier);
         assert!(result.is_ok());
     }
 
@@ -1268,26 +1295,26 @@ pub(crate) mod testing {
     /// several byte strings. The ring part goes through the same check.
     pub fn proof_encoding_is_canonical<S: RingSuite>() {
         use ark_serialize::Compress;
-        use ring::{Prover, Verifier};
 
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public().0;
+        pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
-        let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
-        let verifier = ring_ctx.ring_verifier(ring_setup.verifier_key(&pks).unwrap());
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
+        let prover = ring_ctx.ring_prover(prover_key, prover_idx);
+        let verifier = ring_ctx.ring_verifier(verifier_key);
 
         let ios: [VrfIo<S>; 0] = [];
-        let proof = secret.prove(ios, b"foo", &prover);
+        let proof = secret.prove_ring(ios, b"foo", &prover);
         assert!(proof.pedersen_proof.ok.is_zero());
 
         let mut bytes = Vec::new();
         proof.serialize_compressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_compressed(&bytes[..]).unwrap();
-        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
+        assert!(decoded.verify(ios, b"foo", &verifier).is_ok());
         let mut reencoded = Vec::new();
         decoded.serialize_compressed(&mut reencoded).unwrap();
         assert_eq!(bytes, reencoded);
@@ -1310,7 +1337,7 @@ pub(crate) mod testing {
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_uncompressed(&bytes[..]).unwrap();
-        assert!(Public::verify(ios, b"foo", &decoded, &verifier).is_ok());
+        assert!(decoded.verify(ios, b"foo", &verifier).is_ok());
         let ring_part = proof.pedersen_proof.uncompressed_size();
         let first_point = ring_part..ring_part + G1Affine::<S>::zero().uncompressed_size();
         common::assert_aliases_rejected::<G1Affine<S>>(
@@ -1327,23 +1354,20 @@ pub(crate) mod testing {
     /// N=3 multi proof via ring prove/verify.
     #[allow(unused)]
     pub fn prove_verify_multi<S: RingSuite>() {
-        use ring::{Prover, Verifier};
-
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
         let mut ios: Vec<VrfIo<S>> = (0..3u8)
@@ -1357,16 +1381,16 @@ pub(crate) mod testing {
             output: Output::from_affine_unchecked(public.0),
         });
 
-        let proof = secret.prove(&ios[..], b"bar", &prover);
-        assert!(Public::verify(&ios[..], b"bar", &proof, &verifier).is_ok());
+        let proof = secret.prove_ring(&ios[..], b"bar", &prover);
+        assert!(proof.verify(&ios[..], b"bar", &verifier).is_ok());
 
         // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
-        assert!(Public::verify(&bad_ios[..], b"bar", &proof, &verifier).is_err());
+        assert!(proof.verify(&bad_ios[..], b"bar", &verifier).is_err());
 
         // Tamper: wrong ad
-        assert!(Public::verify(&ios[..], b"baz", &proof, &verifier).is_err());
+        assert!(proof.verify(&ios[..], b"baz", &verifier).is_err());
     }
 
     #[allow(unused)]
@@ -1381,12 +1405,12 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
         let ring_ctx = ring_setup.ring_context();
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
         // Generate proofs in parallel
@@ -1397,7 +1421,6 @@ pub(crate) mod testing {
             })
             .collect();
 
-        let verifier_key = ring_setup.verifier_key(&pks).unwrap();
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
         // Batch verify all proofs
@@ -1408,7 +1431,7 @@ pub(crate) mod testing {
         // Prove incrementally constructed batches
         for item in batch.iter() {
             batch_verifier
-                .push(&verifier, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
             let res = batch_verifier.verify();
             assert!(res.is_ok());
@@ -1418,7 +1441,7 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let prepared: Vec<_> = batch
             .par_iter()
-            .map(|item| BatchItem::<S>::new(&verifier, item.io, &item.ad, &item.proof).unwrap())
+            .map(|item| BatchItem::<S>::new(item.io, &item.ad, &item.proof, &verifier).unwrap())
             .collect();
         prepared
             .into_iter()
@@ -1427,12 +1450,11 @@ pub(crate) mod testing {
 
         // Multi-ring batch: build a second ring sharing the same KZG SRS,
         // then aggregate proofs from both rings into a single batch verifier.
-        let mut pks_b = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks_b = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx_b = 1;
-        pks_b[prover_idx_b] = public.0;
-        let prover_key_b = ring_setup.prover_key(&pks_b).unwrap();
+        pks_b[prover_idx_b] = public;
+        let (prover_key_b, verifier_key_b) = ring_setup.keys(&pks_b).unwrap();
         let prover_b = ring_ctx.ring_prover(prover_key_b, prover_idx_b);
-        let verifier_key_b = ring_setup.verifier_key(&pks_b).unwrap();
         let verifier_b = ring_ctx.ring_verifier(verifier_key_b);
 
         let batch_b: Vec<_> = (0..TEST_RING_SIZE)
@@ -1445,12 +1467,12 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         for item in batch.iter() {
             batch_verifier
-                .push(&verifier, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
         }
         for item in batch_b.iter() {
             batch_verifier
-                .push(&verifier_b, item.io, &item.ad, &item.proof)
+                .push(item.io, &item.ad, &item.proof, &verifier_b)
                 .unwrap();
         }
         batch_verifier.verify().expect("multi-ring batch verifies");
@@ -1461,7 +1483,7 @@ pub(crate) mod testing {
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let item_b = &batch_b[0];
         batch_verifier
-            .push(&verifier, item_b.io, &item_b.ad, &item_b.proof)
+            .push(item_b.io, &item_b.ad, &item_b.proof, &verifier)
             .unwrap();
         assert!(
             batch_verifier.verify().is_err(),
@@ -1477,7 +1499,7 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let max_ring_size = ring_setup.ring_context().max_ring_size();
-        let pks = common::random_vec::<AffinePoint<S>>(max_ring_size + 1, Some(rng));
+        let pks = random_ring::<S>(max_ring_size + 1, rng);
         assert!(matches!(
             ring_setup.prover_key(&pks),
             Err(Error::RingCapacityExceeded)
@@ -1488,6 +1510,14 @@ pub(crate) mod testing {
         ));
         assert!(matches!(
             ring_setup.keys(&pks),
+            Err(Error::RingCapacityExceeded)
+        ));
+
+        // The key functions stop at the capacity, so an endless iterator ends
+        // with an error, not with unbounded memory use.
+        let endless = core::iter::repeat(Public::<S>::padding());
+        assert!(matches!(
+            ring_setup.keys(endless),
             Err(Error::RingCapacityExceeded)
         ));
 
@@ -1505,8 +1535,8 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
-        pks[0] = AffinePoint::<S>::zero();
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
+        pks[0] = Public::from_affine_unchecked(AffinePoint::<S>::zero());
 
         assert!(matches!(
             ring_setup.prover_key(&pks),
@@ -1551,18 +1581,16 @@ pub(crate) mod testing {
     where
         G1Affine<S>: OffCurveAlias,
     {
-        use ring::Prover;
-
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public().0;
+        pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
-        let proof = secret.prove(secret.vrf_io(input), b"foo", &prover);
+        let proof = secret.prove_ring(secret.vrf_io(input), b"foo", &prover);
 
         let point_len = G1Affine::<S>::zero().uncompressed_size();
         let replace_with_alias = |bytes: &mut [u8], start: usize| {
@@ -1592,6 +1620,33 @@ pub(crate) mod testing {
         let unchecked =
             VerifierKeyBuilder::<S>::deserialize_uncompressed_unchecked(&bytes[..]).unwrap();
         assert!(ark_serialize::Valid::check(&unchecked).is_err());
+    }
+
+    /// A builder checkpoint carries the padding point and the ring capacity.
+    /// The encoder writes the suite padding and a capacity that a PIOP domain
+    /// gives. Any other value must fail to decode, on the unchecked path too:
+    /// `append` would subtract the wrong padding from every key, and
+    /// `free_slots` would report a false capacity.
+    pub fn builder_decode_rejects_foreign_ring_shape<S: RingSuiteExt + 'static>() {
+        let (builder, _) = S::ring_setup().verifier_key_builder();
+        let decode = |builder: &VerifierKeyBuilder<S>| {
+            let mut bytes = Vec::new();
+            builder.serialize_compressed(&mut bytes).unwrap();
+            VerifierKeyBuilder::<S>::deserialize_compressed_unchecked(&bytes[..])
+        };
+        assert!(decode(&builder).is_ok());
+
+        let mut foreign_padding = builder.clone();
+        foreign_padding.partial.padding = S::BLINDING_BASE.into_te().unwrap();
+        assert!(decode(&foreign_padding).is_err());
+
+        // `usize::MAX` would overflow a capacity computation that rounds up
+        // to the next power of two.
+        for max_keys in [builder.partial.max_keys + 1, usize::MAX] {
+            let mut foreign_capacity = builder.clone();
+            foreign_capacity.partial.max_keys = max_keys;
+            assert!(decode(&foreign_capacity).is_err());
+        }
     }
 
     /// The G1 length carries the ring capacity. A restored setup keeps its
@@ -1662,6 +1717,11 @@ pub(crate) mod testing {
 
         // Check that the point is on curve.
         assert!(S::PADDING.check(true).is_ok());
+
+        // Callers put the padding in the ring in place of a missing key, so
+        // it must be a valid `Public`: in the subgroup and not the identity.
+        assert!(Public::<S>::from_affine(S::PADDING).is_ok());
+        assert_eq!(Public::<S>::padding().point(), S::PADDING);
     }
 
     #[allow(unused)]
@@ -1689,17 +1749,17 @@ pub(crate) mod testing {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let mut pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public.0;
+        pks[prover_idx] = public;
 
-        let prover_key = ring_setup.prover_key(&pks).unwrap();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_setup
             .ring_context()
             .ring_prover(prover_key, prover_idx);
         let item = TestItem::<S>::new(&secret, &prover, rng);
 
-        let commitment = ring_setup.verifier_key(&pks).unwrap().commitment();
+        let commitment = verifier_key.commitment();
 
         // Round-trip the params to mimic a verifier-only user holding just
         // the serialized params, the ring commitment and the ring size.
@@ -1713,7 +1773,7 @@ pub(crate) mod testing {
         let ring_ctx = RingContext::<S>::new(TEST_RING_SIZE);
         let verifier_key = super::verifier_key_from_commitment::<S>(commitment, pcs_params);
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        assert!(Public::verify(item.io, &item.ad, &item.proof, &verifier).is_ok());
+        assert!(item.proof.verify(item.io, &item.ad, &verifier).is_ok());
     }
 
     #[allow(unused)]
@@ -1731,24 +1791,33 @@ pub(crate) mod testing {
         let ring_ctx = ring_setup.ring_context();
         let ring_size = ring_ctx.max_ring_size();
         let prover_idx = random_val::<usize>(Some(rng)) % ring_size;
-        let mut pks = random_vec::<AffinePoint<S>>(ring_size, Some(rng));
-        pks[prover_idx] = public.0;
+        let mut pks = random_ring::<S>(ring_size, rng);
+        pks[prover_idx] = public;
 
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
-        let proof = secret.prove(io, b"foo", &prover);
+        let proof = secret.prove_ring(io, b"foo", &prover);
 
         // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
+        assert_eq!(vk_builder.free_slots(), pks.len());
+
+        // `append` stops at the free slots, so an endless iterator ends with
+        // an error, not with unbounded memory use, and appends nothing.
+        let endless = core::iter::repeat(Public::<S>::padding());
+        assert_eq!(
+            vk_builder.append(endless, &lookup).unwrap_err(),
+            Error::RingCapacityExceeded
+        );
         assert_eq!(vk_builder.free_slots(), pks.len());
         assert_eq!(
             vk_builder.pcs_verifier_params(),
             ring_setup.pcs_verifier_params()
         );
 
-        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
-            vk_builder.append(&[extra_pk], |_| None).unwrap_err(),
+            vk_builder.append([extra_pk], |_| None).unwrap_err(),
             Error::SrsLookupFailed
         );
 
@@ -1759,15 +1828,15 @@ pub(crate) mod testing {
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
         // No more space left; `free_slots` reports the remaining capacity.
-        let extra_pk = random_val::<AffinePoint<S>>(Some(rng));
+        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
-            vk_builder.append(&[extra_pk], &lookup).unwrap_err(),
+            vk_builder.append([extra_pk], &lookup).unwrap_err(),
             Error::RingCapacityExceeded
         );
         assert_eq!(vk_builder.free_slots(), 0);
         let verifier_key = vk_builder.finalize();
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = Public::verify(io, b"foo", &proof, &verifier);
+        let result = proof.verify(io, b"foo", &verifier);
         assert!(result.is_ok());
     }
 
@@ -1905,6 +1974,11 @@ pub(crate) mod testing {
                 }
 
                 #[test]
+                fn builder_decode_rejects_foreign_ring_shape() {
+                    $crate::ring::testing::builder_decode_rejects_foreign_ring_shape::<$suite>()
+                }
+
+                #[test]
                 fn identity_in_ring_rejected() {
                     $crate::ring::testing::identity_in_ring_rejected::<$suite>()
                 }
@@ -1982,7 +2056,7 @@ pub(crate) mod testing {
 
     pub struct TestVector<S: RingSuite> {
         pub pedersen: pedersen::testing::TestVector<S>,
-        pub ring_pks: [AffinePoint<S>; TEST_RING_SIZE],
+        pub ring_pks: [Public<S>; TEST_RING_SIZE],
         pub ring_pks_com: RingCommitment<S>,
         pub ring_proof: RingBareProof<S>,
     }
@@ -2005,7 +2079,6 @@ pub(crate) mod testing {
         }
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
-            use super::Prover;
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
             let secret = Secret::<S>::from_scalar(pedersen.base.sk);
@@ -2021,16 +2094,15 @@ pub(crate) mod testing {
             use ark_std::rand::SeedableRng;
             let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
             let prover_idx = 3;
-            let mut ring_pks = common::random_vec::<AffinePoint<S>>(TEST_RING_SIZE, Some(rng));
-            ring_pks[prover_idx] = public.0;
+            let mut ring_pks = random_ring::<S>(TEST_RING_SIZE, rng);
+            ring_pks[prover_idx] = public;
 
             // Blinding is disabled to make the proof reproducible
             let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
-            let prover_key = ring_setup.prover_key(&ring_pks).unwrap();
+            let (prover_key, verifier_key) = ring_setup.keys(&ring_pks).unwrap();
             let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
-            let proof = secret.prove(io, ad, &prover);
+            let proof = secret.prove_ring(io, ad, &prover);
 
-            let verifier_key = ring_setup.verifier_key(&ring_pks).unwrap();
             let ring_pks_com = verifier_key.commitment();
 
             {
@@ -2052,7 +2124,7 @@ pub(crate) mod testing {
         fn from_map(map: &common::TestVectorMap) -> Self {
             let pedersen = pedersen::testing::TestVector::from_map(map);
 
-            let ring_pks = map.get::<[AffinePoint<S>; TEST_RING_SIZE]>("ring_pks");
+            let ring_pks = map.get::<[Public<S>; TEST_RING_SIZE]>("ring_pks");
             let ring_pks_com = map.get::<RingCommitment<S>>("ring_pks_com");
             let ring_proof = map.get::<RingBareProof<S>>("ring_proof");
 
@@ -2085,17 +2157,16 @@ pub(crate) mod testing {
 
             let ring_setup = <S as RingSuiteExt>::ring_setup();
 
-            let prover_idx = self.ring_pks.iter().position(|&pk| pk == public.0).unwrap();
+            let prover_idx = self.ring_pks.iter().position(|pk| *pk == public).unwrap();
 
             // Blinding is disabled to reproduce the exact proof in the vector
             let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
-            let prover_key = ring_setup.prover_key(&self.ring_pks).unwrap();
+            let (prover_key, verifier_key) = ring_setup.keys(self.ring_pks).unwrap();
             let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-            let verifier_key = ring_setup.verifier_key(&self.ring_pks).unwrap();
             let verifier = ring_ctx.ring_verifier(verifier_key);
 
-            let proof = secret.prove(io, &self.pedersen.base.ad, &prover);
+            let proof = secret.prove_ring(io, &self.pedersen.base.ad, &prover);
 
             {
                 // Check if Pedersen proof matches
@@ -2113,7 +2184,7 @@ pub(crate) mod testing {
                 assert_eq!(p.0, p.1);
             }
 
-            assert!(Public::verify(io, &self.pedersen.base.ad, &proof, &verifier).is_ok());
+            assert!(proof.verify(io, &self.pedersen.base.ad, &verifier).is_ok());
         }
     }
 }
