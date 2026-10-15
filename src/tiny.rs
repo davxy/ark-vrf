@@ -65,6 +65,8 @@ fn vrf_transcript_scalars<S: TinySuite>(
 /// encodes `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full scalar, and
 /// accepts one encoding per `c`. The proof holds no curve points, so
 /// deserialization involves no subgroup checks.
+/// Deserialization does not reject trailing bytes. [`DeserializeExact`]
+/// rejects them.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
     /// Challenge scalar.

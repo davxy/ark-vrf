@@ -117,3 +117,127 @@ pub(crate) fn deserialize_point<S: Suite>(
 ) -> Result<AffinePoint<S>, ark_serialize::SerializationError> {
     deserialize_canonical::<AffinePoint<S>, STACK_BUF_SIZE>(reader, compress, validate)
 }
+
+/// Decode a value from a byte string that holds nothing else.
+///
+/// The arkworks decoders stop after the value and leave trailing bytes
+/// unread, so every value has an encoding of every longer length, and a
+/// deduplication on the bytes of a proof or of a key sees one value many
+/// times. These decoders reject a byte string with a byte past the value.
+///
+/// Each method is the [`CanonicalDeserialize`](ark_serialize::CanonicalDeserialize)
+/// method of the same name, on a byte string instead of a reader.
+/// Implemented for every type of that trait.
+pub trait DeserializeExact: ark_serialize::CanonicalDeserialize {
+    /// [`deserialize_with_mode`](ark_serialize::CanonicalDeserialize::deserialize_with_mode)
+    /// on `bytes`, and an error if a byte is left over.
+    fn deserialize_with_mode_exact(
+        bytes: &[u8],
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let mut reader = bytes;
+        let value = Self::deserialize_with_mode(&mut reader, compress, validate)?;
+        if !reader.is_empty() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        Ok(value)
+    }
+
+    /// Compressed form, with validation.
+    fn deserialize_compressed_exact(
+        bytes: &[u8],
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Self::deserialize_with_mode_exact(
+            bytes,
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::Yes,
+        )
+    }
+
+    /// Compressed form, without validation.
+    fn deserialize_compressed_unchecked_exact(
+        bytes: &[u8],
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Self::deserialize_with_mode_exact(
+            bytes,
+            ark_serialize::Compress::Yes,
+            ark_serialize::Validate::No,
+        )
+    }
+
+    /// Uncompressed form, with validation.
+    fn deserialize_uncompressed_exact(
+        bytes: &[u8],
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Self::deserialize_with_mode_exact(
+            bytes,
+            ark_serialize::Compress::No,
+            ark_serialize::Validate::Yes,
+        )
+    }
+
+    /// Uncompressed form, without validation.
+    fn deserialize_uncompressed_unchecked_exact(
+        bytes: &[u8],
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Self::deserialize_with_mode_exact(
+            bytes,
+            ark_serialize::Compress::No,
+            ark_serialize::Validate::No,
+        )
+    }
+}
+
+impl<T: ark_serialize::CanonicalDeserialize> DeserializeExact for T {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::suites::testing::TestSuite;
+    use crate::testing::{TEST_SEED, random_val};
+    use ark_serialize::{Compress, SerializationError, Validate};
+
+    /// Arkworks stops after the value and leaves the rest of the string
+    /// unread, so a proof with a byte appended still decodes, and a
+    /// deduplication on proof bytes sees two proofs. Every exact decoder
+    /// accepts the value alone; each convenience is checked on its own, as
+    /// a wrong mode in one of them would go unnoticed otherwise.
+    #[test]
+    fn exact_decode_rejects_trailing_bytes() {
+        type Proof = crate::thin::Proof<TestSuite>;
+        type Decode = fn(&[u8]) -> Result<Proof, SerializationError>;
+
+        let secret = Secret::<TestSuite>::from_seed(TEST_SEED);
+        let io = secret.vrf_io(Input::from_affine_unchecked(random_val(None)));
+        let proof = secret.prove_thin(io, b"ad");
+        let mut compressed = Vec::new();
+        proof.serialize_compressed(&mut compressed).unwrap();
+        let mut uncompressed = Vec::new();
+        proof.serialize_uncompressed(&mut uncompressed).unwrap();
+        assert_ne!(compressed.len(), uncompressed.len());
+
+        let mut longer = compressed.clone();
+        longer.push(0);
+        assert!(Proof::deserialize_compressed(&longer[..]).is_ok());
+        assert!(Proof::deserialize_with_mode_exact(&longer, Compress::Yes, Validate::Yes).is_err());
+
+        let exact = Proof::deserialize_compressed_exact(&compressed).unwrap();
+        assert!(secret.public().verify_thin(io, b"ad", &exact).is_ok());
+
+        let decoders: [(&[u8], Decode); 4] = [
+            (&compressed, Proof::deserialize_compressed_exact),
+            (&compressed, Proof::deserialize_compressed_unchecked_exact),
+            (&uncompressed, Proof::deserialize_uncompressed_exact),
+            (
+                &uncompressed,
+                Proof::deserialize_uncompressed_unchecked_exact,
+            ),
+        ];
+        for (bytes, decode) in decoders {
+            assert!(decode(bytes).is_ok());
+            assert!(decode(&bytes[..bytes.len() - 1]).is_err());
+            assert!(decode(&[bytes, &[0][..]].concat()).is_err());
+        }
+    }
+}
