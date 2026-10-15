@@ -325,8 +325,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         }
 
         // Deterministic random scalars derived from all (c, s) pairs.
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(&[DomSep::BatchVerify as u8]);
+        let mut t = utils::batch_transcript::<S>(DomSep::ThinVrf);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);

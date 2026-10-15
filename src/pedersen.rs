@@ -412,8 +412,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         // Absorb (c, s, sb) per entry, then squeeze 2N random scalars.
         // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
         // response scalars s and sb need to be included separately.
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(&[DomSep::BatchVerify as u8]);
+        let mut t = utils::batch_transcript::<S>(DomSep::PedersenVrf);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);

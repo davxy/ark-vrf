@@ -268,6 +268,14 @@ pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     vrf_transcript_scalars(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
 }
 
+/// Transcript of the batch verification weights: the scheme tag keeps the
+/// Thin and the Pedersen weights in separate hash domains.
+pub(crate) fn batch_transcript<S: Suite>(scheme: DomSep) -> S::Transcript {
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[scheme as u8, DomSep::BatchVerify as u8]);
+    t
+}
+
 /// Point count up to which the Tiny and Thin verifiers expand their equation
 /// over the raw pairs. Straus with a one bit window stays cheap up to about
 /// five points; above that the merged pair costs less.
@@ -576,6 +584,20 @@ mod tests {
         assert_eq!(zs.len(), 3);
         assert_eq!(zs[0], ScalarField::<TestSuite>::one());
         assert_ne!(zs[1], ScalarField::<TestSuite>::one());
+    }
+
+    /// The Thin and the Pedersen batch verifiers draw their weights from
+    /// transcripts of the same shape, so the scheme tag is what keeps the
+    /// two hash domains apart.
+    #[test]
+    fn batch_transcript_domain_separation() {
+        let mut thin = batch_transcript::<TestSuite>(DomSep::ThinVrf);
+        let mut pedersen = batch_transcript::<TestSuite>(DomSep::PedersenVrf);
+        let mut thin_bytes = [0u8; 32];
+        let mut pedersen_bytes = [0u8; 32];
+        thin.squeeze_raw(&mut thin_bytes);
+        pedersen.squeeze_raw(&mut pedersen_bytes);
+        assert_ne!(thin_bytes, pedersen_bytes);
     }
 
     /// Verify that the scheme tag produces distinct transcripts.
