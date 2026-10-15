@@ -562,18 +562,19 @@ pub fn decodes_inside_vec<T: CanonicalDeserialize>(
 /// Arkworks reads the identity from several byte strings; the crate decoders
 /// accept one, on both paths and inside a `Vec`.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
-    use crate::utils::canonical::{deserialize_canonical, deserialize_point};
+    use crate::utils::canonical::DeserializeCanonical;
     use ark_serialize::{Compress, Validate};
 
     let mut identity = Vec::new();
     AffinePoint::<S>::zero()
         .serialize_compressed(&mut identity)
         .unwrap();
-    let checked = |bytes: &[u8]| deserialize_point::<S>(bytes, Compress::Yes, Validate::Yes);
+    let checked =
+        |bytes: &[u8]| AffinePoint::<S>::deserialize_canonical(bytes, Compress::Yes, Validate::Yes);
     assert!(checked(&identity).unwrap().is_zero());
     // A stack buffer too small for the value spills to the heap.
     let spilled = |bytes: &[u8]| {
-        deserialize_canonical::<AffinePoint<S>, 8>(bytes, Compress::Yes, Validate::Yes)
+        AffinePoint::<S>::deserialize_canonical_with_buf::<8>(bytes, Compress::Yes, Validate::Yes)
     };
     assert!(spilled(&identity).unwrap().is_zero());
     let aliases = assert_aliases_rejected::<AffinePoint<S>>(

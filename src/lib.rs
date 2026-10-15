@@ -113,8 +113,8 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+use utils::canonical::DeserializeCanonical;
 pub use utils::canonical::DeserializeExact;
-use utils::canonical::deserialize_point;
 use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
@@ -557,7 +557,7 @@ impl<S: Suite, K: Serializable> CanonicalDeserialize for PointWrapper<S, K> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let point = deserialize_point::<S>(reader, compress, validate)?;
+        let point = AffinePoint::<S>::deserialize_canonical(reader, compress, validate)?;
         let wrapper = Self::from_affine_unchecked(point);
         // `check()` ran on the point; the identity rule remains.
         if matches!(validate, ark_serialize::Validate::Yes) && wrapper.is_identity() {

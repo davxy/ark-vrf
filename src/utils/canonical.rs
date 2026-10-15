@@ -5,7 +5,6 @@
 //! the consumed bytes with a fresh encoding of the value.
 
 use super::common::STACK_BUF_SIZE;
-use crate::*;
 
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
@@ -76,46 +75,58 @@ impl ark_std::io::Write for Matcher<'_> {
 
 /// Decode a value and accept only the bytes that the value itself encodes to.
 ///
-/// The comparison runs on both paths, because arkworks sequences decode their
-/// elements with `Validate::No` and batch check them afterwards. `validate`
-/// gates a `Valid::check` of the value, because the arkworks BLS12-381 decoder
-/// skips the on-curve test of an uncompressed point. The consumed bytes spill
-/// from the `N` byte stack buffer to the heap.
-pub(crate) fn deserialize_canonical<T, const N: usize>(
-    reader: impl ark_std::io::Read,
-    compress: ark_serialize::Compress,
-    validate: ark_serialize::Validate,
-) -> Result<T, ark_serialize::SerializationError>
-where
-    T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize,
+/// The comparison covers the consumed bytes, so it runs per component inside
+/// a stream decoder; [`DeserializeExact`] covers the end of the string. It
+/// runs on both paths, because arkworks sequences decode their elements with
+/// `Validate::No` and batch check them afterwards. `validate` gates a
+/// `Valid::check` of the value, because the arkworks BLS12-381 decoder skips
+/// the on-curve test of an uncompressed point.
+///
+/// Implemented for every type that serializes and deserializes.
+pub(crate) trait DeserializeCanonical:
+    ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize
 {
-    let mut recorder = Recorder {
-        inner: reader,
-        bytes: Recorded::Stack([0u8; N], 0),
-    };
-    let value = T::deserialize_with_mode(&mut recorder, compress, ark_serialize::Validate::No)?;
-    let mut matcher = Matcher {
-        expected: recorder.recorded(),
-        mismatch: false,
-    };
-    value.serialize_with_mode(&mut matcher, compress)?;
-    if matcher.mismatch || !matcher.expected.is_empty() {
-        return Err(ark_serialize::SerializationError::InvalidData);
+    /// Record the consumed bytes in an `N` byte stack buffer, with a spill
+    /// to the heap.
+    fn deserialize_canonical_with_buf<const N: usize>(
+        reader: impl ark_std::io::Read,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let mut recorder = Recorder {
+            inner: reader,
+            bytes: Recorded::Stack([0u8; N], 0),
+        };
+        let value =
+            Self::deserialize_with_mode(&mut recorder, compress, ark_serialize::Validate::No)?;
+        let mut matcher = Matcher {
+            expected: recorder.recorded(),
+            mismatch: false,
+        };
+        value.serialize_with_mode(&mut matcher, compress)?;
+        if matcher.mismatch || !matcher.expected.is_empty() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        if matches!(validate, ark_serialize::Validate::Yes) {
+            ark_serialize::Valid::check(&value)?;
+        }
+        Ok(value)
     }
-    if matches!(validate, ark_serialize::Validate::Yes) {
-        ark_serialize::Valid::check(&value)?;
+
+    /// [`Self::deserialize_canonical_with_buf`] with the default stack
+    /// buffer: a point encodes to at most 65 bytes on every built-in suite.
+    fn deserialize_canonical(
+        reader: impl ark_std::io::Read,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        Self::deserialize_canonical_with_buf::<STACK_BUF_SIZE>(reader, compress, validate)
     }
-    Ok(value)
 }
 
-/// [`deserialize_canonical`] for one affine point with the default stack
-/// buffer: a point encodes to at most 65 bytes on every built-in suite.
-pub(crate) fn deserialize_point<S: Suite>(
-    reader: impl ark_std::io::Read,
-    compress: ark_serialize::Compress,
-    validate: ark_serialize::Validate,
-) -> Result<AffinePoint<S>, ark_serialize::SerializationError> {
-    deserialize_canonical::<AffinePoint<S>, STACK_BUF_SIZE>(reader, compress, validate)
+impl<T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize>
+    DeserializeCanonical for T
+{
 }
 
 /// Decode a value from a byte string that holds nothing else.
@@ -193,9 +204,9 @@ impl<T: ark_serialize::CanonicalDeserialize> DeserializeExact for T {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::suites::testing::TestSuite;
     use crate::testing::{TEST_SEED, random_val};
+    use crate::*;
     use ark_serialize::{Compress, SerializationError, Validate};
 
     /// Arkworks stops after the value and leaves the rest of the string

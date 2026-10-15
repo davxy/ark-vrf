@@ -72,7 +72,7 @@ use ark_ec::{
 use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
-use utils::canonical::deserialize_canonical;
+use utils::canonical::DeserializeCanonical;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -214,7 +214,7 @@ impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
     ) -> Result<Self, ark_serialize::SerializationError> {
         let pedersen_proof =
             PedersenProof::<S>::deserialize_with_mode(&mut reader, compress, validate)?;
-        let ring_proof = deserialize_canonical::<RingBareProof<S>, RING_PROOF_BUF_SIZE>(
+        let ring_proof = RingBareProof::<S>::deserialize_canonical_with_buf::<RING_PROOF_BUF_SIZE>(
             &mut reader,
             compress,
             validate,
