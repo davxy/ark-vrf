@@ -469,8 +469,10 @@ impl<S: Suite> Secret<S> {
 /// trust this invariant: they reject the identity, which is cheap, but they
 /// do not repeat the subgroup check. [`Self::from_affine_unchecked`] and the
 /// `deserialize_*_unchecked` methods skip validation and leave this
-/// responsibility to the caller. Both paths accept one encoding per point
-/// and do not reject trailing bytes. [`CanonicalDeserializeExact`] rejects them.
+/// responsibility to the caller. Both decoding paths accept one encoding per
+/// point, but do not reject trailing bytes left in the input. Use
+/// [`CanonicalDeserializeExact`] to return an error when the input is not
+/// completely consumed.
 ///
 /// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy)]

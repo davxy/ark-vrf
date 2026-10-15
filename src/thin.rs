@@ -48,8 +48,9 @@ impl<T> ThinSuite for T where T: Suite {}
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Both paths accept one encoding per proof and do not reject trailing bytes.
-/// [`CanonicalDeserializeExact`] rejects them.
+/// Both decoding paths accept one encoding per proof, but do not reject
+/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
+/// return an error when the input is not completely consumed.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
