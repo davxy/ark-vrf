@@ -193,7 +193,7 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// method.
 ///
 /// Both paths accept one encoding per proof and do not reject trailing bytes.
-/// [`DeserializeExact`] rejects them.
+/// [`CanonicalDeserializeExact`] rejects them.
 #[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).

@@ -76,7 +76,7 @@ impl ark_std::io::Write for Matcher<'_> {
 /// Decode a value and accept only the bytes that the value itself encodes to.
 ///
 /// The comparison covers the consumed bytes, so it runs per component inside
-/// a stream decoder; [`DeserializeExact`] covers the end of the string. It
+/// a stream decoder; [`CanonicalDeserializeExact`] covers the end of the string. It
 /// runs on both paths, because arkworks sequences decode their elements with
 /// `Validate::No` and batch check them afterwards. `validate` gates a
 /// `Valid::check` of the value, because the arkworks BLS12-381 decoder skips
@@ -139,7 +139,7 @@ impl<T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize>
 /// Each method is the [`CanonicalDeserialize`](ark_serialize::CanonicalDeserialize)
 /// method of the same name, on a byte string instead of a reader.
 /// Implemented for every type of that trait.
-pub trait DeserializeExact: ark_serialize::CanonicalDeserialize {
+pub trait CanonicalDeserializeExact: ark_serialize::CanonicalDeserialize {
     /// [`deserialize_with_mode`](ark_serialize::CanonicalDeserialize::deserialize_with_mode)
     /// on `bytes`, and an error if a byte is left over.
     fn deserialize_with_mode_exact(
@@ -200,7 +200,7 @@ pub trait DeserializeExact: ark_serialize::CanonicalDeserialize {
     }
 }
 
-impl<T: ark_serialize::CanonicalDeserialize> DeserializeExact for T {}
+impl<T: ark_serialize::CanonicalDeserialize> CanonicalDeserializeExact for T {}
 
 #[cfg(test)]
 mod tests {

@@ -49,7 +49,7 @@ impl<T> ThinSuite for T where T: Suite {}
 /// method.
 ///
 /// Both paths accept one encoding per proof and do not reject trailing bytes.
-/// [`DeserializeExact`] rejects them.
+/// [`CanonicalDeserializeExact`] rejects them.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.

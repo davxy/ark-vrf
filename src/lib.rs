@@ -113,8 +113,8 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use core::marker::PhantomData;
 
+pub use utils::canonical::CanonicalDeserializeExact;
 use utils::canonical::DeserializeCanonical;
-pub use utils::canonical::DeserializeExact;
 use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::Zeroize;
@@ -470,7 +470,7 @@ impl<S: Suite> Secret<S> {
 /// do not repeat the subgroup check. [`Self::from_affine_unchecked`] and the
 /// `deserialize_*_unchecked` methods skip validation and leave this
 /// responsibility to the caller. Both paths accept one encoding per point
-/// and do not reject trailing bytes. [`DeserializeExact`] rejects them.
+/// and do not reject trailing bytes. [`CanonicalDeserializeExact`] rejects them.
 ///
 /// [`Self::point`] reads the affine point.
 #[derive(Debug, Clone, Copy)]
