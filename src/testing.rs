@@ -562,20 +562,17 @@ pub fn decodes_inside_vec<T: CanonicalDeserialize>(
 /// Arkworks reads the identity from several byte strings; the crate decoders
 /// accept one, on both paths and inside a `Vec`.
 pub fn non_canonical_encoding_rejected<S: Suite>() {
-    use crate::utils::canonical::{deserialize_canonical, deserialize_point};
+    use crate::utils::canonical::CanonicalDeserializeStrict;
+    use crate::utils::common::STACK_BUF_SIZE;
     use ark_serialize::{Compress, Validate};
 
     let mut identity = Vec::new();
     AffinePoint::<S>::zero()
         .serialize_compressed(&mut identity)
         .unwrap();
-    let checked = |bytes: &[u8]| deserialize_point::<S>(bytes, Compress::Yes, Validate::Yes);
+    let checked =
+        |bytes: &[u8]| AffinePoint::<S>::deserialize_strict(bytes, Compress::Yes, Validate::Yes);
     assert!(checked(&identity).unwrap().is_zero());
-    // A stack buffer too small for the value spills to the heap.
-    let spilled = |bytes: &[u8]| {
-        deserialize_canonical::<AffinePoint<S>, 8>(bytes, Compress::Yes, Validate::Yes)
-    };
-    assert!(spilled(&identity).unwrap().is_zero());
     let aliases = assert_aliases_rejected::<AffinePoint<S>>(
         &identity,
         0..identity.len(),
@@ -585,8 +582,25 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     assert!(!aliases.is_empty());
     for alias in &aliases {
         assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_err());
-        assert!(spilled(alias).is_err());
     }
+
+    // A value longer than the stack buffer spills to the heap: a vector of
+    // identities, with the alias in its last point.
+    let points = vec![AffinePoint::<S>::zero(); STACK_BUF_SIZE / identity.len() + 1];
+    let mut vector = Vec::new();
+    points.serialize_compressed(&mut vector).unwrap();
+    assert!(vector.len() > STACK_BUF_SIZE);
+    let spilled = |bytes: &[u8]| {
+        Vec::<AffinePoint<S>>::deserialize_strict(bytes, Compress::Yes, Validate::Yes)
+    };
+    assert_eq!(spilled(&vector).unwrap(), points);
+    let aliases = assert_aliases_rejected::<AffinePoint<S>>(
+        &vector,
+        vector.len() - identity.len()..vector.len(),
+        Compress::Yes,
+        |bytes| spilled(bytes).is_ok(),
+    );
+    assert!(!aliases.is_empty());
 
     let point = Secret::<S>::from_seed(TEST_SEED).public().point();
     for compress in [Compress::Yes, Compress::No] {

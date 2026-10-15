@@ -31,7 +31,7 @@
 
 use crate::Suite;
 use crate::utils;
-use crate::utils::canonical::deserialize_point;
+use crate::utils::canonical::CanonicalDeserializeStrict;
 use crate::utils::common::DomSep;
 use crate::utils::straus::short_msm;
 use crate::*;
@@ -74,7 +74,9 @@ pub trait PedersenSuite: Suite {
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Both paths accept one encoding per proof and do not reject trailing bytes.
+/// Both decoding paths accept one encoding per proof, but do not reject
+/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
+/// return an error when the input is not completely consumed.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: PedersenSuite> {
     pub(crate) pk_com: AffinePoint<S>,
@@ -90,9 +92,9 @@ impl<S: PedersenSuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let pk_com = deserialize_point::<S>(&mut reader, compress, validate)?;
-        let r = deserialize_point::<S>(&mut reader, compress, validate)?;
-        let ok = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let pk_com = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
+        let r = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
+        let ok = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,

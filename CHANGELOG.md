@@ -16,6 +16,11 @@ keys; `suites::bandersnatch_v1` keeps version 1 of 0.5.3.
 - `RingSetup::keys` returns the prover key and the verifier key from one
   indexing pass. `prover_key` and `verifier_key` each dropped one half, so a
   party that needs both paid twice: 74 ms against 38 ms at ring size 255.
+- `CanonicalDeserializeExact`, implemented for every `CanonicalDeserialize` type: the
+  five `deserialize_*` methods of that trait with `_exact` appended, on a
+  byte string instead of a reader, with an error on trailing bytes, which
+  the arkworks decoders leave unread. For a deduplication on the bytes of a
+  proof or of a key.
 
 ### Changed
 

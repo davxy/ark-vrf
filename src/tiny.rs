@@ -62,9 +62,13 @@ fn vrf_transcript_scalars<S: TinySuite>(
 /// - `s`: Response scalar (`s = k + c * x`)
 ///
 /// Construct it with [`Proof::prove`] or by deserialization. Serialization
-/// encodes `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full scalar, and
-/// accepts one encoding per `c`. The proof holds no curve points, so
-/// deserialization involves no subgroup checks.
+/// encodes `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full scalar.
+/// The proof holds no curve points, so deserialization involves no subgroup
+/// checks.
+///
+/// Both decoding paths accept one encoding per proof, but do not reject
+/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
+/// return an error when the input is not completely consumed.
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
     /// Challenge scalar.

@@ -26,7 +26,9 @@
 //! let result = public.verify_thin(io, b"aux data", &proof);
 //! ```
 
-use crate::{utils::canonical::deserialize_point, utils::common::DomSep, utils::weight_scalar, *};
+use crate::{
+    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep, utils::weight_scalar, *,
+};
 
 /// Marker trait for suites that support the Thin VRF scheme.
 ///
@@ -46,7 +48,9 @@ impl<T> ThinSuite for T where T: Suite {}
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Both paths accept one encoding per proof and do not reject trailing bytes.
+/// Both decoding paths accept one encoding per proof, but do not reject
+/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
+/// return an error when the input is not completely consumed.
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
     /// Nonce commitment on the merged input.
@@ -61,7 +65,7 @@ impl<S: ThinSuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let r = deserialize_point::<S>(&mut reader, compress, validate)?;
+        let r = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,

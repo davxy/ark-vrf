@@ -72,7 +72,7 @@ use ark_ec::{
 use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
-use utils::canonical::deserialize_canonical;
+use utils::canonical::CanonicalDeserializeStrict;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -192,7 +192,9 @@ pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 /// every proof holds valid points unless built with a `deserialize_*_unchecked`
 /// method.
 ///
-/// Both paths accept one encoding per proof and do not reject trailing bytes.
+/// Both decoding paths accept one encoding per proof, but do not reject
+/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
+/// return an error when the input is not completely consumed.
 #[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
     /// Pedersen VRF proof (key commitment and VRF correctness).
@@ -200,10 +202,6 @@ pub struct Proof<S: RingSuite> {
     /// Ring membership proof binding the key commitment to the ring.
     pub(crate) ring_proof: RingBareProof<S>,
 }
-
-/// Stack buffer for the canonical decode of a ring proof, 928 bytes
-/// uncompressed on BLS12-381.
-const RING_PROOF_BUF_SIZE: usize = 1024;
 
 impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
@@ -213,11 +211,7 @@ impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
     ) -> Result<Self, ark_serialize::SerializationError> {
         let pedersen_proof =
             PedersenProof::<S>::deserialize_with_mode(&mut reader, compress, validate)?;
-        let ring_proof = deserialize_canonical::<RingBareProof<S>, RING_PROOF_BUF_SIZE>(
-            &mut reader,
-            compress,
-            validate,
-        )?;
+        let ring_proof = RingBareProof::<S>::deserialize_strict(&mut reader, compress, validate)?;
         Ok(Proof {
             pedersen_proof,
             ring_proof,
