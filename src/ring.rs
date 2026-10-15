@@ -72,7 +72,7 @@ use ark_ec::{
 use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
-use utils::canonical::DeserializeCanonical;
+use utils::canonical::CanonicalDeserializeStrict;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -202,10 +202,6 @@ pub struct Proof<S: RingSuite> {
     pub(crate) ring_proof: RingBareProof<S>,
 }
 
-/// Stack buffer for the canonical decode of a ring proof, 928 bytes
-/// uncompressed on BLS12-381.
-const RING_PROOF_BUF_SIZE: usize = 1024;
-
 impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
     fn deserialize_with_mode<R: ark_serialize::Read>(
         mut reader: R,
@@ -214,11 +210,7 @@ impl<S: RingSuite> CanonicalDeserialize for Proof<S> {
     ) -> Result<Self, ark_serialize::SerializationError> {
         let pedersen_proof =
             PedersenProof::<S>::deserialize_with_mode(&mut reader, compress, validate)?;
-        let ring_proof = RingBareProof::<S>::deserialize_canonical_with_buf::<RING_PROOF_BUF_SIZE>(
-            &mut reader,
-            compress,
-            validate,
-        )?;
+        let ring_proof = RingBareProof::<S>::deserialize_strict(&mut reader, compress, validate)?;
         Ok(Proof {
             pedersen_proof,
             ring_proof,

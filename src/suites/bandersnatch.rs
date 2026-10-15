@@ -154,7 +154,7 @@ pub(crate) mod tests {
     #[test]
     fn identity_has_one_encoding() {
         use crate::thin::Proof;
-        use crate::utils::canonical::DeserializeCanonical;
+        use crate::utils::canonical::CanonicalDeserializeStrict;
         use ark_serialize::{Compress, Validate};
 
         let mut canonical = [0u8; 32];
@@ -170,7 +170,7 @@ pub(crate) mod tests {
         );
 
         let decode = |bytes: &[u8], validate| {
-            AffinePoint::deserialize_canonical(bytes, Compress::Yes, validate)
+            AffinePoint::deserialize_strict(bytes, Compress::Yes, validate)
         };
         assert_eq!(decode(&canonical, Validate::No).unwrap(), identity);
         assert!(decode(&alias, Validate::No).is_err());

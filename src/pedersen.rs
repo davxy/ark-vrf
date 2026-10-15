@@ -31,7 +31,7 @@
 
 use crate::Suite;
 use crate::utils;
-use crate::utils::canonical::DeserializeCanonical;
+use crate::utils::canonical::CanonicalDeserializeStrict;
 use crate::utils::common::DomSep;
 use crate::utils::straus::short_msm;
 use crate::*;
@@ -91,9 +91,9 @@ impl<S: PedersenSuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let pk_com = AffinePoint::<S>::deserialize_canonical(&mut reader, compress, validate)?;
-        let r = AffinePoint::<S>::deserialize_canonical(&mut reader, compress, validate)?;
-        let ok = AffinePoint::<S>::deserialize_canonical(&mut reader, compress, validate)?;
+        let pk_com = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
+        let r = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
+        let ok = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,

@@ -27,7 +27,7 @@
 //! ```
 
 use crate::{
-    utils::canonical::DeserializeCanonical, utils::common::DomSep, utils::weight_scalar, *,
+    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep, utils::weight_scalar, *,
 };
 
 /// Marker trait for suites that support the Thin VRF scheme.
@@ -64,7 +64,7 @@ impl<S: ThinSuite> CanonicalDeserialize for Proof<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let r = AffinePoint::<S>::deserialize_canonical(&mut reader, compress, validate)?;
+        let r = AffinePoint::<S>::deserialize_strict(&mut reader, compress, validate)?;
         let s = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
             &mut reader,
             compress,

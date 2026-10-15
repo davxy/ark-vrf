@@ -10,21 +10,21 @@ use super::common::STACK_BUF_SIZE;
 use ark_std::vec::Vec;
 
 /// Recorded bytes: a stack array while they fit, a heap vector after that.
-enum Recorded<const N: usize> {
-    Stack([u8; N], usize),
+enum Recorded {
+    Stack([u8; STACK_BUF_SIZE], usize),
     Heap(Vec<u8>),
 }
 
 /// Reader that keeps a copy of every byte it hands out.
-struct Recorder<R, const N: usize> {
+struct Recorder<R> {
     inner: R,
-    bytes: Recorded<N>,
+    bytes: Recorded,
 }
 
-impl<R, const N: usize> Recorder<R, N> {
+impl<R> Recorder<R> {
     fn record(&mut self, chunk: &[u8]) {
         match &mut self.bytes {
-            Recorded::Stack(stack, len) if *len + chunk.len() <= N => {
+            Recorded::Stack(stack, len) if *len + chunk.len() <= STACK_BUF_SIZE => {
                 stack[*len..*len + chunk.len()].copy_from_slice(chunk);
                 *len += chunk.len();
             }
@@ -45,7 +45,7 @@ impl<R, const N: usize> Recorder<R, N> {
     }
 }
 
-impl<R: ark_std::io::Read, const N: usize> ark_std::io::Read for Recorder<R, N> {
+impl<R: ark_std::io::Read> ark_std::io::Read for Recorder<R> {
     fn read(&mut self, buf: &mut [u8]) -> ark_std::io::Result<usize> {
         let count = self.inner.read(buf)?;
         self.record(&buf[..count]);
@@ -76,26 +76,26 @@ impl ark_std::io::Write for Matcher<'_> {
 /// Decode a value and accept only the bytes that the value itself encodes to.
 ///
 /// The comparison covers the consumed bytes, so it runs per component inside
-/// a stream decoder; [`CanonicalDeserializeExact`] covers the end of the string. It
-/// runs on both paths, because arkworks sequences decode their elements with
-/// `Validate::No` and batch check them afterwards. `validate` gates a
-/// `Valid::check` of the value, because the arkworks BLS12-381 decoder skips
-/// the on-curve test of an uncompressed point.
+/// a stream decoder; [`CanonicalDeserializeExact`] covers the end of the
+/// string. It runs on both paths, because arkworks sequences decode their
+/// elements with `Validate::No` and batch check them afterwards. `validate`
+/// gates a `Valid::check` of the value, because the arkworks BLS12-381
+/// decoder skips the on-curve test of an uncompressed point. The consumed
+/// bytes are kept in a stack buffer that holds a point of every built-in
+/// suite, and spill to the heap past it.
 ///
 /// Implemented for every type that serializes and deserializes.
-pub(crate) trait DeserializeCanonical:
+pub(crate) trait CanonicalDeserializeStrict:
     ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize
 {
-    /// Record the consumed bytes in an `N` byte stack buffer, with a spill
-    /// to the heap.
-    fn deserialize_canonical_with_buf<const N: usize>(
+    fn deserialize_strict(
         reader: impl ark_std::io::Read,
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
         let mut recorder = Recorder {
             inner: reader,
-            bytes: Recorded::Stack([0u8; N], 0),
+            bytes: Recorded::Stack([0u8; STACK_BUF_SIZE], 0),
         };
         let value =
             Self::deserialize_with_mode(&mut recorder, compress, ark_serialize::Validate::No)?;
@@ -112,20 +112,10 @@ pub(crate) trait DeserializeCanonical:
         }
         Ok(value)
     }
-
-    /// [`Self::deserialize_canonical_with_buf`] with the default stack
-    /// buffer: a point encodes to at most 65 bytes on every built-in suite.
-    fn deserialize_canonical(
-        reader: impl ark_std::io::Read,
-        compress: ark_serialize::Compress,
-        validate: ark_serialize::Validate,
-    ) -> Result<Self, ark_serialize::SerializationError> {
-        Self::deserialize_canonical_with_buf::<STACK_BUF_SIZE>(reader, compress, validate)
-    }
 }
 
 impl<T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize>
-    DeserializeCanonical for T
+    CanonicalDeserializeStrict for T
 {
 }
 
