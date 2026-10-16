@@ -1,7 +1,8 @@
 //! # ECVRF Bandersnatch SHA-512 Elligator2 suite, version 1
 //!
-//! The [`super::bandersnatch`] suite of ark-vrf 0.5, with the same outputs.
-//! It differs from the current suite in two places:
+//! The [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+//! currently recommends this version.
+//! It differs from version 2, [`super::bandersnatch`], in two places:
 //!
 //! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v1".
 //!

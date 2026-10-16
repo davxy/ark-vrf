@@ -37,7 +37,9 @@ The library conditionally includes the following pre-configured suites (see feat
 - **Ed25519**: Supports Tiny, Thin, and Pedersen VRF.
 - **Secp256r1**: Supports Tiny, Thin, and Pedersen VRF.
 - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
-  `bandersnatch_v1` is the deprecated version 1 of this suite, with the outputs of 0.5.
+  `bandersnatch_v1` is version 1 of this suite, which the
+  [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+  currently recommends.
 - **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 - **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 

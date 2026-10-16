@@ -3,8 +3,9 @@
 //! Configuration:
 //!
 //! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v2" for Twisted Edwards form.
-//!   Version 1, with the outputs of ark-vrf 0.5, is the deprecated
-//!   [`super::bandersnatch_v1`].
+//!   Version 1 is [`super::bandersnatch_v1`], which the
+//!   [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+//!   currently recommends.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Twisted Edwards form, with finite field and curve parameters as specified in

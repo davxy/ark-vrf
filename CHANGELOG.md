@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Breaking release. Every entry under Changed alters the public API.
 `BandersnatchSha512Ell2` is version 2 of the suite, with new outputs and
-keys; `suites::bandersnatch_v1` keeps version 1 of 0.5.3.
+keys; `suites::bandersnatch_v1` is version 1, which the Bandersnatch VRF
+specification currently recommends.
 
 ### Added
 
@@ -21,6 +22,11 @@ keys; `suites::bandersnatch_v1` keeps version 1 of 0.5.3.
   byte string instead of a reader, with an error on trailing bytes, which
   the arkworks decoders leave unread. For a deduplication on the bytes of a
   proof or of a key.
+- `suites::bandersnatch_v1`: version 1 of the suite
+  (`Bandersnatch-SHA512-ELL2-v1`, 48 byte padding), which the
+  [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+  currently recommends. Its outputs, keys and test vectors are those of
+  `BandersnatchSha512Ell2` in 0.5.3.
 
 ### Changed
 
@@ -66,12 +72,6 @@ keys; `suites::bandersnatch_v1` keeps version 1 of 0.5.3.
   `Bandersnatch-SHA512-ELL2-v2`. Input points, VRF outputs, the keys that
   `Secret::from_seed` derives, `BLINDING_BASE`, `ACCUMULATOR_BASE`,
   `PADDING`, ring commitments and the test vectors change.
-
-### Deprecated
-
-- `suites::bandersnatch_v1`: the `BandersnatchSha512Ell2` of 0.5.3
-  (`Bandersnatch-SHA512-ELL2-v1`, 48 byte padding), with the same outputs,
-  keys and test vectors.
 
 ### Fixed
 
