@@ -38,11 +38,7 @@ pub mod bandersnatch_shake128;
 #[cfg(feature = "bandersnatch")]
 pub mod bandersnatch_sw;
 #[cfg(feature = "bandersnatch")]
-#[cfg_attr(
-    not(test),
-    deprecated(note = "use `bandersnatch`, which follows the RFC 9380 hash-to-curve")
-)]
-pub mod bandersnatch_v1;
+pub mod bandersnatch_v2;
 
 #[cfg(feature = "jubjub")]
 pub mod jubjub;
