@@ -44,26 +44,27 @@ harness = false
 name = "straus"
 required-features = ["full"]
 
+# tombi: format.rules.table-keys-order.disabled = true
 [dependencies]
-ark-bls12-381 = { version = "0.6", default-features = false, optional = true }
-ark-bn254 = { version = "0.6", default-features = false, optional = true }
 ark-ec = { version = "0.6", default-features = false }
-ark-ed-on-bls12-381 = { version = "0.6", default-features = false, optional = true }
-ark-ed-on-bls12-381-bandersnatch = { version = "0.6", default-features = false, optional = true }
-ark-ed-on-bn254 = { version = "0.6", default-features = false, optional = true }
-ark-ed25519 = { version = "0.6", default-features = false, optional = true }
 ark-ff = { version = "0.6", default-features = false }
-# Curves
-ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
-ark-serialize = { version = "0.6", default-features = false }
 ark-std = { version = "0.6", default-features = false }
+ark-serialize = { version = "0.6", default-features = false }
+zeroize = { version = "1.8", default-features = false }
 digest = { version = "0.10", default-features = false }
-rand = { version = "0.8", default-features = false, optional = true }
-rayon = { version = "1.10", default-features = false, optional = true }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
+rayon = { version = "1.10", default-features = false, optional = true }
+rand = { version = "0.8", default-features = false, optional = true }
 w3f-ring-proof = { version = "0.0.10", default-features = false, optional = true }
-zeroize = { version = "1.8", default-features = false }
+# Curves
+ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
+ark-ed25519 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bls12-381 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bls12-381-bandersnatch = { version = "0.6", default-features = false, optional = true }
+ark-bls12-381 = { version = "0.6", default-features = false, optional = true }
+ark-ed-on-bn254 = { version = "0.6", default-features = false, optional = true }
+ark-bn254 = { version = "0.6", default-features = false, optional = true }
 
 [dev-dependencies]
 ark-curve25519 = { version = "0.6" }
@@ -77,13 +78,14 @@ rayon = { version = "1.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 
+# tombi: format.rules.table-keys-order.disabled = true
 [features]
 default = ["std"]
-asm = ["ark-ff/asm", "sha2/asm", "sha3?/asm", "w3f-ring-proof?/asm"]
-baby-jubjub = ["ark-bn254/curve", "ark-ed-on-bn254"]
-bandersnatch = ["ark-bls12-381/curve", "ark-ed-on-bls12-381-bandersnatch"]
-# Curves
-ed25519 = ["ark-ed25519"]
+std = [
+  "ark-ec/std",
+  "ark-std/std",
+  "w3f-ring-proof?/std",
+]
 full = [
   "baby-jubjub",
   "bandersnatch",
@@ -92,7 +94,17 @@ full = [
   "ring",
   "secp256r1",
 ]
+# Curves
+ed25519 = ["ark-ed25519"]
 jubjub = ["ark-bls12-381/curve", "ark-ed-on-bls12-381"]
+bandersnatch = ["ark-bls12-381/curve", "ark-ed-on-bls12-381-bandersnatch"]
+baby-jubjub = ["ark-bn254/curve", "ark-ed-on-bn254"]
+secp256r1 = ["ark-secp256r1"]
+# Miscellanea
+ring = ["w3f-ring-proof"]
+shake128 = ["sha3"]
+print-trace = ["ark-std/print-trace"]
+secret-split = ["rand/getrandom"]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
@@ -101,14 +113,4 @@ parallel = [
   "rayon",
   "w3f-ring-proof?/parallel",
 ]
-print-trace = ["ark-std/print-trace"]
-# Miscellanea
-ring = ["w3f-ring-proof"]
-secp256r1 = ["ark-secp256r1"]
-secret-split = ["rand/getrandom"]
-shake128 = ["sha3"]
-std = [
-  "ark-ec/std",
-  "ark-std/std",
-  "w3f-ring-proof?/std",
-]
+asm = ["ark-ff/asm", "sha2/asm", "sha3?/asm", "w3f-ring-proof?/asm"]
