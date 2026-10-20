@@ -3,116 +3,112 @@ name = "ark-vrf"
 version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
-authors = [ "Davide Galassi <davxy@datawok.net>" ]
+authors = ["Davide Galassi <davxy@datawok.net>"]
 license = "MIT"
 description = "Elliptic curve VRF with additional data"
 repository = "https://github.com/davxy/ark-vrf"
-keywords = [ "cryptography", "vrf", "ec-vrf", "ring-vrf", "zk" ]
+keywords = ["cryptography", "ec-vrf", "ring-vrf", "vrf", "zk"]
 categories = ["cryptography", "no-std"]
 autobenches = false
 
+[package.metadata.docs.rs]
+features = ["full", "shake128"]
+
+[[bench]]
+harness = false
+name = "common"
+required-features = ["full"]
+
+[[bench]]
+harness = false
+name = "tiny"
+required-features = ["full"]
+
+[[bench]]
+harness = false
+name = "thin"
+required-features = ["full"]
+
+[[bench]]
+harness = false
+name = "pedersen"
+required-features = ["full"]
+
+[[bench]]
+harness = false
+name = "ring"
+required-features = ["full"]
+
+[[bench]]
+harness = false
+name = "straus"
+required-features = ["full"]
+
 [dependencies]
+ark-bls12-381 = { version = "0.6", default-features = false, optional = true }
+ark-bn254 = { version = "0.6", default-features = false, optional = true }
 ark-ec = { version = "0.6", default-features = false }
-ark-ff = { version = "0.6", default-features = false }
-ark-std = { version = "0.6", default-features = false }
-ark-serialize = { version = "0.6", default-features = false }
-zeroize = { version = "1.8", default-features = false }
-digest = { version = "0.10", default-features = false }
-sha2 = { version = "0.10", default-features = false }
-sha3 = { version = "0.10", default-features = false, optional = true }
-rayon = { version = "1.10", default-features = false, optional = true }
-rand = { version = "0.8", default-features = false, optional = true }
-w3f-ring-proof = { version = "0.0.10", default-features = false, optional = true }
-# Curves
-ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
-ark-ed25519 = { version = "0.6", default-features = false, optional = true }
 ark-ed-on-bls12-381 = { version = "0.6", default-features = false, optional = true }
 ark-ed-on-bls12-381-bandersnatch = { version = "0.6", default-features = false, optional = true }
-ark-bls12-381 = { version = "0.6", default-features = false, optional = true }
 ark-ed-on-bn254 = { version = "0.6", default-features = false, optional = true }
-ark-bn254 = { version = "0.6", default-features = false, optional = true }
+ark-ed25519 = { version = "0.6", default-features = false, optional = true }
+ark-ff = { version = "0.6", default-features = false }
+# Curves
+ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
+ark-serialize = { version = "0.6", default-features = false }
+ark-std = { version = "0.6", default-features = false }
+digest = { version = "0.10", default-features = false }
+rand = { version = "0.8", default-features = false, optional = true }
+rayon = { version = "1.10", default-features = false, optional = true }
+sha2 = { version = "0.10", default-features = false }
+sha3 = { version = "0.10", default-features = false, optional = true }
+w3f-ring-proof = { version = "0.0.10", default-features = false, optional = true }
+zeroize = { version = "1.8", default-features = false }
 
 [dev-dependencies]
-ark-std = { version = "0.6", default-features = false, features = ["getrandom"] }
-ark-ed25519 = { version = "0.6" }
 ark-curve25519 = { version = "0.6" }
+ark-ed25519 = { version = "0.6" }
 ark-secp256r1 = { version = "0.6" }
+ark-std = { version = "0.6", default-features = false, features = ["getrandom"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 hex = { version = "0.4" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
 indexmap = { version = "2.2.6", features = ["serde"] }
 rayon = { version = "1.10" }
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "common"
-harness = false
-required-features = ["full"]
-
-[[bench]]
-name = "tiny"
-harness = false
-required-features = ["full"]
-
-[[bench]]
-name = "thin"
-harness = false
-required-features = ["full"]
-
-[[bench]]
-name = "pedersen"
-harness = false
-required-features = ["full"]
-
-[[bench]]
-name = "ring"
-harness = false
-required-features = ["full"]
-
-[[bench]]
-name = "straus"
-harness = false
-required-features = ["full"]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
 
 [features]
-default = [ "std" ]
-std = [
-  "ark-std/std",
-  "ark-ec/std",
-  "w3f-ring-proof?/std",
-]
-full = [
-  "secp256r1",
-  "ed25519",
-  "bandersnatch",
-  "jubjub",
-  "baby-jubjub",
-  "ring",
-]
+default = ["std"]
+asm = ["ark-ff/asm", "sha2/asm", "sha3?/asm", "w3f-ring-proof?/asm"]
+baby-jubjub = ["ark-bn254/curve", "ark-ed-on-bn254"]
+bandersnatch = ["ark-bls12-381/curve", "ark-ed-on-bls12-381-bandersnatch"]
 # Curves
-ed25519 = [ "ark-ed25519" ]
-jubjub = [ "ark-ed-on-bls12-381", "ark-bls12-381/curve" ]
-bandersnatch = [ "ark-ed-on-bls12-381-bandersnatch", "ark-bls12-381/curve" ]
-baby-jubjub = [ "ark-ed-on-bn254", "ark-bn254/curve" ]
-secp256r1 = [ "ark-secp256r1" ]
-# Miscellanea
-ring = [ "w3f-ring-proof" ]
-shake128 = [ "sha3" ]
-print-trace = [ "ark-std/print-trace" ]
-secret-split = [ "rand/getrandom" ]
+ed25519 = ["ark-ed25519"]
+full = [
+  "baby-jubjub",
+  "bandersnatch",
+  "ed25519",
+  "jubjub",
+  "ring",
+  "secp256r1",
+]
+jubjub = ["ark-bls12-381/curve", "ark-ed-on-bls12-381"]
 # Optimizations
 parallel = [
   "ark-ec/parallel",
   "ark-ff/parallel",
   "ark-std/parallel",
-  "w3f-ring-proof?/parallel",
   "rayon",
+  "w3f-ring-proof?/parallel",
 ]
-asm = [
-  "ark-ff/asm",
-  "w3f-ring-proof?/asm",
-  "sha2/asm",
-  "sha3?/asm"
+print-trace = ["ark-std/print-trace"]
+# Miscellanea
+ring = ["w3f-ring-proof"]
+secp256r1 = ["ark-secp256r1"]
+secret-split = ["rand/getrandom"]
+shake128 = ["sha3"]
+std = [
+  "ark-ec/std",
+  "ark-std/std",
+  "w3f-ring-proof?/std",
 ]
-[package.metadata.docs.rs]
-features = [ "full", "shake128" ]
