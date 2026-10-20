@@ -2,10 +2,10 @@
 //!
 //! Configuration:
 //!
-//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v2" for Twisted Edwards form.
-//!   Version 1 is [`super::bandersnatch_v1`], which the
-//!   [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-//!   currently recommends.
+//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v1" for Twisted Edwards form.
+//!   The [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+//!   currently recommends this version. Version 2, [`super::bandersnatch_v2`],
+//!   pads `expand_message_xmd` as RFC 9380 requires.
 //!
 //! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
 //!   in Twisted Edwards form, with finite field and curve parameters as specified in
@@ -47,7 +47,9 @@
 //! * The `ECVRF_encode_to_curve` function uses *Elligator2* method described in
 //!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380).
 //!   Field element expansion uses `expand_message_xmd` (RFC 9380 §5.3.1) with
-//!   SHA-512 as the fixed-output hash.
+//!   SHA-512 as the fixed-output hash, except that the zero prefix `Z_pad` has
+//!   48 bytes, the expanded field element length of the arkworks 0.6
+//!   `DefaultFieldHasher`, and not the 128 byte SHA-512 input block.
 //!   The domain separation tag is `DST = SUITE_ID || DomSep::HashToCurve`,
 //!   where `DomSep::HashToCurve` is the protocol-internal hash-to-curve tag
 //!   byte shared by the transcript-based paths (see [`crate::utils::hash_to_curve_ell2_xmd`]).
@@ -64,23 +66,21 @@ type ThisSuite = BandersnatchSha512Ell2;
 suite_types!(ThisSuite);
 
 impl Suite for ThisSuite {
-    const SUITE_ID: &'static [u8] = b"Bandersnatch-SHA512-ELL2-v2";
+    const SUITE_ID: &'static [u8] = b"Bandersnatch-SHA512-ELL2-v1";
     type Affine = ark_ed_on_bls12_381_bandersnatch::EdwardsAffine;
     type Transcript = utils::HashTranscript<sha2::Sha512>;
-    /// Hash data to a curve point using Elligator2 method described by RFC 9380.
     fn data_to_point(data: &[u8]) -> Option<AffinePoint> {
-        utils::hash_to_curve_ell2_xmd::<Self, sha2::Sha512>(data)
+        utils::hash_to_curve::hash_to_curve_ell2_xmd_arkworks_compat::<Self, sha2::Sha512>(data)
     }
 }
 
 impl PedersenSuite for ThisSuite {
     const BLINDING_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "22118296430398992055659154342014487674511290404553062345415468198994042557513"
+            "23335687741101763108036518445642207119627658113885888016488710494487028845889"
         );
-        const Y: BaseField = MontFp!(
-            "18459022064371835405469327450010492648577157228683351878003831466280791690623"
-        );
+        const Y: BaseField =
+            MontFp!("5552214580375038693022409684979828600325210968745774080859660443337357929963");
         AffinePoint::new_unchecked(X, Y)
     };
 }
@@ -91,19 +91,20 @@ impl crate::ring::RingSuite for ThisSuite {
 
     const ACCUMULATOR_BASE: AffinePoint = {
         const X: BaseField = MontFp!(
-            "13464469348211009478996801625416047694368983200892816868679829969586642297960"
+            "14056632001415368875257708737821299882600475929746323097150942355715730684350"
         );
-        const Y: BaseField =
-            MontFp!("3798694867683671293969902550342975803355534254442652542336263418633380224327");
+        const Y: BaseField = MontFp!(
+            "10322661992765989500407719465917595459409463902187386706652408883505670839210"
+        );
         AffinePoint::new_unchecked(X, Y)
     };
 
     const PADDING: AffinePoint = {
         const X: BaseField = MontFp!(
-            "18789570585008552774270602428553056801045807996334418548416712705681035018569"
+            "26913883415342152801331916189968962157924271221160514298872262294143390094043"
         );
         const Y: BaseField = MontFp!(
-            "14678106766635305884560840136502131745233404248640991555472450068125753994317"
+            "30874728313203001508631936119690348239461579770372782660098261717479009115354"
         );
         AffinePoint::new_unchecked(X, Y)
     };

@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-09-26
 
-Breaking release. Every entry under Changed alters the public API.
-`BandersnatchSha512Ell2` is version 2 of the suite, with new outputs and
-keys; `suites::bandersnatch_v1` is version 1, which the Bandersnatch VRF
-specification currently recommends.
+Breaking release. Every entry under Changed alters the public API. The
+Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
 
 ### Added
 
@@ -22,11 +20,13 @@ specification currently recommends.
   byte string instead of a reader, with an error on trailing bytes, which
   the arkworks decoders leave unread. For a deduplication on the bytes of a
   proof or of a key.
-- `suites::bandersnatch_v1`: version 1 of the suite
-  (`Bandersnatch-SHA512-ELL2-v1`, 48 byte padding), which the
+- `suites::bandersnatch_v2`: version 2 of the Bandersnatch SHA-512 Elligator2
+  suite (`Bandersnatch-SHA512-ELL2-v2`), with the 128 byte `Z_pad` that
+  RFC 9380 requires in `expand_message_xmd`, and with its own blinding base,
+  accumulator base, padding point and test vectors. `suites::bandersnatch`
+  stays version 1 (48 byte `Z_pad`), which the
   [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-  currently recommends. Its outputs, keys and test vectors are those of
-  `BandersnatchSha512Ell2` in 0.5.3.
+  currently recommends.
 
 ### Changed
 
@@ -67,11 +67,8 @@ specification currently recommends.
 - `hash_to_curve_ell2_xmd` pads `expand_message_xmd` with the hash block
   size (128 bytes for SHA-512), as RFC 9380 requires. The arkworks
   `DefaultFieldHasher` used before pads with the field element length (48
-  bytes).
-- `BandersnatchSha512Ell2` uses this padding, and its `SUITE_ID` is
-  `Bandersnatch-SHA512-ELL2-v2`. Input points, VRF outputs, the keys that
-  `Secret::from_seed` derives, `BLINDING_BASE`, `ACCUMULATOR_BASE`,
-  `PADDING`, ring commitments and the test vectors change.
+  bytes). `suites::bandersnatch` keeps the 48 byte padding through a
+  crate-private variant, so its points do not change.
 
 ### Fixed
 

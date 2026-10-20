@@ -47,9 +47,9 @@
 //! - **Ed25519**: Supports Tiny, Thin, and Pedersen VRF.
 //! - **Secp256r1**: Supports Tiny, Thin, and Pedersen VRF.
 //! - **Bandersnatch** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
-//!   `bandersnatch_v1` is version 1 of this suite, which the
-//!   [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-//!   currently recommends.
+//!   `bandersnatch_v2` is version 2 of this suite, with the `expand_message_xmd` padding of RFC 9380.
+//!   The [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+//!   currently recommends version 1.
 //! - **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 //! - **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
 //!

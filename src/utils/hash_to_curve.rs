@@ -105,7 +105,7 @@ where
 }
 
 /// [`hash_to_curve_ell2_xmd`] with the `Z_pad` of the arkworks 0.6
-/// `DefaultFieldHasher`, used by the `bandersnatch_v1` suite.
+/// `DefaultFieldHasher`, used by the `bandersnatch` suite.
 #[cfg(feature = "bandersnatch")]
 pub(crate) fn hash_to_curve_ell2_xmd_arkworks_compat<S: Suite, H>(
     data: &[u8],
