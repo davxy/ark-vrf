@@ -7,26 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-10-20
 
-Breaking release. Every entry under Changed alters the public API. The
-Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
-
 ### Added
 
 - `RingSetup::keys` returns the prover key and the verifier key from one
-  indexing pass. `prover_key` and `verifier_key` each dropped one half, so a
-  party that needs both paid twice: 74 ms against 38 ms at ring size 255.
+  indexing pass, at half the cost of `prover_key` plus `verifier_key`.
 - `CanonicalDeserializeExact`, implemented for every `CanonicalDeserialize` type: the
   five `deserialize_*` methods of that trait with `_exact` appended, on a
   byte string instead of a reader, with an error on trailing bytes, which
-  the arkworks decoders leave unread. For a deduplication on the bytes of a
-  proof or of a key.
-- `suites::bandersnatch_v2`: version 2 of the Bandersnatch SHA-512 Elligator2
-  suite (`Bandersnatch-SHA512-ELL2-v2`), with the 128 byte `Z_pad` that
-  RFC 9380 requires in `expand_message_xmd`, and with its own blinding base,
-  accumulator base, padding point and test vectors. `suites::bandersnatch`
-  stays version 1 (48 byte `Z_pad`), which the
-  [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-  currently recommends.
+  the arkworks decoders leave unread.
+- `suites::bandersnatch_v2`: a Bandersnatch SHA-512 Elligator2 suite
+  (`Bandersnatch-SHA512-ELL2-v2`) with the 128 byte `Z_pad` that RFC 9380
+  requires in `expand_message_xmd`. `suites::bandersnatch` does not change.
 
 ### Changed
 
@@ -42,9 +33,7 @@ Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
   `verifier_key` and `VerifierKeyBuilder::append` take any iterator of
   `Public` or `&Public` (for example `&ring`) instead of `&[AffinePoint]`, so
   the subgroup check of a key happens once, when the key is decoded.
-  `Public::padding()` gives the ring padding point as a key. `==` on
-  `Public`, `Input` and `Output` no longer needs `PartialEq` on the suite
-  type, so it works in code generic over the suite.
+  `Public::padding()` gives the ring padding point as a key.
 - `Error` is `#[non_exhaustive]`: a `match` on it needs a wildcard arm, and
   a new variant is no longer a breaking change.
 - Opaque types. `Public`, `Input` and `Output` are aliases of
@@ -65,10 +54,7 @@ Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
   decoder then rejects a challenge encoding above the field order.
   `utils::CHALLENGE_LEN` is gone.
 - `hash_to_curve_ell2_xmd` pads `expand_message_xmd` with the hash block
-  size (128 bytes for SHA-512), as RFC 9380 requires. The arkworks
-  `DefaultFieldHasher` used before pads with the field element length (48
-  bytes). `suites::bandersnatch` keeps the 48 byte padding through a
-  crate-private variant, so its points do not change.
+  size, as RFC 9380 requires. A custom suite that calls it gets new points.
 
 ### Fixed
 
@@ -79,8 +65,7 @@ Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
 - `secret-split` builds `no_std`. It enabled `ark-std/getrandom`, which turns
   on `rand/std`; it now enables `rand/getrandom` and the application picks
   the `getrandom` backend: `getrandom/js` on `wasm32-unknown-unknown`,
-  `getrandom/custom` or `rdrand` on bare metal. CI checks the build on
-  `x86_64-unknown-none`.
+  `getrandom/custom` or `rdrand` on bare metal.
 
 ### Security
 
@@ -101,12 +86,9 @@ Bandersnatch outputs, keys and test vectors of 0.5.3 do not change.
 
 ### Performance
 
-- Tiny and Thin verification with one I/O pair runs one Straus pass over the
-  four raw points instead of merging the pairs first. Bandersnatch, one
-  thread, `asm`: Tiny verify 196 us to 128 us, Thin verify 176 us to 124 us.
-- The provers merge the I/O inputs only. The merged output had no user.
-  Bandersnatch, one thread, `asm`, one I/O pair: Tiny prove 186 us to 130 us,
-  Thin prove 180 us to 132 us. Pedersen prove needs two or more pairs to gain.
+- Tiny and Thin are faster with one I/O pair. Bandersnatch, one thread,
+  `asm`: Tiny prove 186 us to 130 us, verify 196 us to 128 us; Thin prove
+  180 us to 132 us, verify 176 us to 124 us.
 
 ## [0.5.3] - 2026-08-18
 
