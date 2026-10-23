@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-10-23
+
+### Security
+
+- The KZG randomizer of each ring proof in a batch depends on every proof of
+  the batch (`w3f-ring-proof` 0.0.11). Before, the randomizer of a proof was a
+  function of that proof only, so a submitter who controlled the whole batch
+  could make invalid ring proofs cancel (Wagner's k-sum). Single verification,
+  the Pedersen and Thin batch verifiers, keys, ring commitments and the proof
+  encoding do not change.
+
 ## [0.6.0] - 2026-10-20
 
 ### Added
@@ -330,6 +341,7 @@ of the Bandersnatch VRF specification.
 - `no_std` support.
 - `parallel` and `asm` optimization features.
 
+[0.6.1]: https://github.com/davxy/ark-vrf/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/davxy/ark-vrf/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/davxy/ark-vrf/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/davxy/ark-vrf/compare/v0.5.1...v0.5.2
