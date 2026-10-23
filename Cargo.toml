@@ -2,7 +2,7 @@
 name = "ark-vrf"
 version = "0.6.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.90"
 authors = ["Davide Galassi <davxy@datawok.net>"]
 license = "MIT"
 description = "Elliptic curve VRF with additional data"
