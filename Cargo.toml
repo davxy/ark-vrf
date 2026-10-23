@@ -1,6 +1,6 @@
 [package]
 name = "ark-vrf"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Davide Galassi <davxy@datawok.net>"]
@@ -56,7 +56,7 @@ sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
 rand = { version = "0.8", default-features = false, optional = true }
-w3f-ring-proof = { version = "0.0.10", default-features = false, optional = true }
+w3f-ring-proof = { version = "0.0.11", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
 ark-ed25519 = { version = "0.6", default-features = false, optional = true }
