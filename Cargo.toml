@@ -1,7 +1,8 @@
 [package]
 name = "ark-vrf"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
+rust-version = "1.90"
 authors = [ "Davide Galassi <davxy@datawok.net>" ]
 license = "MIT"
 description = "Elliptic curve VRF with additional data"
@@ -21,7 +22,7 @@ generic-array = { version = "0.14", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-w3f-ring-proof = { version = "0.0.10", default-features = false, optional = true }
+w3f-ring-proof = { version = "0.0.11", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
 ark-ed25519 = { version = "0.6", default-features = false, optional = true }

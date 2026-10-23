@@ -637,7 +637,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 }
 
 type RingProofBatchItem<S> =
-    ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing, CurveConfig<S>>;
+    ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing>;
 
 /// Pre-processed data for a single ring proof awaiting batch verification.
 pub struct BatchItem<S: RingSuite> {
