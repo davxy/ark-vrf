@@ -1163,6 +1163,9 @@ pub(crate) mod testing {
 
     pub const TEST_RING_SIZE: usize = 8;
 
+    /// The domain of the ring vectors: |D| of spec section 5.
+    pub const TEST_VECTOR_DOMAIN_SIZE: usize = 2048;
+
     const MAX_AD_LEN: usize = 100;
 
     /// The backend asks its lookup closure for one range, once, and panics
@@ -2029,9 +2032,9 @@ pub(crate) mod testing {
             let mut file = File::open(Self::SRS_FILE).unwrap();
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).unwrap();
-            let pcs_params =
-                PcsParams::<Self>::deserialize_uncompressed_unchecked(&mut &buf[..]).unwrap();
-            RingSetup::from_pcs_params(crate::ring::testing::TEST_RING_SIZE, pcs_params).unwrap()
+            // The whole SRS: the ring vectors use the domain of spec section 5,
+            // not the smallest domain for `TEST_RING_SIZE` keys.
+            RingSetup::deserialize_uncompressed_unchecked(&buf[..]).unwrap()
         }
 
         #[allow(unused)]
@@ -2084,6 +2087,11 @@ pub(crate) mod testing {
             };
 
             let ring_setup = <S as RingSuiteExt>::ring_setup();
+            let max_ring_size = ring_setup.ring_context().max_ring_size();
+            assert_eq!(
+                piop_domain_size::<S>(max_ring_size),
+                TEST_VECTOR_DOMAIN_SIZE
+            );
 
             use ark_std::rand::SeedableRng;
             let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
@@ -2092,7 +2100,7 @@ pub(crate) mod testing {
             ring_pks[prover_idx] = public;
 
             // Blinding is disabled to make the proof reproducible
-            let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
+            let ring_ctx = RingContext::<S>::new_without_blinding(max_ring_size);
             let (prover_key, verifier_key) = ring_setup.keys(&ring_pks).unwrap();
             let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
             let proof = secret.prove_ring(io, ad, &prover);
@@ -2154,10 +2162,12 @@ pub(crate) mod testing {
             let prover_idx = self.ring_pks.iter().position(|pk| *pk == public).unwrap();
 
             // Blinding is disabled to reproduce the exact proof in the vector
-            let ring_ctx = RingContext::<S>::new_without_blinding(TEST_RING_SIZE);
+            let ring_ctx =
+                RingContext::<S>::new_without_blinding(ring_setup.ring_context().max_ring_size());
             let (prover_key, verifier_key) = ring_setup.keys(self.ring_pks).unwrap();
             let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
+            assert_eq!(verifier_key.commitment(), self.ring_pks_com);
             let verifier = ring_ctx.ring_verifier(verifier_key);
 
             let proof = secret.prove_ring(io, &self.pedersen.base.ad, &prover);

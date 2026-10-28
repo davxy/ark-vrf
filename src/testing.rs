@@ -46,10 +46,10 @@ pub const BLS12_381_PCS_SRS_FILE: &str = concat!(
 /// Pure testing SRS file
 ///
 /// Derived from seed `[0_u8; 32]`.
-/// Domain size 2^9.
+/// Domain size 2^11.
 pub const BN254_PCS_SRS_FILE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/data/srs/bn254-testing-2-9-uncompressed.bin"
+    "/data/srs/bn254-testing-2-11-uncompressed.bin"
 );
 
 // Test vectors folder
