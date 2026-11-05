@@ -103,7 +103,6 @@ secp256r1 = ["ark-secp256r1"]
 # Miscellanea
 ring = ["w3f-ring-proof"]
 shake128 = ["sha3"]
-print-trace = ["ark-std/print-trace"]
 secret-split = ["rand/getrandom"]
 # Optimizations
 parallel = [

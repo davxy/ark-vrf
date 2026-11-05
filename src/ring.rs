@@ -346,6 +346,10 @@ impl<S: RingSuite> RingContext<S> {
     ///
     /// [`Self::max_ring_size`] reports the exact capacity. A `min_ring_size`
     /// of 0 counts as 1.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no evaluation domain holds `min_ring_size` keys.
     pub fn new(min_ring_size: usize) -> Self {
         Self::construct(min_ring_size, true)
     }
@@ -394,7 +398,8 @@ impl<S: RingSuite> RingContext<S> {
     ///
     /// An index at or beyond [`Self::max_ring_size`] wraps into range. A wrong
     /// index gives a proof that no verifier accepts. `prover_key` must come
-    /// from a setup with the domain of this context.
+    /// from a setup with the domain of this context: with a key of another
+    /// domain, proving panics in the ring backend.
     pub fn ring_prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         self.clone().into_ring_prover(prover_key, key_index)
     }
@@ -406,7 +411,8 @@ impl<S: RingSuite> RingContext<S> {
 
     /// Create a prover instance, consuming the context to avoid cloning.
     ///
-    /// See [`Self::ring_prover`] for the handling of `key_index`.
+    /// See [`Self::ring_prover`] for the handling of `key_index` and of
+    /// `prover_key`.
     pub fn into_ring_prover(self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         let key_index = wrap_key_index(key_index, self.max_ring_size());
         RingProver::<S>::init(
@@ -524,12 +530,18 @@ impl<S: RingSuite> RingSetup<S> {
         min_ring_size: usize,
         mut pcs_params: PcsParams<S>,
     ) -> Result<Self, Error> {
-        let pcs_domain_size = pcs_domain_size::<S>(min_ring_size);
-        if pcs_params.powers_in_g1.len() < pcs_domain_size || pcs_params.powers_in_g2.len() < 2 {
+        // The capacity comes from the SRS length, so a huge `min_ring_size`
+        // never reaches the domain arithmetic.
+        let capacity = max_ring_size_from_pcs_domain_size::<S>(pcs_params.powers_in_g1.len());
+        if !capacity.is_some_and(|capacity| capacity >= min_ring_size)
+            || pcs_params.powers_in_g2.len() < 2
+        {
             return Err(Error::RingCapacityExceeded);
         }
         // Keep only the required powers of tau
-        pcs_params.powers_in_g1.truncate(pcs_domain_size);
+        pcs_params
+            .powers_in_g1
+            .truncate(pcs_domain_size::<S>(min_ring_size));
         pcs_params.powers_in_g2.truncate(2);
 
         Ok(Self {
@@ -782,6 +794,8 @@ pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 /// Provides access to precomputed SRS elements needed for efficient ring operations.
 pub trait SrsLookup<S: RingSuite> {
     /// Look up a range of SRS elements. Returns `None` if the range is out of bounds.
+    ///
+    /// A result with a length other than `range.len()` counts as a failed lookup.
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
 
@@ -813,7 +827,10 @@ fn prefetched_lookup<S: RingSuite>(
     lookup: impl SrsLookup<S>,
     range: Range<usize>,
 ) -> Result<impl Fn(Range<usize>) -> SrsSegment<S>, Error> {
-    let points = lookup.lookup(range.clone()).ok_or(Error::SrsLookupFailed)?;
+    let points = lookup
+        .lookup(range.clone())
+        .filter(|points| points.len() == range.len())
+        .ok_or(Error::SrsLookupFailed)?;
     let points = Cell::new(Some(points));
     Ok(move |asked| {
         if asked != range {
@@ -1091,9 +1108,17 @@ pub mod dom_utils {
     /// Returns the smallest power of 2 that can accommodate `min_ring_size` members.
     /// This is the domain size used for polynomial operations in the ring proof and
     /// already accounts for the PIOP overhead. A `min_ring_size` of 0 counts as 1.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the domain size does not fit in a `usize`.
     pub const fn piop_domain_size<S: Suite>(min_ring_size: usize) -> usize {
         let min_ring_size = if min_ring_size == 0 { 1 } else { min_ring_size };
-        (min_ring_size + piop_overhead::<S>()).next_power_of_two()
+        let domain_size = match min_ring_size.checked_add(piop_overhead::<S>()) {
+            Some(size) => size.checked_next_power_of_two(),
+            None => None,
+        };
+        domain_size.expect("PIOP domain size overflows usize")
     }
 
     /// Maximum ring size supported by a given PIOP domain size.
@@ -1121,8 +1146,16 @@ pub mod dom_utils {
     /// PCS domain size for a given PIOP domain size.
     ///
     /// Returns `3 * piop_domain_size + 1`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the result does not fit in a `usize`.
     pub const fn pcs_domain_size_from_piop_domain_size(piop_domain_size: usize) -> usize {
-        3 * piop_domain_size + 1
+        let domain_size = match piop_domain_size.checked_mul(3) {
+            Some(size) => size.checked_add(1),
+            None => None,
+        };
+        domain_size.expect("PCS domain size overflows usize")
     }
 
     /// PIOP domain size extracted from a PCS domain size.
@@ -1169,7 +1202,8 @@ pub(crate) mod testing {
     /// on an error. The closure must serve the prefetched range and nothing
     /// else: another range, the same range a second time, or a lookup that
     /// failed up front must surface instead of feeding the backend wrong or
-    /// stale points.
+    /// stale points. The backend also panics on a range with the wrong
+    /// number of points, so that is a failed lookup too.
     pub fn prefetched_lookup_serves_the_range_once<S: RingSuite>() {
         let points = vec![G1Affine::<S>::generator(); 4];
         let srs = prefetched_lookup::<S>(|_: Range<usize>| Some(points.clone()), 3..7).unwrap();
@@ -1180,6 +1214,15 @@ pub(crate) mod testing {
 
         let failed = prefetched_lookup::<S>(|_: Range<usize>| None, 3..7).map(|_| ());
         assert!(matches!(failed, Err(Error::SrsLookupFailed)));
+
+        for range in [3..6, 3..8] {
+            let wrong_length =
+                prefetched_lookup::<S>(|_: Range<usize>| Some(points.clone()), range);
+            assert!(matches!(
+                wrong_length.map(|_| ()),
+                Err(Error::SrsLookupFailed)
+            ));
+        }
     }
 
     fn find_complement_point<C: SWCurveConfig>() -> SWAffine<C> {
@@ -1515,12 +1558,21 @@ pub(crate) mod testing {
             Err(Error::RingCapacityExceeded)
         ));
 
-        // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity.
-        let pcs_params = ring_setup.pcs_params.clone();
-        assert!(matches!(
-            RingSetup::<S>::from_pcs_params(max_ring_size + 1, pcs_params),
-            Err(Error::RingCapacityExceeded)
-        ));
+        // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity,
+        // also when the domain size of that ring does not fit in a `usize`.
+        for min_ring_size in [max_ring_size + 1, usize::MAX / 3 + 1, usize::MAX] {
+            let pcs_params = ring_setup.pcs_params.clone();
+            assert!(matches!(
+                RingSetup::<S>::from_pcs_params(min_ring_size, pcs_params),
+                Err(Error::RingCapacityExceeded)
+            ));
+        }
+    }
+
+    /// No domain holds a ring of `usize::MAX` keys. The domain arithmetic
+    /// must not wrap to a small domain whose context claims a wrong capacity.
+    pub fn huge_ring_size_panics<S: RingSuite>() {
+        RingContext::<S>::new(usize::MAX);
     }
 
     /// The ring proof backend asserts on the identity, so every entry point
@@ -1960,6 +2012,12 @@ pub(crate) mod testing {
                 #[test]
                 fn ring_size_exceeded() {
                     $crate::ring::testing::ring_size_exceeded::<$suite>()
+                }
+
+                #[test]
+                #[should_panic(expected = "domain size overflows usize")]
+                fn huge_ring_size_panics() {
+                    $crate::ring::testing::huge_ring_size_panics::<$suite>()
                 }
 
                 #[test]
