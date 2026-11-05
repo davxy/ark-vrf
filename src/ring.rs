@@ -398,7 +398,8 @@ impl<S: RingSuite> RingContext<S> {
     ///
     /// An index at or beyond [`Self::max_ring_size`] wraps into range. A wrong
     /// index gives a proof that no verifier accepts. `prover_key` must come
-    /// from a setup with the domain of this context.
+    /// from a setup with the domain of this context: with a key of another
+    /// domain, proving panics in the ring backend.
     pub fn ring_prover(&self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         self.clone().into_ring_prover(prover_key, key_index)
     }
@@ -410,7 +411,8 @@ impl<S: RingSuite> RingContext<S> {
 
     /// Create a prover instance, consuming the context to avoid cloning.
     ///
-    /// See [`Self::ring_prover`] for the handling of `key_index`.
+    /// See [`Self::ring_prover`] for the handling of `key_index` and of
+    /// `prover_key`.
     pub fn into_ring_prover(self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         let key_index = wrap_key_index(key_index, self.max_ring_size());
         RingProver::<S>::init(
