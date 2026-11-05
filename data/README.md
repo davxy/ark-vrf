@@ -18,6 +18,11 @@ values are hex strings:
 - `ring_pks`, `ring_pks_com`, `ring_proof`: the 8 public keys of the ring, one
   after the other, the ring commitment and the ring proof (Ring only).
 
+The ring vectors of all suites use |D| = 2048, as in section 5 of the
+specification, and not the smallest domain for 8 keys. The padding point fills
+the ring after the 8 keys. The vectors take the domain from the SRS file of the
+suite (see `srs/`), and the generator checks that it is 2048.
+
 The crate generates these files, so they detect a change of the output. They
 are not an independent reference. The `vectors_process` test of each suite
 checks its files.
@@ -39,9 +44,11 @@ Structured reference strings (the KZG parameters of the Ring VRF), as
   6145 G1 and 2 G2 powers, a domain of 2^11. This is enough for 1791
   Bandersnatch keys or 1792 Jubjub keys. The ring tests of the BLS12-381 suites
   and the Ring VRF example in the main README use it.
-- `bn254-testing-2-9-uncompressed.bin`: generated from the seed `[0u8; 32]`.
-  The trapdoor is known, so use it for tests only. 1537 G1 and 2 G2 powers, a
-  domain of 2^9. The Baby-JubJub ring tests use it.
+- `bn254-testing-2-11-uncompressed.bin`: generated with
+  `RingSetup::from_rand_insecure` and `ChaCha20Rng::from_seed([0u8; 32])`.
+  The trapdoor is known, so use it for tests only. 6145 G1 and 2 G2 powers, a
+  domain of 2^11. This is enough for 1793 Baby-JubJub keys. The Baby-JubJub
+  ring tests use it.
 
 ## `rfc9380/`
 

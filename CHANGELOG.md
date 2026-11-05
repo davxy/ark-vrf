@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Suite::Affine` requires `Group: utils::ProjectiveZ`. ark-vrf implements
   the new `ProjectiveZ` trait for the arkworks twisted Edwards and short
   Weierstrass points, so a suite on an arkworks curve needs no change.
+- The ring test vectors of all suites use the domain size of spec
+  section 5, |D| = 2048. Before, they used |D| = 512, the smallest domain
+  for 8 keys.
 
 ### Fixed
 
