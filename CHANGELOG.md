@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `Suite::Affine` requires `Group: utils::ProjectiveZ`. ark-vrf implements
+  the new `ProjectiveZ` trait for the arkworks twisted Edwards and short
+  Weierstrass points, so a suite on an arkworks curve needs no change.
+
 ### Fixed
 
 - `VerifierKeyBuilder::new` and `append` return `Error::SrsLookupFailed` when

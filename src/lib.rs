@@ -233,7 +233,7 @@ pub trait Suite: Copy {
     /// The `AffineRepr` bound does not guarantee prime-order subgroup
     /// membership: a value of this type may be any point on the curve. The
     /// [`PointWrapper`] checked paths enforce membership.
-    type Affine: AffineRepr;
+    type Affine: AffineRepr<Group: utils::ProjectiveZ>;
 
     /// Fiat-Shamir transcript.
     ///

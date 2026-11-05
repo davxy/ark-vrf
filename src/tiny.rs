@@ -28,7 +28,7 @@
 //! ```
 
 use super::*;
-use utils::common::{DomSep, stack_buf};
+use utils::common::{DomSep, ProjectiveZ, stack_buf};
 
 /// Marker trait for suites that support the Tiny VRF scheme.
 ///
@@ -217,8 +217,9 @@ impl<S: TinySuite> Proof<S> {
         let Proof { c, s } = self;
 
         // R = s * I_m - c * O_m
-        let r = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, *c);
-        let r = utils::checked_into_affine(r).ok_or(Error::VerificationFailure)?;
+        let r = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, *c)
+            .into_affine_checked()
+            .ok_or(Error::VerificationFailure)?;
 
         let c_exp = S::challenge(&[&r], t);
         (c_exp == *c)

@@ -27,7 +27,8 @@
 //! ```
 
 use crate::{
-    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep, utils::weight_scalar, *,
+    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep,
+    utils::common::ProjectiveZ, utils::weight_scalar, *,
 };
 
 /// Marker trait for suites that support the Thin VRF scheme.
@@ -182,7 +183,7 @@ impl<S: ThinSuite> Proof<S> {
 
         // Verification: s * I_m - c * O_m == R
         let lhs = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, c);
-        if utils::checked_into_affine(lhs) != Some(*r) {
+        if !lhs.has_affine_form() || lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }
 
