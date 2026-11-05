@@ -1,6 +1,6 @@
 [package]
 name = "ark-vrf"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 rust-version = "1.90"
 authors = ["Davide Galassi <davxy@datawok.net>"]
