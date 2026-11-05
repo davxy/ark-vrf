@@ -44,7 +44,7 @@ Structured reference strings (the KZG parameters of the Ring VRF), as
   6145 G1 and 2 G2 powers, a domain of 2^11. This is enough for 1791
   Bandersnatch keys or 1792 Jubjub keys. The ring tests of the BLS12-381 suites
   and the Ring VRF example in the main README use it.
-- `bn254-testing-2-11-uncompressed.bin`: generated with
+- `bn254-srs-2-11-uncompressed-testing.bin`: generated with
   `RingSetup::from_rand_insecure` and `ChaCha20Rng::from_seed([0u8; 32])`.
   The trapdoor is known, so use it for tests only. 6145 G1 and 2 G2 powers, a
   domain of 2^11. This is enough for 1793 Baby-JubJub keys. The Baby-JubJub
