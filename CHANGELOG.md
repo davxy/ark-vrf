@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `Suite::Affine` requires `Group: utils::ProjectiveZ`. ark-vrf implements
+  the new `ProjectiveZ` trait for the arkworks twisted Edwards and short
+  Weierstrass points, so a suite on an arkworks curve needs no change.
+
+### Fixed
+
+- `VerifierKeyBuilder::new` and `append` return `Error::SrsLookupFailed` when
+  the `SrsLookup` gives a number of points other than the range length.
+  Before, the ring backend panicked.
+- `RingSetup::from_pcs_params` returns `Error::RingCapacityExceeded` for a
+  ring size whose domain size does not fit in a `usize`. Before, a release
+  build wrapped the domain arithmetic and returned a setup that panicked on
+  first use.
+- The `dom_utils` domain size functions, and so `RingContext::new`, panic
+  when the domain size does not fit in a `usize`. Before, a release build
+  wrapped and gave a context with a wrong capacity.
+
+### Security
+
+- Tiny and Thin verify return `Error::VerificationFailure` when an off-curve
+  public key or VRF input, which only the unchecked path lets through, gives
+  a projective result with Z = 0, for example (0, 0) on a twisted Edwards
+  suite. Before, Tiny verify panicked on it, and Thin verify accepted a proof
+  of another key or input.
+
 ## [0.6.1] - 2026-10-23
 
 ### Security

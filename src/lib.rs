@@ -85,8 +85,6 @@
 //!   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
 //! - `ring`: Ring-VRF for the curves supporting it.
 //! - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
-//! - `print-trace`: Forwards to `ark-std/print-trace`. The ring proof backend prints
-//!   the timers of its phases.
 //!
 //! ### Curves
 //!
@@ -233,7 +231,7 @@ pub trait Suite: Copy {
     /// The `AffineRepr` bound does not guarantee prime-order subgroup
     /// membership: a value of this type may be any point on the curve. The
     /// [`PointWrapper`] checked paths enforce membership.
-    type Affine: AffineRepr;
+    type Affine: AffineRepr<Group: utils::ProjectiveZ>;
 
     /// Fiat-Shamir transcript.
     ///

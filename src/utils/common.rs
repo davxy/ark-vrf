@@ -312,6 +312,41 @@ pub(crate) fn schnorr_lhs<S: Suite>(
     }
 }
 
+/// Projective point type that tells if a value has an affine form.
+///
+/// An off-curve point from the unchecked path can give a twisted Edwards
+/// value with Z = 0 that is not the identity. `into_affine` panics on it, and
+/// `PartialEq` finds (0, 0, 0, 0) equal to every point. Tiny and Thin verify
+/// reject such a value.
+///
+/// Implemented for the arkworks twisted Edwards and short Weierstrass points.
+pub trait ProjectiveZ: CurveGroup {
+    /// Returns `true` if the value has an affine form.
+    fn has_affine_form(&self) -> bool;
+
+    /// [`CurveGroup::into_affine`] that returns `None` for a value with no
+    /// affine form.
+    fn into_affine_checked(self) -> Option<Self::Affine> {
+        self.has_affine_form().then(|| self.into_affine())
+    }
+}
+
+impl<P: ark_ec::twisted_edwards::TECurveConfig> ProjectiveZ
+    for ark_ec::twisted_edwards::Projective<P>
+{
+    fn has_affine_form(&self) -> bool {
+        !self.z.is_zero()
+    }
+}
+
+impl<P: ark_ec::short_weierstrass::SWCurveConfig> ProjectiveZ
+    for ark_ec::short_weierstrass::Projective<P>
+{
+    fn has_affine_form(&self) -> bool {
+        true // Z = 0 is the identity.
+    }
+}
+
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
 /// Generates a challenge scalar by absorbing curve points into the transcript
@@ -699,5 +734,46 @@ mod tests {
         let t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
         let zs = DelinearizeScalars::<TestSuiteC32>::new(t).take(2);
         assert!(!high_half_set(zs[1]));
+    }
+
+    /// Tiny and Thin verify rely on `ProjectiveZ` to reject a twisted
+    /// Edwards value with Z = 0 off the identity, on which `into_affine`
+    /// panics. In short Weierstrass, Z = 0 is the identity, a valid value.
+    #[test]
+    fn projective_z_affine_form() {
+        use crate::testing::random_val;
+        use ark_ed25519::{
+            EdwardsAffine as TeAffine, EdwardsProjective as TeProjective, Fq as TeFq,
+        };
+        use ark_secp256r1::{Affine as SwAffine, Fq as SwFq, Projective as SwProjective};
+
+        let te_zero = TeFq::zero();
+        let te_zero_z = [
+            TeProjective::new_unchecked(te_zero, te_zero, te_zero, te_zero),
+            TeProjective::new_unchecked(
+                TeFq::from(3u64),
+                TeFq::from(5u64),
+                TeFq::from(7u64),
+                te_zero,
+            ),
+        ];
+        for te_value in te_zero_z {
+            assert!(!te_value.is_zero());
+            assert!(!te_value.has_affine_form());
+            assert_eq!(te_value.into_affine_checked(), None);
+        }
+        let te_point = random_val::<TeProjective>(None);
+        assert_eq!(te_point.into_affine_checked(), Some(te_point.into_affine()));
+        assert_eq!(
+            TeProjective::zero().into_affine_checked(),
+            Some(TeAffine::zero())
+        );
+
+        let sw_zero_z =
+            SwProjective::new_unchecked(SwFq::from(3u64), SwFq::from(5u64), SwFq::zero());
+        assert!(sw_zero_z.is_zero());
+        assert_eq!(sw_zero_z.into_affine_checked(), Some(SwAffine::zero()));
+        let sw_point = random_val::<SwProjective>(None);
+        assert_eq!(sw_point.into_affine_checked(), Some(sw_point.into_affine()));
     }
 }

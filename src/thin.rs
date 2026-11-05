@@ -27,7 +27,8 @@
 //! ```
 
 use crate::{
-    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep, utils::weight_scalar, *,
+    utils::canonical::CanonicalDeserializeStrict, utils::common::DomSep,
+    utils::common::ProjectiveZ, utils::weight_scalar, *,
 };
 
 /// Marker trait for suites that support the Thin VRF scheme.
@@ -182,7 +183,7 @@ impl<S: ThinSuite> Proof<S> {
 
         // Verification: s * I_m - c * O_m == R
         let lhs = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, c);
-        if lhs != r.into_group() {
+        if !lhs.has_affine_form() || lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }
 
@@ -481,6 +482,25 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// An unchecked point can be off the curve. On a twisted Edwards curve,
+    /// (0, 0) as the key or as an input gives `s * I_m - c * O_m` the
+    /// projective value (0, 0, 0, 0), which arkworks finds equal to every
+    /// point. Verify must reject a proof of another key or input, as the
+    /// batch verifier does.
+    pub fn off_curve_point_rejected<S: ThinSuite>() {
+        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let io = secret.vrf_io(Input::new(b"foo").unwrap());
+        let proof = secret.prove_thin(io, b"bar");
+        let off_curve = common::off_curve_point::<S>();
+
+        let public = Public::<S>::from_affine_unchecked(off_curve);
+        assert!(public.verify_thin(io, b"bar", &proof).is_err());
+
+        let input = Input::from_affine_unchecked(off_curve);
+        let io = VrfIo { input, ..io };
+        assert!(secret.public().verify_thin(io, b"bar", &proof).is_err());
+    }
+
     /// An I/O pair holding the identity must be rejected by both verifiers.
     ///
     /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so the
@@ -680,6 +700,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_io_pair_rejected() {
                     $crate::thin::testing::identity_io_pair_rejected::<$suite>();
+                }
+
+                #[test]
+                fn off_curve_point_rejected() {
+                    $crate::thin::testing::off_curve_point_rejected::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::thin::testing::TestVector<$suite>);

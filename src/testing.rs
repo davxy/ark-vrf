@@ -69,6 +69,15 @@ pub fn random_val<T: UniformRand>(rng: Option<&mut dyn RngCore>) -> T {
     T::rand(rng)
 }
 
+/// The point (0, 0), decoded without validation. It is off the curve of
+/// every built-in suite. On twisted Edwards curves it is not the identity
+/// (0, 1), so the identity checks do not reject it.
+pub fn off_curve_point<S: Suite>() -> AffinePoint<S> {
+    use ark_serialize::{Compress, Validate};
+    let zeros = vec![0; AffinePoint::<S>::generator().uncompressed_size()];
+    AffinePoint::<S>::deserialize_with_mode(&zeros[..], Compress::No, Validate::No).unwrap()
+}
+
 pub trait CheckPoint {
     fn check(&self, in_prime_subgroup: bool) -> Result<(), &'static str>;
 }
