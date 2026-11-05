@@ -217,7 +217,8 @@ impl<S: TinySuite> Proof<S> {
         let Proof { c, s } = self;
 
         // R = s * I_m - c * O_m
-        let r = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, *c).into_affine();
+        let r = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, *c);
+        let r = utils::checked_into_affine(r).ok_or(Error::VerificationFailure)?;
 
         let c_exp = S::challenge(&[&r], t);
         (c_exp == *c)
@@ -343,6 +344,24 @@ pub mod testing {
         }
     }
 
+    /// An unchecked point can be off the curve. On a twisted Edwards curve,
+    /// (0, 0) as the key or as an input gives R the projective value
+    /// (0, 0, 0, 0), which has no affine form. Verify must return an error,
+    /// not panic.
+    pub fn off_curve_point_rejected<S: TinySuite>() {
+        let secret = Secret::<S>::from_seed(common::TEST_SEED);
+        let io = secret.vrf_io(Input::new(b"foo").unwrap());
+        let proof = secret.prove_tiny(io, b"bar");
+        let off_curve = common::off_curve_point::<S>();
+
+        let public = Public::<S>::from_affine_unchecked(off_curve);
+        assert!(public.verify_tiny(io, b"bar", &proof).is_err());
+
+        let input = Input::from_affine_unchecked(off_curve);
+        let io = VrfIo { input, ..io };
+        assert!(secret.public().verify_tiny(io, b"bar", &proof).is_err());
+    }
+
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
@@ -436,6 +455,11 @@ pub mod testing {
                 #[test]
                 fn identity_io_pair_rejected() {
                     $crate::tiny::testing::identity_io_pair_rejected::<$suite>();
+                }
+
+                #[test]
+                fn off_curve_point_rejected() {
+                    $crate::tiny::testing::off_curve_point_rejected::<$suite>();
                 }
 
                 $crate::test_vectors!($crate::tiny::testing::TestVector<$suite>);

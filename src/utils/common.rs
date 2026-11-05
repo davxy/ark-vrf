@@ -312,6 +312,18 @@ pub(crate) fn schnorr_lhs<S: Suite>(
     }
 }
 
+/// [`CurveGroup::into_affine`] that returns `None` where it panics.
+///
+/// An off-curve point from the unchecked path can give a twisted Edwards
+/// value with Z = 0 that is not the identity. `into_affine` panics on it,
+/// and `PartialEq` finds (0, 0, 0, 0) equal to every point.
+pub(crate) fn checked_into_affine<G: CurveGroup>(point: G) -> Option<G::Affine> {
+    // `normalize_batch` maps Z = 0 to the affine (0, 0), and a value with
+    // Z = 0 minus (0, 0) is (0, 0, 0, 0), which is not the identity.
+    let affine = G::normalize_batch(&[point])[0];
+    (point - affine).is_zero().then_some(affine)
+}
+
 /// Challenge generation inspired by RFC-9381 section 5.4.3.
 ///
 /// Generates a challenge scalar by absorbing curve points into the transcript
@@ -699,5 +711,54 @@ mod tests {
         let t = <TestSuiteC32 as Suite>::Transcript::new(TestSuiteC32::SUITE_ID);
         let zs = DelinearizeScalars::<TestSuiteC32>::new(t).take(2);
         assert!(!high_half_set(zs[1]));
+    }
+
+    /// `checked_into_affine` rests on arkworks behavior that no doc states.
+    /// If an upgrade changes it, Tiny verify can panic and Thin verify can
+    /// accept a proof of another key again. This test pins that behavior:
+    /// `normalize_batch` maps a twisted Edwards value with Z = 0 to (0, 0)
+    /// without a panic, and that value minus (0, 0) is not the identity. A
+    /// short Weierstrass value with Z = 0 is the identity.
+    #[test]
+    fn checked_into_affine_arkworks_behavior() {
+        use ark_ed25519::{
+            EdwardsAffine as TeAffine, EdwardsProjective as TeProjective, Fq as TeFq,
+        };
+        use ark_secp256r1::{Affine as SwAffine, Fq as SwFq, Projective as SwProjective};
+        use ark_std::UniformRand;
+
+        let te_zero = TeFq::zero();
+        let te_origin = TeAffine::new_unchecked(te_zero, te_zero);
+        let te_zero_z = [
+            TeProjective::new_unchecked(te_zero, te_zero, te_zero, te_zero),
+            TeProjective::new_unchecked(te_zero, te_zero, TeFq::from(7u64), te_zero),
+            TeProjective::new_unchecked(
+                TeFq::from(3u64),
+                TeFq::from(5u64),
+                TeFq::from(7u64),
+                te_zero,
+            ),
+        ];
+        for te_value in te_zero_z {
+            assert!(!te_value.is_zero());
+            assert_eq!(TeProjective::normalize_batch(&[te_value]), [te_origin]);
+            assert!(!(te_value - te_origin).is_zero());
+            assert_eq!(checked_into_affine(te_value), None);
+        }
+
+        let sw_zero_z =
+            SwProjective::new_unchecked(SwFq::from(3u64), SwFq::from(5u64), SwFq::zero());
+        assert!(sw_zero_z.is_zero());
+        assert_eq!(checked_into_affine(sw_zero_z), Some(SwAffine::zero()));
+
+        let rng = &mut ark_std::test_rng();
+        let te_point = TeProjective::rand(rng);
+        let sw_point = SwProjective::rand(rng);
+        assert_eq!(checked_into_affine(te_point), Some(te_point.into_affine()));
+        assert_eq!(checked_into_affine(sw_point), Some(sw_point.into_affine()));
+        assert_eq!(
+            checked_into_affine(TeProjective::zero()),
+            Some(TeAffine::zero())
+        );
     }
 }
