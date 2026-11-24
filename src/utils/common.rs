@@ -151,8 +151,17 @@ impl<'a, S: Suite> Ios<'a, S> {
 }
 
 /// Common VRF transcript construction: absorb the scheme tag, the I/O pairs
-/// and the length-prefixed additional data, then fork for the
-/// delinearization scalars.
+/// and the length-prefixed additional data.
+fn vrf_transcript<S: Suite>(scheme: DomSep, ios: Ios<'_, S>, ad: &[u8]) -> S::Transcript {
+    let mut t = S::Transcript::new(S::SUITE_ID);
+    t.absorb_raw(&[scheme as u8]);
+    absorb_ios(&mut t, ios);
+    t.absorb_raw(&(ad.len() as u64).to_le_bytes());
+    t.absorb_raw(ad);
+    t
+}
+
+/// [`vrf_transcript`], then fork for the delinearization scalars.
 ///
 /// Returns the transcript (with ad absorbed) and the delinearization scalar
 /// stream.
@@ -161,28 +170,14 @@ fn vrf_transcript_base<S: Suite>(
     ios: Ios<'_, S>,
     ad: &[u8],
 ) -> (S::Transcript, DelinearizeScalars<S>) {
-    let mut t = S::Transcript::new(S::SUITE_ID);
-    t.absorb_raw(&[scheme as u8]);
-    absorb_ios(&mut t, ios);
-    t.absorb_raw(&(ad.len() as u64).to_le_bytes());
-    t.absorb_raw(ad);
+    let t = vrf_transcript(scheme, ios, ad);
     let scalars = DelinearizeScalars::new(t.clone());
     (t, scalars)
 }
 
-/// Build a shared VRF transcript from I/O pairs and additional data.
-///
-/// Absorbs the scheme tag, the raw I/O pairs and the length-prefixed
-/// additional data into the transcript, then derives the delinearization
-/// scalars from a fork (so pairs are absorbed only once) and merges the
-/// pairs into a single I/O.
-fn vrf_transcript_merged<S: Suite>(
-    scheme: DomSep,
-    ios: Ios<'_, S>,
-    ad: &[u8],
-) -> (S::Transcript, VrfIo<S>) {
-    let (t, mut scalars) = vrf_transcript_base(scheme, ios, ad);
-    let io = match ios.len() {
+/// Merge the I/O pairs into a single pair with scalars from `scalars`.
+fn merged_pair<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> VrfIo<S> {
+    match ios.len() {
         0 => {
             let zero = AffinePoint::<S>::zero();
             VrfIo {
@@ -192,34 +187,37 @@ fn vrf_transcript_merged<S: Suite>(
         }
         1 => ios.iter().next().expect("one pair"),
         n => merge_ios(ios, &scalars.take(n)),
-    };
-    (t, io)
+    }
 }
 
-/// Same as [`vrf_transcript_merged`], but merges the inputs only.
+/// Same as [`merged_pair`], but merges the inputs only.
 ///
 /// The provers commit their nonce to the merged input alone, so the merged
 /// output is never built.
+fn merged_input<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> Input<S> {
+    match ios.len() {
+        0 => Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+        1 => ios.iter().next().expect("one pair").input,
+        n => merge_inputs(ios, &scalars.take(n)),
+    }
+}
+
+/// Build the VRF transcript and the merged input.
 fn vrf_transcript_merged_input<S: Suite>(
     scheme: DomSep,
     ios: Ios<'_, S>,
     ad: &[u8],
 ) -> (S::Transcript, Input<S>) {
-    let (t, mut scalars) = vrf_transcript_base(scheme, ios, ad);
-    let input = match ios.len() {
-        0 => Input::from_affine_unchecked(AffinePoint::<S>::zero()),
-        1 => ios.iter().next().expect("one pair").input,
-        n => merge_inputs(ios, &scalars.take(n)),
-    };
-    (t, input)
+    let (t, scalars) = vrf_transcript_base(scheme, ios, ad);
+    (t, merged_input(ios, scalars))
 }
 
 /// Build a VRF transcript returning raw delinearization scalars.
 ///
-/// Same transcript construction as [`vrf_transcript_merged`] but returns
-/// the z scalars instead of the merged I/O pair. Used by batch verification
-/// which needs the individual points and z scalars to build an expanded MSM
-/// without computing the merged pair.
+/// Same transcript construction as [`vrf_transcript_merged_input`] but
+/// returns the z scalars instead of the merged input. Used by batch
+/// verification which needs the individual points and z scalars to build an
+/// expanded MSM without computing the merged pair.
 fn vrf_transcript_scalars<S: Suite>(
     scheme: DomSep,
     ios: Ios<'_, S>,
@@ -229,21 +227,24 @@ fn vrf_transcript_scalars<S: Suite>(
     (t, scalars.take(ios.len()))
 }
 
-pub(crate) fn vrf_transcript<S: Suite>(
+/// [`vrf_transcript`] over plain I/O pairs, without the delinearization
+/// fork. Pedersen VRF absorbs its key commitment before it forks the scalars.
+pub(crate) fn vrf_transcript_plain<S: Suite>(
     scheme: DomSep,
-    ios: impl AsRef<[VrfIo<S>]>,
-    ad: impl AsRef<[u8]>,
-) -> (S::Transcript, VrfIo<S>) {
-    vrf_transcript_merged(scheme, Ios::plain(ios.as_ref()), ad.as_ref())
+    ios: &[VrfIo<S>],
+    ad: &[u8],
+) -> S::Transcript {
+    vrf_transcript(scheme, Ios::plain(ios), ad)
 }
 
-/// Same as [`vrf_transcript`], but returns the merged input alone.
-pub(crate) fn vrf_transcript_input<S: Suite>(
-    scheme: DomSep,
-    ios: impl AsRef<[VrfIo<S>]>,
-    ad: impl AsRef<[u8]>,
-) -> (S::Transcript, Input<S>) {
-    vrf_transcript_merged_input(scheme, Ios::plain(ios.as_ref()), ad.as_ref())
+/// Merge plain I/O pairs with scalars forked from `t`.
+pub(crate) fn delinearize_pairs<S: Suite>(t: &S::Transcript, ios: &[VrfIo<S>]) -> VrfIo<S> {
+    merged_pair(Ios::plain(ios), DelinearizeScalars::new(t.clone()))
+}
+
+/// Same as [`delinearize_pairs`], but merges the inputs only.
+pub(crate) fn delinearize_inputs<S: Suite>(t: &S::Transcript, ios: &[VrfIo<S>]) -> Input<S> {
+    merged_input(Ios::plain(ios), DelinearizeScalars::new(t.clone()))
 }
 
 /// Prepend the Schnorr pair `(G, Y)` to the I/O list, then build the VRF
@@ -586,10 +587,10 @@ mod tests {
         for n in [0, 1, MSM_THRESHOLD - 1, MSM_THRESHOLD] {
             let ios = sample_ios(n);
 
-            let plain = Ios::plain(&ios);
-            let (_, zs) = vrf_transcript_scalars::<TestSuite>(DomSep::PedersenVrf, plain, b"ad");
-            let (_, input) = vrf_transcript_input::<TestSuite>(DomSep::PedersenVrf, &ios, b"ad");
-            assert_eq!(input.0, plain_sum(plain, &zs), "plain, n={n}");
+            let t = vrf_transcript_plain::<TestSuite>(DomSep::PedersenVrf, &ios, b"ad");
+            let input = delinearize_inputs::<TestSuite>(&t, &ios);
+            let zs = DelinearizeScalars::<TestSuite>::new(t).take(n);
+            assert_eq!(input.0, plain_sum(Ios::plain(&ios), &zs), "plain, n={n}");
 
             let schnorr = Ios::with_schnorr(public, &ios);
             let (_, zs) = vrf_transcript_scalars::<TestSuite>(DomSep::TinyVrf, schnorr, b"ad");
@@ -652,9 +653,13 @@ mod tests {
             })
             .collect();
 
-        let (_, io_tiny) = vrf_transcript::<TestSuite>(DomSep::TinyVrf, &ios, b"foo");
-        let (_, io_thin) = vrf_transcript::<TestSuite>(DomSep::ThinVrf, &ios, b"foo");
-        let (_, io_ped) = vrf_transcript::<TestSuite>(DomSep::PedersenVrf, &ios, b"foo");
+        let merged = |scheme| {
+            let (_, scalars) = vrf_transcript_base::<TestSuite>(scheme, Ios::plain(&ios), b"foo");
+            merged_pair(Ios::plain(&ios), scalars)
+        };
+        let io_tiny = merged(DomSep::TinyVrf);
+        let io_thin = merged(DomSep::ThinVrf);
+        let io_ped = merged(DomSep::PedersenVrf);
 
         // Different scheme tags must produce different merged pairs (for n >= 2).
         assert_ne!(io_tiny, io_thin);
