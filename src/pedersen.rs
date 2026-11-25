@@ -779,10 +779,10 @@ pub(crate) mod testing {
     /// that are not its own.
     ///
     /// The merged pair binds each pair to the key only when the key is fixed
-    /// before the weights. Here the weights come from the pairs and `ad` alone.
-    /// The attacker gives one input two different outputs, reads the weights,
-    /// and then solves for the key that satisfies the merged pair. If the
-    /// verifiers accept, one key has two VRF outputs for one input.
+    /// before the weights. The attacker gives one input two different outputs,
+    /// takes the weights from the pairs and `ad` alone, and then solves for the
+    /// key that satisfies the merged pair. If the verifiers accept, one key has
+    /// two VRF outputs for one input.
     pub fn key_chosen_after_weights_rejected<S: PedersenSuite>() {
         use crate::utils::common::DelinearizeScalars;
         use pedersen::BatchVerifier;
@@ -799,15 +799,7 @@ pub(crate) mod testing {
         };
         let ios = [pair(b0), pair(b1)];
 
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(&[DomSep::PedersenVrf as u8]);
-        t.absorb_raw(&(ios.len() as u64).to_le_bytes());
-        for io in &ios {
-            t.absorb_serialize(&io.input.0);
-            t.absorb_serialize(&io.output.0);
-        }
-        t.absorb_raw(&(ad.len() as u64).to_le_bytes());
-        t.absorb_raw(ad);
+        let t = vrf_transcript::<S>(&ios, ad);
         let z = DelinearizeScalars::<S>::new(t).take(2);
 
         let x = (z[0] * b0 + z[1] * b1) / (z[0] + z[1]);
