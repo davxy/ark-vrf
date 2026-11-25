@@ -59,6 +59,37 @@ pub trait PedersenSuite: Suite {
     }
 }
 
+#[inline(always)]
+fn vrf_transcript<S: PedersenSuite>(ios: &[VrfIo<S>], ad: &[u8]) -> S::Transcript {
+    utils::vrf_transcript_plain(DomSep::PedersenVrf, ios, ad)
+}
+
+/// Absorb the key commitment, then merge the I/O pairs with scalars forked
+/// after it.
+///
+/// Tiny and Thin bind the key through the Schnorr pair at the head of the
+/// I/O list. Here the key commitment is the only binding: with scalars drawn
+/// before it, a prover picks its secret key after the scalars and proves
+/// pairs that the key did not produce.
+fn merge_with_key_commitment<S: PedersenSuite>(
+    t: &mut S::Transcript,
+    key_commitment: &AffinePoint<S>,
+    ios: &[VrfIo<S>],
+) -> VrfIo<S> {
+    t.absorb_serialize(key_commitment);
+    utils::delinearize_pairs(t, ios)
+}
+
+/// Same as [`merge_with_key_commitment`], but merges the inputs only.
+fn merge_inputs_with_key_commitment<S: PedersenSuite>(
+    t: &mut S::Transcript,
+    key_commitment: &AffinePoint<S>,
+    ios: &[VrfIo<S>],
+) -> Input<S> {
+    t.absorb_serialize(key_commitment);
+    utils::delinearize_inputs(t, ios)
+}
+
 /// Pedersen VRF proof.
 ///
 /// Schnorr-like proof over the delinearized merged DLEQ relation, with the
@@ -147,7 +178,8 @@ impl<S: PedersenSuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         secret: &Secret<S>,
     ) -> (Self, ScalarField<S>) {
-        let (mut t, input) = utils::vrf_transcript_input::<S>(DomSep::PedersenVrf, ios, ad);
+        let ios = ios.as_ref();
+        let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
         // Build blinding factor from T.fork()
         let blinding = S::blinding(&secret.scalar, t.clone());
@@ -156,12 +188,18 @@ impl<S: PedersenSuite> Proof<S> {
         let bb = smul!(S::BLINDING_BASE, blinding);
         let pk_com = (secret.public.0.into_group() + bb).into_affine();
 
-        // Absorb Yb into the transcript
-        t.absorb_serialize(&pk_com);
+        // Absorb Yb, then merge the I/O pairs with scalars that depend on it
+        let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
-        // Nonces from T.fork()
-        let mut k = S::nonce(&secret.scalar, t.clone());
-        let mut kb = S::nonce(&blinding, t.clone());
+        // Nonces from T.fork(). The extra byte is temporary. Releases before
+        // 0.7.0 get the same nonces without it, and a different challenge, which
+        // discloses the secret key. Remove it at the next major release.
+        let mut nonce_transcript = t.clone();
+        if ios.len() > 1 {
+            nonce_transcript.absorb_raw(&[0xff]);
+        }
+        let mut k = S::nonce(&secret.scalar, nonce_transcript.clone());
+        let mut kb = S::nonce(&blinding, nonce_transcript);
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
@@ -250,10 +288,10 @@ impl<S: PedersenSuite> Proof<S> {
             return Err(Error::InvalidData);
         }
 
-        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
+        let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
-        // Absorb Yb into the transcript
-        t.absorb_serialize(pk_com);
+        // Absorb Yb, then merge the I/O pairs with scalars that depend on it
+        let io = merge_with_key_commitment::<S>(&mut t, pk_com, ios);
 
         // c = challenge([R, Ok], T)
         let c = S::challenge(&[r, ok], t);
@@ -326,8 +364,8 @@ impl<S: PedersenSuite> BatchItem<S> {
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
         let io_identity = ios.iter().any(VrfIo::has_identity);
-        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
-        t.absorb_serialize(&proof.pk_com);
+        let mut t = vrf_transcript::<S>(ios, ad.as_ref());
+        let io = merge_with_key_commitment::<S>(&mut t, &proof.pk_com, ios);
         let c = S::challenge(&[&proof.r, &proof.ok], t);
         Self {
             c,
@@ -713,9 +751,9 @@ pub(crate) mod testing {
         let ios: [VrfIo<S>; 0] = [];
         let ad = b"forgery";
 
-        let (mut t, io) = utils::vrf_transcript::<S>(DomSep::PedersenVrf, ios, ad);
         let pk_com = AffinePoint::<S>::zero();
-        t.absorb_serialize(&pk_com);
+        let mut t = vrf_transcript::<S>(&ios, ad);
+        let io = merge_with_key_commitment::<S>(&mut t, &pk_com, &ios);
 
         let k = ScalarField::<S>::from(7u64);
         let kb = ScalarField::<S>::from(11u64);
@@ -729,6 +767,51 @@ pub(crate) mod testing {
             s: k,
             sb: kb,
         };
+
+        assert!(proof.verify(ios, ad).is_err());
+
+        let mut batch = BatchVerifier::new();
+        batch.push(ios, ad, &proof);
+        assert!(batch.verify().is_err());
+    }
+
+    /// A key chosen after the delinearization weights must not prove pairs
+    /// that are not its own.
+    ///
+    /// The merged pair binds each pair to the key only when the key is fixed
+    /// before the weights. Here the weights come from the pairs and `ad` alone.
+    /// The attacker gives one input two different outputs, reads the weights,
+    /// and then solves for the key that satisfies the merged pair. If the
+    /// verifiers accept, one key has two VRF outputs for one input.
+    pub fn key_chosen_after_weights_rejected<S: PedersenSuite>() {
+        use crate::utils::common::DelinearizeScalars;
+        use pedersen::BatchVerifier;
+
+        let ad = b"forgery";
+        let input = Input::<S>::new(b"input").unwrap();
+        let (b0, b1) = (
+            ScalarField::<S>::from(1111u64),
+            ScalarField::<S>::from(2222u64),
+        );
+        let pair = |factor: ScalarField<S>| VrfIo {
+            input,
+            output: Output::from_affine((input.0 * factor).into_affine()).unwrap(),
+        };
+        let ios = [pair(b0), pair(b1)];
+
+        let mut t = S::Transcript::new(S::SUITE_ID);
+        t.absorb_raw(&[DomSep::PedersenVrf as u8]);
+        t.absorb_raw(&(ios.len() as u64).to_le_bytes());
+        for io in &ios {
+            t.absorb_serialize(&io.input.0);
+            t.absorb_serialize(&io.output.0);
+        }
+        t.absorb_raw(&(ad.len() as u64).to_le_bytes());
+        t.absorb_raw(ad);
+        let z = DelinearizeScalars::<S>::new(t).take(2);
+
+        let x = (z[0] * b0 + z[1] * b1) / (z[0] + z[1]);
+        let (proof, _) = Secret::<S>::from_scalar(x).prove_pedersen(ios, ad);
 
         assert!(proof.verify(ios, ad).is_err());
 
@@ -799,6 +882,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_key_commitment_rejected() {
                     $crate::pedersen::testing::identity_key_commitment_rejected::<$suite>();
+                }
+
+                #[test]
+                fn key_chosen_after_weights_rejected() {
+                    $crate::pedersen::testing::key_chosen_after_weights_rejected::<$suite>();
                 }
 
                 #[test]
