@@ -9,13 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Pedersen and Ring VRF squeeze the delinearization scalars after the key
-  commitment `Yb`. Before, the scalars depended only on the I/O pairs and the
-  additional data, so a prover could choose its secret key after them and get
-  an accepted proof for outputs that the key did not produce, for example two
-  different outputs for one input given twice. Proofs with zero or one I/O
-  pair do not change. Proofs with two or more pairs are not compatible with
-  earlier versions.
+- Pedersen and Ring VRF derive the delinearization scalars after the key
+  commitment `Yb`, so a prover cannot forge outputs by choosing its key after
+  them. Proofs with two or more I/O pairs change.
 
 ## [0.6.2] - 2026-11-05
 

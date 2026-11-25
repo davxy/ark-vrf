@@ -770,7 +770,7 @@ pub(crate) mod testing {
     }
 
     /// A key chosen after the delinearization weights must not prove pairs
-    /// that are not its own (vrfsound-007).
+    /// that are not its own.
     ///
     /// The merged pair binds each pair to the key only when the key is fixed
     /// before the weights. Here the weights come from the pairs and `ad` alone.
