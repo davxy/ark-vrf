@@ -275,16 +275,8 @@ impl<S: PedersenSuite> Proof<S> {
             sb,
         } = self;
 
-        // Yb = 0 is the commitment of the opening (0, 0), which is public, so
-        // anyone can satisfy Eq2 without knowing a secret.
-        if pk_com.is_zero() {
-            return Err(Error::InvalidData);
-        }
-
-        // A pair holding the identity satisfies O = x*I for every x, so it
-        // binds its VRF output to no signer.
         let ios = ios.as_ref();
-        if ios.iter().any(VrfIo::has_identity) {
+        if utils::has_identity(*pk_com, ios) {
             return Err(Error::InvalidData);
         }
 
@@ -348,10 +340,10 @@ pub struct BatchItem<S: PedersenSuite> {
     ok: AffinePoint<S>,
     s: ScalarField<S>,
     sb: ScalarField<S>,
-    /// Set when a supplied I/O pair held the identity. Recorded here because
-    /// only the merged pair survives, and that one is legitimately the identity
-    /// when no pair is supplied at all.
-    io_identity: bool,
+    /// Set when the key commitment or a supplied I/O pair held the identity.
+    /// Recorded here because only the merged pair survives, and that one is
+    /// legitimately the identity when no pair is supplied at all.
+    identity: bool,
 }
 
 impl<S: PedersenSuite> BatchItem<S> {
@@ -363,7 +355,7 @@ impl<S: PedersenSuite> BatchItem<S> {
     /// This is cheap and can be done in parallel.
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
-        let io_identity = ios.iter().any(VrfIo::has_identity);
+        let identity = utils::has_identity(proof.pk_com, ios);
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
         let io = merge_with_key_commitment::<S>(&mut t, &proof.pk_com, ios);
         let c = S::challenge(&[&proof.r, &proof.ok], t);
@@ -376,7 +368,7 @@ impl<S: PedersenSuite> BatchItem<S> {
             ok: proof.ok,
             s: proof.s,
             sb: proof.sb,
-            io_identity,
+            identity,
         }
     }
 }
@@ -436,11 +428,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             return Ok(());
         }
 
-        // Checked here rather than in `BatchItem::new`, which cannot fail.
-        if items
-            .iter()
-            .any(|item| item.pk_com.is_zero() || item.io_identity)
-        {
+        // Rejected here rather than in `BatchItem::new`, which cannot fail.
+        if items.iter().any(|item| item.identity) {
             return Err(Error::InvalidData);
         }
 
@@ -779,10 +768,10 @@ pub(crate) mod testing {
     /// that are not its own.
     ///
     /// The merged pair binds each pair to the key only when the key is fixed
-    /// before the weights. Here the weights come from the pairs and `ad` alone.
-    /// The attacker gives one input two different outputs, reads the weights,
-    /// and then solves for the key that satisfies the merged pair. If the
-    /// verifiers accept, one key has two VRF outputs for one input.
+    /// before the weights. The attacker gives one input two different outputs,
+    /// takes the weights from the pairs and `ad` alone, and then solves for the
+    /// key that satisfies the merged pair. If the verifiers accept, one key has
+    /// two VRF outputs for one input.
     pub fn key_chosen_after_weights_rejected<S: PedersenSuite>() {
         use crate::utils::common::DelinearizeScalars;
         use pedersen::BatchVerifier;
@@ -799,15 +788,7 @@ pub(crate) mod testing {
         };
         let ios = [pair(b0), pair(b1)];
 
-        let mut t = S::Transcript::new(S::SUITE_ID);
-        t.absorb_raw(&[DomSep::PedersenVrf as u8]);
-        t.absorb_raw(&(ios.len() as u64).to_le_bytes());
-        for io in &ios {
-            t.absorb_serialize(&io.input.0);
-            t.absorb_serialize(&io.output.0);
-        }
-        t.absorb_raw(&(ad.len() as u64).to_le_bytes());
-        t.absorb_raw(ad);
+        let t = vrf_transcript::<S>(&ios, ad);
         let z = DelinearizeScalars::<S>::new(t).take(2);
 
         let x = (z[0] * b0 + z[1] * b1) / (z[0] + z[1]);

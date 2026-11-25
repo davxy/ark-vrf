@@ -277,6 +277,17 @@ pub(crate) fn batch_transcript<S: Suite>(scheme: DomSep) -> S::Transcript {
     t
 }
 
+/// Whether the key point or a point of an I/O pair is the group identity.
+///
+/// The key point is the public key `Y` of Tiny and Thin, or the key commitment
+/// `Yb` of Pedersen. With `Y = 0` the challenge term drops out of the
+/// verification equation, and anyone can make a proof. `Yb = 0` commits to the
+/// opening `(0, 0)`, which is public. A pair holding the identity satisfies
+/// `O = x*I` for every `x`, so it binds its VRF output to no signer.
+pub(crate) fn has_identity<S: Suite>(key: AffinePoint<S>, ios: &[VrfIo<S>]) -> bool {
+    key.is_zero() || ios.iter().any(VrfIo::has_identity)
+}
+
 /// Point count up to which the Tiny and Thin verifiers expand their equation
 /// over the raw pairs. Straus with a one bit window stays cheap up to about
 /// five points; above that the merged pair costs less.
