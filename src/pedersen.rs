@@ -275,16 +275,8 @@ impl<S: PedersenSuite> Proof<S> {
             sb,
         } = self;
 
-        // Yb = 0 is the commitment of the opening (0, 0), which is public, so
-        // anyone can satisfy Eq2 without knowing a secret.
-        if pk_com.is_zero() {
-            return Err(Error::InvalidData);
-        }
-
-        // A pair holding the identity satisfies O = x*I for every x, so it
-        // binds its VRF output to no signer.
         let ios = ios.as_ref();
-        if ios.iter().any(VrfIo::has_identity) {
+        if utils::has_identity(*pk_com, ios) {
             return Err(Error::InvalidData);
         }
 
@@ -348,10 +340,10 @@ pub struct BatchItem<S: PedersenSuite> {
     ok: AffinePoint<S>,
     s: ScalarField<S>,
     sb: ScalarField<S>,
-    /// Set when a supplied I/O pair held the identity. Recorded here because
-    /// only the merged pair survives, and that one is legitimately the identity
-    /// when no pair is supplied at all.
-    io_identity: bool,
+    /// Set when the key commitment or a supplied I/O pair held the identity.
+    /// Recorded here because only the merged pair survives, and that one is
+    /// legitimately the identity when no pair is supplied at all.
+    identity: bool,
 }
 
 impl<S: PedersenSuite> BatchItem<S> {
@@ -363,7 +355,7 @@ impl<S: PedersenSuite> BatchItem<S> {
     /// This is cheap and can be done in parallel.
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
-        let io_identity = ios.iter().any(VrfIo::has_identity);
+        let identity = utils::has_identity(proof.pk_com, ios);
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
         let io = merge_with_key_commitment::<S>(&mut t, &proof.pk_com, ios);
         let c = S::challenge(&[&proof.r, &proof.ok], t);
@@ -376,7 +368,7 @@ impl<S: PedersenSuite> BatchItem<S> {
             ok: proof.ok,
             s: proof.s,
             sb: proof.sb,
-            io_identity,
+            identity,
         }
     }
 }
@@ -436,11 +428,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             return Ok(());
         }
 
-        // Checked here rather than in `BatchItem::new`, which cannot fail.
-        if items
-            .iter()
-            .any(|item| item.pk_com.is_zero() || item.io_identity)
-        {
+        // Rejected here rather than in `BatchItem::new`, which cannot fail.
+        if items.iter().any(|item| item.identity) {
             return Err(Error::InvalidData);
         }
 

@@ -162,16 +162,8 @@ impl<S: ThinSuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         public: &Public<S>,
     ) -> Result<(), Error> {
-        // With Y = 0 the challenge term drops out of the equation below and
-        // anyone can pick s and set R = s * G.
-        if public.is_identity() {
-            return Err(Error::InvalidData);
-        }
-
-        // A pair holding the identity satisfies O = x*I for every x, so it
-        // binds its VRF output to no signer.
         let ios = ios.as_ref();
-        if ios.iter().any(VrfIo::has_identity) {
+        if utils::has_identity(public.0, ios) {
             return Err(Error::InvalidData);
         }
 
@@ -320,7 +312,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         // Checked here rather than in `BatchItem::new`, which cannot fail.
         if items
             .iter()
-            .any(|item| item.pk.is_identity() || item.ios.iter().any(VrfIo::has_identity))
+            .any(|item| utils::has_identity(item.pk.0, &item.ios))
         {
             return Err(Error::InvalidData);
         }

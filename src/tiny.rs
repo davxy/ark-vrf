@@ -199,16 +199,8 @@ impl<S: TinySuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         public: &Public<S>,
     ) -> Result<(), Error> {
-        // With Y = 0 the challenge term drops out of the equation below and
-        // anyone can produce a matching (c, s) pair.
-        if public.is_identity() {
-            return Err(Error::InvalidData);
-        }
-
-        // A pair holding the identity satisfies O = x*I for every x, so it
-        // binds its VRF output to no signer.
         let ios = ios.as_ref();
-        if ios.iter().any(VrfIo::has_identity) {
+        if utils::has_identity(public.0, ios) {
             return Err(Error::InvalidData);
         }
 
