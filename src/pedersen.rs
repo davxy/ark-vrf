@@ -191,9 +191,15 @@ impl<S: PedersenSuite> Proof<S> {
         // Absorb Yb, then merge the I/O pairs with scalars that depend on it
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
-        // Nonces from T.fork()
-        let mut k = S::nonce(&secret.scalar, t.clone());
-        let mut kb = S::nonce(&blinding, t.clone());
+        // Nonces from T.fork(). The extra byte is temporary. Releases before
+        // 0.7.0 get the same nonces without it, and a different challenge, which
+        // discloses the secret key. Remove it at the next major release.
+        let mut nonce_transcript = t.clone();
+        if ios.len() > 1 {
+            nonce_transcript.absorb_raw(&[0xff]);
+        }
+        let mut k = S::nonce(&secret.scalar, nonce_transcript.clone());
+        let mut kb = S::nonce(&blinding, nonce_transcript);
 
         // R = k*G + kb*B
         let kg = smul!(S::generator(), k);
