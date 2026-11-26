@@ -25,7 +25,7 @@
 //! let result = proof.verify(io, b"aux data");
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (public.to_point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! let expected = (public.into_affine() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -510,7 +510,7 @@ pub(crate) mod testing {
 
     pub fn prove_verify<S: PedersenSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_point_unchecked(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof, blinding) = secret.prove_pedersen(io, b"foo");
@@ -527,7 +527,7 @@ pub(crate) mod testing {
         use pedersen::{BatchItem, BatchVerifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_point_unchecked(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof1, _) = secret.prove_pedersen(io, b"foo");
@@ -565,7 +565,7 @@ pub(crate) mod testing {
     /// N=1 slice produces same proof as passing a single `VrfIo`.
     pub fn prove_verify_multi_single<S: PedersenSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_point_unchecked(random_val(None));
+        let input = Input::from_affine_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof_single, blinding_single) = secret.prove_pedersen(io, b"foo");
@@ -596,8 +596,8 @@ pub(crate) mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input::from_point_unchecked(S::Affine::generator()),
-            output: Output::from_point_unchecked(secret.public().0),
+            input: Input::from_affine_unchecked(S::Affine::generator()),
+            output: Output::from_affine_unchecked(secret.public().0),
         });
 
         let (proof, _) = secret.prove_pedersen(&ios[..], b"bar");
@@ -702,8 +702,8 @@ pub(crate) mod testing {
         use pedersen::BatchVerifier;
 
         let identity_io = VrfIo::<S> {
-            input: Input::from_point_unchecked(AffinePoint::<S>::zero()),
-            output: Output::from_point_unchecked(AffinePoint::<S>::zero()),
+            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [TEST_SEED, [0x11; 32]] {
@@ -783,7 +783,7 @@ pub(crate) mod testing {
         );
         let pair = |factor: ScalarField<S>| VrfIo {
             input,
-            output: Output::from_point_unchecked((input.0 * factor).into_affine()),
+            output: Output::from_affine_unchecked((input.0 * factor).into_affine()),
         };
         let ios = [pair(b0), pair(b1)];
 
@@ -910,8 +910,8 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::<S>::from_point_unchecked(base.h),
-                output: Output::from_point_unchecked(base.gamma),
+                input: Input::<S>::from_affine_unchecked(base.h),
+                output: Output::from_affine_unchecked(base.gamma),
             };
             let secret = Secret::from_scalar(base.sk);
             let (proof, blind) = secret.prove_pedersen(io, ad);
@@ -973,8 +973,8 @@ pub(crate) mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_point_unchecked(self.base.h),
-                output: Output::from_point_unchecked(self.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.base.h),
+                output: Output::from_affine_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove_pedersen(io, &self.base.ad);

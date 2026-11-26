@@ -132,8 +132,8 @@ impl<'a, S: Suite> Ios<'a, S> {
 
     fn with_schnorr(public: AffinePoint<S>, user: &'a [VrfIo<S>]) -> Self {
         let schnorr = VrfIo {
-            input: Input::from_point_unchecked(S::GENERATOR),
-            output: Output::from_point_unchecked(public),
+            input: Input::from_affine_unchecked(S::GENERATOR),
+            output: Output::from_affine_unchecked(public),
         };
         Self {
             schnorr: Some(schnorr),
@@ -181,8 +181,8 @@ fn merged_pair<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) ->
         0 => {
             let zero = AffinePoint::<S>::zero();
             VrfIo {
-                input: Input::from_point_unchecked(zero),
-                output: Output::from_point_unchecked(zero),
+                input: Input::from_affine_unchecked(zero),
+                output: Output::from_affine_unchecked(zero),
             }
         }
         1 => ios.iter().next().expect("one pair"),
@@ -196,7 +196,7 @@ fn merged_pair<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) ->
 /// output is never built.
 fn merged_input<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> Input<S> {
     match ios.len() {
-        0 => Input::from_point_unchecked(AffinePoint::<S>::zero()),
+        0 => Input::from_affine_unchecked(AffinePoint::<S>::zero()),
         1 => ios.iter().next().expect("one pair").input,
         n => merge_inputs(ios, &scalars.take(n)),
     }
@@ -517,8 +517,8 @@ fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
     let output = merge_points::<S>(ios.iter().map(|io| io.output.0), zs);
     let norms = CurveGroup::normalize_batch(&[input, output]);
     VrfIo {
-        input: Input::from_point_unchecked(norms[0]),
-        output: Output::from_point_unchecked(norms[1]),
+        input: Input::from_affine_unchecked(norms[0]),
+        output: Output::from_affine_unchecked(norms[1]),
     }
 }
 
@@ -527,7 +527,7 @@ fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
 /// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
 fn merge_inputs<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> Input<S> {
     let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
-    Input::from_point_unchecked(input.into_affine())
+    Input::from_affine_unchecked(input.into_affine())
 }
 
 #[cfg(test)]
@@ -542,8 +542,8 @@ mod tests {
                 let input = TestSuite::data_to_point(&[i]).unwrap();
                 let output = (input * sk).into_affine();
                 VrfIo {
-                    input: Input::from_point_unchecked(input),
-                    output: Output::from_point_unchecked(output),
+                    input: Input::from_affine_unchecked(input),
+                    output: Output::from_affine_unchecked(output),
                 }
             })
             .collect()
@@ -658,8 +658,8 @@ mod tests {
                 let input = TestSuite::data_to_point(&[i]).unwrap();
                 let output = (input * sk).into_affine();
                 VrfIo {
-                    input: Input::from_point_unchecked(input),
-                    output: Output::from_point_unchecked(output),
+                    input: Input::from_affine_unchecked(input),
+                    output: Output::from_affine_unchecked(output),
                 }
             })
             .collect();
@@ -693,8 +693,8 @@ mod tests {
                 .map(|i| {
                     let input = TestSuite::data_to_point(&[i]).unwrap();
                     VrfIo {
-                        input: Input::from_point_unchecked(input),
-                        output: Output::from_point_unchecked((input * sk).into_affine()),
+                        input: Input::from_affine_unchecked(input),
+                        output: Output::from_affine_unchecked((input * sk).into_affine()),
                     }
                 })
                 .collect();

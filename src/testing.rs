@@ -291,7 +291,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let pk = sk.public().0;
 
         let h = <S as Suite>::data_to_point(alpha).unwrap();
-        let input = Input::from_point_unchecked(h);
+        let input = Input::from_affine_unchecked(h);
 
         let alpha = alpha.to_vec();
         let output = sk.output(input);
@@ -358,7 +358,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         let h = S::data_to_point(&self.alpha).unwrap();
         assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
-        let input = Input::<S>::from_point_unchecked(h);
+        let input = Input::<S>::from_affine_unchecked(h);
 
         let output = sk.output(input);
         assert_eq!(self.gamma, output.0, "VRF pre-output ('gamma') mismatch");
@@ -620,13 +620,13 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
 
-    let point = Secret::<S>::from_seed(TEST_SEED).public().to_point();
+    let point = Secret::<S>::from_seed(TEST_SEED).public().into_affine();
     for compress in [Compress::Yes, Compress::No] {
         let mut bytes = Vec::new();
         point.serialize_with_mode(&mut bytes, compress).unwrap();
         let decode =
             |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
-        assert_eq!(decode(&bytes).unwrap().to_point(), point);
+        assert_eq!(decode(&bytes).unwrap().into_affine(), point);
         assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
             decode(bytes).is_ok() || decodes_inside_vec::<Public<S>>(bytes, compress)
         });
@@ -647,10 +647,10 @@ pub fn decoder_reads_one_value<S: Suite>() {
     let decode = |reader: &mut &[u8]| {
         Public::<S>::deserialize_compressed(reader)
             .unwrap()
-            .to_point()
+            .into_affine()
     };
-    assert_eq!(decode(&mut reader), first.to_point());
-    assert_eq!(decode(&mut reader), second.to_point());
+    assert_eq!(decode(&mut reader), first.into_affine());
+    assert_eq!(decode(&mut reader), second.into_affine());
     assert_eq!(reader, &[0xff][..]);
 }
 

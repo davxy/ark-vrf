@@ -245,7 +245,7 @@ pub mod testing {
     pub fn prove_verify<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point_unchecked(common::random_val(None));
+        let input = Input::from_affine_unchecked(common::random_val(None));
         let io = secret.vrf_io(input);
 
         let proof = secret.prove_tiny(io, b"foo");
@@ -270,7 +270,7 @@ pub mod testing {
     pub fn prove_verify_multi_single<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point_unchecked(common::random_val(None));
+        let input = Input::from_affine_unchecked(common::random_val(None));
         let io = secret.vrf_io(input);
 
         let proof_single = secret.prove_tiny(io, b"foo");
@@ -296,7 +296,7 @@ pub mod testing {
     /// handed a raw `Public` to make sure the rejection does not depend on the
     /// key having gone through the checked decoder.
     pub fn identity_public_key_rejected<S: TinySuite>() {
-        let identity = Public::<S>::from_point_unchecked(AffinePoint::<S>::zero());
+        let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let zero_secret = Secret::<S>::from_scalar(ScalarField::<S>::zero());
 
         let proof = zero_secret.prove_tiny([], b"forgery");
@@ -313,8 +313,8 @@ pub mod testing {
     /// enough to catch it.
     pub fn identity_io_pair_rejected<S: TinySuite>() {
         let identity_io = VrfIo::<S> {
-            input: Input::from_point_unchecked(AffinePoint::<S>::zero()),
-            output: Output::from_point_unchecked(AffinePoint::<S>::zero()),
+            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
@@ -345,10 +345,10 @@ pub mod testing {
         let proof = secret.prove_tiny(io, b"bar");
         let off_curve = common::off_curve_point::<S>();
 
-        let public = Public::<S>::from_point_unchecked(off_curve);
+        let public = Public::<S>::from_affine_unchecked(off_curve);
         assert!(public.verify_tiny(io, b"bar", &proof).is_err());
 
-        let input = Input::from_point_unchecked(off_curve);
+        let input = Input::from_affine_unchecked(off_curve);
         let io = VrfIo { input, ..io };
         assert!(secret.public().verify_tiny(io, b"bar", &proof).is_err());
     }
@@ -365,8 +365,8 @@ pub mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input::from_point_unchecked(S::Affine::generator()),
-            output: Output::from_point_unchecked(public.0),
+            input: Input::from_affine_unchecked(S::Affine::generator()),
+            output: Output::from_affine_unchecked(public.0),
         });
 
         let proof = secret.prove_tiny(&ios[..], b"bar");
@@ -487,8 +487,8 @@ pub mod testing {
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::from_point_unchecked(base.h),
-                output: Output::from_point_unchecked(base.gamma),
+                input: Input::from_affine_unchecked(base.h),
+                output: Output::from_affine_unchecked(base.gamma),
             };
             let sk = Secret::from_scalar(base.sk);
             let proof: Proof<S> = sk.prove_tiny(io, ad);
@@ -523,15 +523,15 @@ pub mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_point_unchecked(self.base.h),
-                output: Output::from_point_unchecked(self.base.gamma),
+                input: Input::<S>::from_affine_unchecked(self.base.h),
+                output: Output::from_affine_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let proof = sk.prove_tiny(io, &self.base.ad);
             assert_eq!(self.c, proof.c, "VRF proof challenge ('c') mismatch");
             assert_eq!(self.s, proof.s, "VRF proof response ('s') mismatch");
 
-            let pk = Public::<S>::from_point_unchecked(self.base.pk);
+            let pk = Public::<S>::from_affine_unchecked(self.base.pk);
             assert!(pk.verify_tiny(io, &self.base.ad, &proof).is_ok());
         }
     }
