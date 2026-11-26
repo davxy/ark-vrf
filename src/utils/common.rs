@@ -372,11 +372,11 @@ pub fn point_to_hash<S: Suite, const N: usize>(
 ///
 /// The expanded key and the reduction buffer are zeroized. The hasher states
 /// that absorbed the secret are not (see [`crate::utils::DigestXof`]).
-pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> ScalarField<S> {
+pub fn nonce<S: Suite>(sk: &SecretScalar<S>, mut transcript: S::Transcript) -> SecretScalar<S> {
     // Expand sk: H(transcript_state || NonceExpand || sk)
     let mut t_exp = transcript.clone();
     t_exp.absorb_raw(&[DomSep::NonceExpand as u8]);
-    t_exp.absorb_serialize(sk);
+    t_exp.absorb_serialize(sk.expose());
     let mut sk_hash = [0u8; 64];
     t_exp.squeeze_raw(&mut sk_hash);
 
@@ -384,7 +384,7 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> Sc
     transcript.absorb_raw(&[DomSep::Nonce as u8]);
     transcript.absorb_raw(&sk_hash);
     sk_hash.zeroize();
-    nonce_scalar::<S>(&mut transcript)
+    SecretScalar::new(nonce_scalar::<S>(&mut transcript))
 }
 
 /// Delinearization scalars from a transcript. The first is `z_0 = 1`, the next

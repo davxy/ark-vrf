@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.0] - Unreleased
 
+### Added
+
+- `SecretScalar`: a secret scalar, zeroized on drop and redacted in `Debug`.
+  `mul_point` is the only multiplication by a secret, so `secret-split` covers
+  each one.
+
 ### Changed
 
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
+- `Suite::nonce`, `utils::nonce` and `PedersenSuite::blinding` take and return
+  `SecretScalar`. `Secret::scalar` returns `&SecretScalar`.
+- `pedersen::Proof::prove` and `Secret::prove_pedersen` return the blinding
+  factor as `SecretScalar`.
 - `PointWrapper::point` is renamed to `into_affine`. Only `Public` and `Output`
   have `from_affine`.
 

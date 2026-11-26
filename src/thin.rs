@@ -92,14 +92,10 @@ impl<S: ThinSuite> Proof<S> {
     pub fn prove(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, secret: &Secret<S>) -> Self {
         let (t, input) = vrf_transcript_input::<S>(secret.public.0, ios, ad);
 
-        let mut k = S::nonce(&secret.scalar, t.clone());
-        let r = smul!(input.0, k).into_affine();
+        let k = S::nonce(&secret.scalar, t.clone());
+        let r = k.mul_point(input.0).into_affine();
         let c = S::challenge(&[&r], t);
-
-        let mut cx = c * secret.scalar;
-        let s = k + cx;
-        k.zeroize();
-        cx.zeroize();
+        let s = k.response(c, &secret.scalar);
 
         Proof { r, s }
     }

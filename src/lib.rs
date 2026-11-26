@@ -218,7 +218,7 @@ pub trait Suite: Copy {
     ///
     /// Defaults to [`utils::nonce`] (deterministic, after RFC 8032 section 5.1.6).
     #[inline(always)]
-    fn nonce(sk: &ScalarField<Self>, transcript: Self::Transcript) -> ScalarField<Self> {
+    fn nonce(sk: &SecretScalar<Self>, transcript: Self::Transcript) -> SecretScalar<Self> {
         utils::nonce::<Self>(sk, transcript)
     }
 
@@ -252,25 +252,66 @@ pub trait Suite: Copy {
     }
 }
 
+/// Secret scalar: a secret key, a nonce or a blinding factor.
+///
+/// It is zeroized on drop and redacted in `Debug`. Temporaries inside arkworks
+/// and the ring proof backend are not zeroized. [`Self::expose`] gives the value,
+/// for example to reveal a blinding factor.
+#[derive(Clone)]
+pub struct SecretScalar<S: Suite>(ScalarField<S>);
+
+impl<S: Suite> SecretScalar<S> {
+    /// Wrap a secret scalar.
+    pub fn new(scalar: ScalarField<S>) -> Self {
+        Self(scalar)
+    }
+
+    /// The scalar value.
+    pub fn expose(&self) -> &ScalarField<S> {
+        &self.0
+    }
+
+    /// `self * point`, with the `secret-split` shares when the feature is on.
+    /// It runs in variable time.
+    pub fn mul_point(&self, point: AffinePoint<S>) -> <AffinePoint<S> as AffineRepr>::Group {
+        smul!(point, self.0)
+    }
+
+    /// The response `self + c * x`, which is public.
+    pub(crate) fn response(&self, c: ScalarField<S>, x: &Self) -> ScalarField<S> {
+        let mut cx = c * x.0;
+        let s = self.0 + cx;
+        cx.zeroize();
+        s
+    }
+}
+
+impl<S: Suite> Drop for SecretScalar<S> {
+    fn drop(&mut self) {
+        self.0.zeroize()
+    }
+}
+
+impl<S: Suite> core::fmt::Debug for SecretScalar<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("SecretScalar(<redacted>)")
+    }
+}
+
 /// Secret key: the secret scalar and its public key.
 ///
-/// The scalar is zeroized on drop, redacted in `Debug` and compared in constant
-/// time. Key derivation and the provers zeroize their secret temporaries, but
-/// not the temporaries inside arkworks and the ring proof backend. The caller
-/// owns the Pedersen blinding factor (see [`pedersen::Proof::prove`]).
-///
-/// Scalar multiplications by the secret run in variable time, also with
-/// `secret-split`.
+/// The scalar is a [`SecretScalar`], compared in constant time. The caller owns
+/// the Pedersen blinding factor (see [`pedersen::Proof::prove`]).
 #[derive(Clone)]
 pub struct Secret<S: Suite> {
-    pub(crate) scalar: ScalarField<S>,
+    pub(crate) scalar: SecretScalar<S>,
     pub(crate) public: Public<S>,
 }
 
 impl<S: Suite> core::fmt::Debug for Secret<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Secret")
-            .field("scalar", &"<redacted>")
+            .field("scalar", &self.scalar)
             .field("public", &self.public.0)
             .finish()
     }
@@ -279,8 +320,8 @@ impl<S: Suite> core::fmt::Debug for Secret<S> {
 impl<S: Suite> PartialEq for Secret<S> {
     /// Timing does not depend on the scalars content or on where they differ.
     fn eq(&self, other: &Self) -> bool {
-        let mut lhs = self.scalar.into_bigint();
-        let mut rhs = other.scalar.into_bigint();
+        let mut lhs = self.scalar.0.into_bigint();
+        let mut rhs = other.scalar.0.into_bigint();
         let diff = lhs
             .as_ref()
             .iter()
@@ -292,23 +333,17 @@ impl<S: Suite> PartialEq for Secret<S> {
     }
 }
 
-impl<S: Suite> Drop for Secret<S> {
-    fn drop(&mut self) {
-        self.scalar.zeroize()
-    }
-}
-
 impl<S: Suite> CanonicalSerialize for Secret<S> {
     fn serialize_with_mode<W: ark_std::io::prelude::Write>(
         &self,
         writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.scalar.serialize_with_mode(writer, compress)
+        self.scalar.0.serialize_with_mode(writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.scalar.serialized_size(compress)
+        self.scalar.0.serialized_size(compress)
     }
 }
 
@@ -327,14 +362,18 @@ impl<S: Suite> CanonicalDeserialize for Secret<S> {
 
 impl<S: Suite> ark_serialize::Valid for Secret<S> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-        self.scalar.check()
+        self.scalar.0.check()
     }
 }
 
 impl<S: Suite> Secret<S> {
     /// Construct a `Secret` from the given scalar.
     pub fn from_scalar(scalar: ScalarField<S>) -> Self {
-        let public = Public::from_affine_unchecked(smul!(S::GENERATOR, scalar).into_affine());
+        Self::from_secret_scalar(SecretScalar::new(scalar))
+    }
+
+    fn from_secret_scalar(scalar: SecretScalar<S>) -> Self {
+        let public = Public::from_affine_unchecked(scalar.mul_point(S::GENERATOR).into_affine());
         Self { scalar, public }
     }
 
@@ -344,7 +383,7 @@ impl<S: Suite> Secret<S> {
     /// multiplication.
     pub fn from_seed(mut seed: [u8; 32]) -> Self {
         let mut cnt = 0_u8;
-        let mut sk = ScalarField::<S>::from_le_bytes_mod_order(&seed);
+        let sk = SecretScalar::new(ScalarField::<S>::from_le_bytes_mod_order(&seed));
         let scalar = loop {
             let mut transcript = S::Transcript::new(S::SUITE_ID);
             transcript.absorb_raw(&seed);
@@ -352,7 +391,7 @@ impl<S: Suite> Secret<S> {
                 transcript.absorb_raw(&[cnt]);
             }
             let scalar = utils::nonce::<S>(&sk, transcript);
-            if !scalar.is_zero() {
+            if !scalar.0.is_zero() {
                 break scalar;
             }
             cnt = cnt
@@ -360,8 +399,7 @@ impl<S: Suite> Secret<S> {
                 .expect("unreachable: transcript hash produced 256 consecutive zero scalars");
         };
         seed.zeroize();
-        sk.zeroize();
-        Self::from_scalar(scalar)
+        Self::from_secret_scalar(scalar)
     }
 
     /// Random `Secret` from `rng`.
@@ -374,7 +412,7 @@ impl<S: Suite> Secret<S> {
     }
 
     /// Get the secret scalar.
-    pub fn scalar(&self) -> &ScalarField<S> {
+    pub fn scalar(&self) -> &SecretScalar<S> {
         &self.scalar
     }
 
@@ -385,7 +423,7 @@ impl<S: Suite> Secret<S> {
 
     /// Get the VRF output point relative to input.
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        Output::from_affine_unchecked(smul!(input.0, self.scalar).into_affine())
+        Output::from_affine_unchecked(self.scalar.mul_point(input.0).into_affine())
     }
 
     /// Get the VRF input-output pair relative to input.
@@ -655,8 +693,17 @@ mod tests {
     fn secret_debug_redacts_scalar() {
         let secret = Secret::from_seed(TEST_SEED);
         let out = std::format!("{:?}", secret);
-        let scalar_str = std::format!("{:?}", secret.scalar());
+        let scalar_str = std::format!("{:?}", secret.scalar().expose());
         assert!(!out.contains(&scalar_str));
+    }
+
+    /// One `{:?}` on a nonce or a blinding factor in a downstream log must not
+    /// leak it.
+    #[test]
+    fn secret_scalar_debug_redacts_scalar() {
+        let scalar = ScalarField::<TestSuite>::from(0x5eed_u64);
+        let out = std::format!("{:?}", crate::SecretScalar::<TestSuite>::new(scalar));
+        assert!(!out.contains(&std::format!("{scalar:?}")));
     }
 
     /// Equality semantics must survive the switch to the constant-time impl.
@@ -816,7 +863,7 @@ mod tests {
             let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
-                let s = k + c * secret.scalar;
+                let s = k + c * secret.scalar.expose();
                 break crate::tiny::Proof { c, s };
             }
             ctr += 1;
