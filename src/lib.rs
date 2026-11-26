@@ -725,7 +725,7 @@ mod tests {
     use super::*;
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{random_val, TEST_SEED};
+    use testing::{TEST_SEED, random_val};
 
     #[test]
     fn vrf_output_check() {
@@ -929,9 +929,11 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        assert!(public
-            .verify_tiny(malicious_io, ad.as_bytes(), &proof)
-            .is_ok());
+        assert!(
+            public
+                .verify_tiny(malicious_io, ad.as_bytes(), &proof)
+                .is_ok()
+        );
 
         // 5. Verify the honest proof still works
         let honest_io = VrfIo {
@@ -939,9 +941,11 @@ mod tests {
             output: honest_output,
         };
         let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
-        assert!(public
-            .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
-            .is_ok());
+        assert!(
+            public
+                .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
+                .is_ok()
+        );
 
         // Two different outputs for the same input and public key.
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
