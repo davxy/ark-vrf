@@ -210,7 +210,7 @@ mod tests {
         type Decode = fn(&[u8]) -> Result<Proof, SerializationError>;
 
         let secret = Secret::<TestSuite>::from_seed(TEST_SEED);
-        let io = secret.vrf_io(Input::from_point(random_val(None)));
+        let io = secret.vrf_io(Input::from_point_unchecked(random_val(None)));
         let proof = secret.prove_thin(io, b"ad");
         let mut compressed = Vec::new();
         proof.serialize_compressed(&mut compressed).unwrap();

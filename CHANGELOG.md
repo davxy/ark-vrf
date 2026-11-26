@@ -10,11 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
+- `PointWrapper::from_affine` is renamed to `from_point`, and `point` to
+  `to_point`. Only `Public` and `Output` have `from_point`.
 
 ### Removed
 
-- `PointWrapper::from_affine` and `from_affine_unchecked`. A prover-chosen
-  `Input` lets the prover forge outputs. Use `Input::new` or deserialization.
+- `Input::from_affine` and `PointWrapper::from_affine_unchecked`. A
+  prover-chosen `Input` lets the prover forge outputs. Use `Input::new` for an
+  `Input`, and the `deserialize_*_unchecked` methods in place of
+  `from_affine_unchecked`.
 
 ### Security
 

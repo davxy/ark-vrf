@@ -478,7 +478,7 @@ impl<S: RingSuite> Public<S> {
     /// Nobody knows its discrete log, so it can take the place of any key in
     /// the ring, for example the key of a removed member.
     pub fn padding() -> Self {
-        Self::from_point(S::PADDING)
+        Self::from_point_unchecked(S::PADDING)
     }
 }
 
@@ -1288,7 +1288,7 @@ pub(crate) mod testing {
             prover: &RingProver<S>,
             rng: &mut dyn ark_std::rand::RngCore,
         ) -> Self {
-            let input = Input::from_point(common::random_val(Some(rng)));
+            let input = Input::from_point_unchecked(common::random_val(Some(rng)));
             let io = secret.vrf_io(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
@@ -1303,7 +1303,7 @@ pub(crate) mod testing {
     ) -> Vec<Public<S>> {
         common::random_vec::<AffinePoint<S>>(size, Some(rng))
             .into_iter()
-            .map(Public::from_point)
+            .map(Public::from_point_unchecked)
             .collect()
     }
 
@@ -1416,8 +1416,8 @@ pub(crate) mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input::from_point(S::Affine::generator()),
-            output: Output::from_point(public.0),
+            input: Input::from_point_unchecked(S::Affine::generator()),
+            output: Output::from_point_unchecked(public.0),
         });
 
         let proof = secret.prove_ring(&ios[..], b"bar", &prover);
@@ -1584,7 +1584,7 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
-        pks[0] = Public::from_point(AffinePoint::<S>::zero());
+        pks[0] = Public::from_point_unchecked(AffinePoint::<S>::zero());
 
         assert!(matches!(
             ring_setup.prover_key(&pks),
@@ -1637,7 +1637,7 @@ pub(crate) mod testing {
         pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
-        let input = Input::from_point(common::random_val(Some(rng)));
+        let input = Input::from_point_unchecked(common::random_val(Some(rng)));
         let proof = secret.prove_ring(secret.vrf_io(input), b"foo", &prover);
 
         let point_len = G1Affine::<S>::zero().uncompressed_size();
@@ -1833,7 +1833,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point(common::random_val(Some(rng)));
+        let input = Input::from_point_unchecked(common::random_val(Some(rng)));
         let io = secret.vrf_io(input);
 
         let ring_ctx = ring_setup.ring_context();
@@ -1863,7 +1863,7 @@ pub(crate) mod testing {
             ring_setup.pcs_verifier_params()
         );
 
-        let extra_pk = Public::<S>::from_point(random_val(Some(rng)));
+        let extra_pk = Public::<S>::from_point_unchecked(random_val(Some(rng)));
         assert_eq!(
             vk_builder.append([extra_pk], |_| None).unwrap_err(),
             Error::SrsLookupFailed
@@ -1876,7 +1876,7 @@ pub(crate) mod testing {
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
         // No more space left; `free_slots` reports the remaining capacity.
-        let extra_pk = Public::<S>::from_point(random_val(Some(rng)));
+        let extra_pk = Public::<S>::from_point_unchecked(random_val(Some(rng)));
         assert_eq!(
             vk_builder.append([extra_pk], &lookup).unwrap_err(),
             Error::RingCapacityExceeded
@@ -2139,8 +2139,8 @@ pub(crate) mod testing {
             let public = secret.public();
 
             let io = VrfIo {
-                input: Input::<S>::from_point(pedersen.base.h),
-                output: Output::from_point(pedersen.base.gamma),
+                input: Input::<S>::from_point_unchecked(pedersen.base.h),
+                output: Output::from_point_unchecked(pedersen.base.gamma),
             };
 
             let ring_setup = <S as RingSuiteExt>::ring_setup();
@@ -2207,8 +2207,8 @@ pub(crate) mod testing {
             self.pedersen.run();
 
             let io = VrfIo {
-                input: Input::<S>::from_point(self.pedersen.base.h),
-                output: Output::from_point(self.pedersen.base.gamma),
+                input: Input::<S>::from_point_unchecked(self.pedersen.base.h),
+                output: Output::from_point_unchecked(self.pedersen.base.gamma),
             };
             let secret = Secret::from_scalar(self.pedersen.base.sk);
             let public = secret.public();

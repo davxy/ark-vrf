@@ -377,7 +377,7 @@ pub(crate) mod testing {
     pub fn prove_verify<S: ThinSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point(random_val(None));
+        let input = Input::from_point_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof = secret.prove_thin(io, b"foo");
@@ -390,7 +390,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point(random_val(None));
+        let input = Input::from_point_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof1 = secret.prove_thin(io, b"foo");
@@ -429,7 +429,7 @@ pub(crate) mod testing {
     pub fn prove_verify_multi_single<S: ThinSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point(random_val(None));
+        let input = Input::from_point_unchecked(random_val(None));
         let io = secret.vrf_io(input);
 
         let proof_single = secret.prove_thin(io, b"foo");
@@ -458,7 +458,7 @@ pub(crate) mod testing {
     pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
-        let identity = Public::<S>::from_point(AffinePoint::<S>::zero());
+        let identity = Public::<S>::from_point_unchecked(AffinePoint::<S>::zero());
         let s = ScalarField::<S>::from(0x5eed_u64);
         let forged = Proof::<S> {
             r: (S::GENERATOR * s).into_affine(),
@@ -483,10 +483,10 @@ pub(crate) mod testing {
         let proof = secret.prove_thin(io, b"bar");
         let off_curve = common::off_curve_point::<S>();
 
-        let public = Public::<S>::from_point(off_curve);
+        let public = Public::<S>::from_point_unchecked(off_curve);
         assert!(public.verify_thin(io, b"bar", &proof).is_err());
 
-        let input = Input::from_point(off_curve);
+        let input = Input::from_point_unchecked(off_curve);
         let io = VrfIo { input, ..io };
         assert!(secret.public().verify_thin(io, b"bar", &proof).is_err());
     }
@@ -503,8 +503,8 @@ pub(crate) mod testing {
         use thin::BatchVerifier;
 
         let identity_io = VrfIo::<S> {
-            input: Input::from_point(AffinePoint::<S>::zero()),
-            output: Output::from_point(AffinePoint::<S>::zero()),
+            input: Input::from_point_unchecked(AffinePoint::<S>::zero()),
+            output: Output::from_point_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
@@ -581,7 +581,7 @@ pub(crate) mod testing {
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let input = Input::from_point(random_val(None));
+        let input = Input::from_point_unchecked(random_val(None));
         let io = secret.vrf_io(input);
         let proof = secret.prove_thin(io, b"foo");
 
@@ -731,8 +731,8 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::<S>::from_point(base.h),
-                output: Output::from_point(base.gamma),
+                input: Input::<S>::from_point_unchecked(base.h),
+                output: Output::from_point_unchecked(base.gamma),
             };
             let secret = Secret::from_scalar(base.sk);
             let proof: Proof<S> = secret.prove_thin(io, ad);
@@ -775,15 +775,15 @@ pub(crate) mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_point(self.base.h),
-                output: Output::from_point(self.base.gamma),
+                input: Input::<S>::from_point_unchecked(self.base.h),
+                output: Output::from_point_unchecked(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let proof = sk.prove_thin(io, &self.base.ad);
             assert_eq!(self.proof_r, proof.r, "Thin VRF proof R mismatch");
             assert_eq!(self.proof_s, proof.s, "Thin VRF proof s mismatch");
 
-            let pk = Public::<S>::from_point(self.base.pk);
+            let pk = Public::<S>::from_point_unchecked(self.base.pk);
             assert!(pk.verify_thin(io, &self.base.ad, &proof).is_ok());
         }
     }
@@ -809,7 +809,7 @@ pub(crate) mod testing {
         // Input with KNOWN discrete log: I = d * G.
         let d = Sc::from(7);
         let input_pt = (g * d).into_affine();
-        let input = Input::<S>::from_point(input_pt);
+        let input = Input::<S>::from_point_unchecked(input_pt);
 
         // Honest output would be O = sk * I.
         let honest_output = (input_pt * sk).into_affine();
@@ -818,7 +818,7 @@ pub(crate) mod testing {
         let t_scalar = Sc::from(1234);
         let fake_output_pt = (g * t_scalar).into_affine();
         assert_ne!(fake_output_pt, honest_output);
-        let fake_output = Output::<S>::from_point(fake_output_pt);
+        let fake_output = Output::<S>::from_point_unchecked(fake_output_pt);
 
         let ad: &[u8] = b"attack";
         let fake_io = VrfIo {
@@ -865,7 +865,7 @@ pub(crate) mod testing {
         //       = k*(z0 + z1*d)*G + c * [(z0*sk + z1*t) / (z0 + z1*d)] * (z0 + z1*d) * G
         //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
         //       = RHS
-        let public = Public::<S>::from_point(pk);
+        let public = Public::<S>::from_point_unchecked(pk);
         assert!(
             public.verify_thin(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"
