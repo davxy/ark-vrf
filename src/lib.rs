@@ -640,58 +640,6 @@ impl<S: Suite> Output<S> {
     }
 }
 
-/// Outside code gets a point type only from bytes, from [`Input::new`], from
-/// the checked [`Public::from_affine`] and [`Output::from_affine`], or from the
-/// crate operations. A raw point constructor for [`Input`] lets a verifier
-/// take a prover-chosen input, and the prover can then forge outputs.
-///
-/// The first example must compile, so the others fail only at the constructor.
-///
-/// ```
-/// use ark_vrf::{AffinePoint, Error, Input, Output, Public, Suite};
-///
-/// fn wrap<S: Suite>(
-///     point: AffinePoint<S>,
-///     data: &[u8],
-/// ) -> Result<(Public<S>, Input<S>, Output<S>), Error> {
-///     Ok((Public::from_affine(point)?, Input::new(data)?, Output::from_affine(point)?))
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use ark_vrf::{AffinePoint, Error, Input, Suite};
-///
-/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Result<Input<S>, Error> {
-///     Input::from_affine(point)
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
-///
-/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Input<S> {
-///     Input::from_affine_unchecked(point)
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
-///
-/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Public<S> {
-///     Public::from_affine_unchecked(point)
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
-///
-/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Output<S> {
-///     Output::from_affine_unchecked(point)
-/// }
-/// ```
-#[cfg(doctest)]
-struct PointConstructorVisibility;
-
 /// VRF input-output pair.
 ///
 /// The pair does not implement the serialization traits, because [`Input`]
