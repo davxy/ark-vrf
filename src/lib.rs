@@ -601,11 +601,13 @@ impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
     ///
     /// Maps arbitrary data to a curve point via hash-to-curve. Returns
-    /// `Error::InvalidData` if no point is found. The point is not checked:
-    /// it is valid when the suite meets the [`Suite::data_to_point`] contract.
+    /// `Error::InvalidData` if no point is found or the point is the identity.
+    /// Subgroup membership is not checked: it holds when the suite meets the
+    /// [`Suite::data_to_point`] contract.
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         S::data_to_point(data)
             .map(Self::from_point)
+            .filter(|input| !input.is_identity())
             .ok_or(Error::InvalidData)
     }
 }
