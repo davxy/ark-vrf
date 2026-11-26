@@ -1,9 +1,8 @@
 //! # Tiny VRF
 //!
-//! Compact VRF-AD scheme producing a short `(c, s)` proof. Prepends the Schnorr
-//! pair `(G, Y)` to the I/O list and proves a single DLEQ on the delinearized
-//! merged pair. The challenge scalar `c` is stored instead of the nonce commitment,
-//! yielding a smaller proof at the cost of not supporting batch verification.
+//! VRF-AD with a short `(c, s)` proof. The proof holds the challenge instead
+//! of the nonce commitment, so it is smaller than a Thin VRF proof but cannot
+//! be batch verified.
 //!
 //! ## Usage
 //!
@@ -30,9 +29,7 @@
 use super::*;
 use utils::common::{DomSep, ProjectiveZ, stack_buf};
 
-/// Marker trait for suites that support the Tiny VRF scheme.
-///
-/// Blanket-implemented for all types implementing [`Suite`].
+/// Suites with Tiny VRF. Every [`Suite`] implements it.
 pub trait TinySuite: Suite {}
 
 impl<T> TinySuite for T where T: Suite {}
@@ -55,25 +52,13 @@ fn vrf_transcript_scalars<S: TinySuite>(
     utils::vrf_transcript_scalars_with_schnorr(DomSep::TinyVrf, public, ios, ad)
 }
 
-/// Tiny VRF proof.
+/// Tiny VRF proof: the challenge `c` and the response `s = k + c * x`.
 ///
-/// Schnorr-like proof over the delinearized merged DLEQ relation:
-/// - `c`: Challenge scalar
-/// - `s`: Response scalar (`s = k + c * x`)
-///
-/// Construct it with [`Proof::prove`] or by deserialization. Serialization
-/// encodes `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full scalar.
-/// The proof holds no curve points, so deserialization involves no subgroup
-/// checks.
-///
-/// Both decoding paths accept one encoding per proof, but do not reject
-/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
-/// return an error when the input is not completely consumed.
+/// The encoding holds `c` on [`Suite::CHALLENGE_LEN`] bytes and `s` as a full
+/// scalar. Decoding follows the rules in [`PointWrapper`].
 #[derive(Debug, Clone)]
 pub struct Proof<S: TinySuite> {
-    /// Challenge scalar.
     pub(crate) c: ScalarField<S>,
-    /// Response scalar.
     pub(crate) s: ScalarField<S>,
 }
 
@@ -81,8 +66,7 @@ const fn scalar_len<S: TinySuite>() -> usize {
     ScalarField::<S>::MODULUS_BIT_SIZE.div_ceil(8) as usize
 }
 
-/// [`Suite::CHALLENGE_LEN`], checked against the scalar field byte length
-/// at compile time: the proof encodes `c` on that length.
+/// [`Suite::CHALLENGE_LEN`], checked at compile time against the scalar length.
 const fn challenge_len<S: TinySuite>() -> usize {
     assert!(
         S::CHALLENGE_LEN <= scalar_len::<S>(),
@@ -147,15 +131,11 @@ impl<S: TinySuite> ark_serialize::Valid for Proof<S> {
 }
 
 impl<S: TinySuite> Proof<S> {
-    /// Generate a proof for the given VRF I/O pairs and additional data.
-    ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
     pub fn prove(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, secret: &Secret<S>) -> Self {
         let (t, input) = vrf_transcript_input::<S>(secret.public.0, ios, ad);
 
         let mut k = S::nonce(&secret.scalar, t.clone());
-
-        // R = k * I_m
         let r = smul!(input.0, k).into_affine();
 
         let c = S::challenge(&[&r], t);
@@ -166,31 +146,12 @@ impl<S: TinySuite> Proof<S> {
         Proof { c, s }
     }
 
-    /// Verify the proof for the given VRF I/O pairs, additional data and
-    /// public key.
+    /// Verify the proof for the VRF I/O pairs `ios`, the additional data `ad`
+    /// and the key `public`.
     ///
-    /// Verifies that each VRF output is correctly derived from its input using
-    /// the secret key of `public`. Multiple I/O pairs are delinearized into a
-    /// single merged pair before verifying.
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// public key or any I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// All curve points involved in verification (public key and I/O pairs)
-    /// are assumed to be in the prime-order subgroup. This is guaranteed
-    /// when points come from checked deserialization (see [`PointWrapper`]) or
-    /// from trusted operations like [`Input::new`] (hash-to-curve) and
-    /// [`Secret::vrf_io`]. Subgroup membership is not re-checked here.
-    ///
-    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
-    /// the burden of subgroup validation on the caller. Passing points with
-    /// cofactor components leads to undefined verification behavior.
-    ///
-    /// The group identity is checked unconditionally, for the public key and for
-    /// every I/O pair. Neither binds the proof to a signer: the secret scalar of
-    /// the identity key is publicly known, and a pair holding the identity is
-    /// satisfied by every secret key.
+    /// Returns `Error::InvalidData` if the key or a point of `ios` is the
+    /// identity, and `Error::VerificationFailure` if the proof is not valid.
+    /// Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -261,8 +222,6 @@ pub mod testing {
         let proof = secret.prove_tiny(ios, b"bar");
 
         assert!(public.verify_tiny(ios, b"bar", &proof).is_ok());
-
-        // Wrong ad should fail
         assert!(public.verify_tiny(ios, b"baz", &proof).is_err());
     }
 
@@ -276,25 +235,18 @@ pub mod testing {
         let proof_single = secret.prove_tiny(io, b"foo");
         let proof_slice = secret.prove_tiny([io], b"foo");
 
-        // Byte-identical proofs
         let encode = |p: &tiny::Proof<S>| {
             let mut buf = Vec::new();
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
         assert_eq!(encode(&proof_single), encode(&proof_slice));
-
-        // Cross-verification
         assert!(public.verify_tiny(io, b"foo", &proof_slice).is_ok());
         assert!(public.verify_tiny([io], b"foo", &proof_single).is_ok());
     }
 
-    /// An identity public key must be rejected by the verifier.
-    ///
-    /// `Y = 0` is the public key of the zero secret key, which everybody knows,
-    /// so the proof built below is one any attacker can build. Verification is
-    /// handed a raw `Public` to make sure the rejection does not depend on the
-    /// key having gone through the checked decoder.
+    /// The secret key of `Y = 0` is zero, so anybody can build this proof. The
+    /// verifier must reject it also for a key that skipped the checked decoder.
     pub fn identity_public_key_rejected<S: TinySuite>() {
         let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let zero_secret = Secret::<S>::from_scalar(ScalarField::<S>::zero());
@@ -303,14 +255,9 @@ pub mod testing {
         assert!(identity.verify_tiny([], b"forgery", &proof).is_err());
     }
 
-    /// An I/O pair holding the identity must be rejected by the verifier.
-    ///
-    /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so the
-    /// verification equation accepts it and two different keys produce two
-    /// valid proofs for the same pair. The pair therefore binds its VRF output
-    /// to nobody, and only an explicit check keeps it out. The second case
-    /// hides the bad pair behind a good one, where the merged pair alone is not
-    /// enough to catch it.
+    /// `(0, 0)` satisfies `O = x * I` for every key, so it binds its output to no
+    /// signer. The second case hides it behind a valid pair, where the merged
+    /// pair does not show it.
     pub fn identity_io_pair_rejected<S: TinySuite>() {
         let identity_io = VrfIo::<S> {
             input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
@@ -335,10 +282,9 @@ pub mod testing {
         }
     }
 
-    /// An unchecked point can be off the curve. On a twisted Edwards curve,
-    /// (0, 0) as the key or as an input gives R the projective value
-    /// (0, 0, 0, 0), which has no affine form. Verify must return an error,
-    /// not panic.
+    /// An off-curve key or input, such as `(0, 0)` on a twisted Edwards curve,
+    /// gives `R = (0, 0, 0, 0)`, which has no affine form. Verify must return an
+    /// error and not panic.
     pub fn off_curve_point_rejected<S: TinySuite>() {
         let secret = Secret::<S>::from_seed(common::TEST_SEED);
         let io = secret.vrf_io(Input::new(b"foo").unwrap());
@@ -372,23 +318,19 @@ pub mod testing {
         let proof = secret.prove_tiny(&ios[..], b"bar");
         assert!(public.verify_tiny(&ios[..], b"bar", &proof).is_ok());
 
-        // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
         assert!(public.verify_tiny(&bad_ios[..], b"bar", &proof).is_err());
 
-        // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
         bad_ios[0].input = ios[1].input;
         assert!(public.verify_tiny(&bad_ios[..], b"bar", &proof).is_err());
 
-        // Tamper: wrong ad
         assert!(public.verify_tiny(&ios[..], b"baz", &proof).is_err());
     }
 
-    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. This
-    /// runs the branch through prove and verify; the branch itself is checked
-    /// against a plain sum in `utils::common`.
+    /// Runs the MSM branch of `merge_ios` (`MSM_THRESHOLD` pairs) through prove
+    /// and verify.
     pub fn prove_verify_multi_msm<S: TinySuite>() {
         use crate::utils::common::MSM_THRESHOLD;
 
@@ -401,7 +343,6 @@ pub mod testing {
         let proof = secret.prove_tiny(&ios[..], b"msm");
         assert!(public.verify_tiny(&ios[..], b"msm", &proof).is_ok());
 
-        // Tamper: wrong output on the last pair
         let mut bad_ios = ios.clone();
         bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
         assert!(public.verify_tiny(&bad_ios[..], b"msm", &proof).is_err());
@@ -558,9 +499,8 @@ pub mod testing {
         assert!(public.verify_tiny(io, b"ad", &decoded).is_ok());
     }
 
-    /// `Suite::CHALLENGE_LEN` may exceed the level, up to the scalar width.
-    /// At the full width a byte string at or above the field order reduces
-    /// to a valid `c`, so the decoder must reject it: one proof, one encoding.
+    /// At the full scalar width, `c + q` also reduces to `c`, so the decoder must
+    /// reject it to keep one encoding per proof.
     #[test]
     fn challenge_len_can_exceed_the_level() {
         use crate::suites::testing::TestSuiteC32 as S;

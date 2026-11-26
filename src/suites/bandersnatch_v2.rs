@@ -2,16 +2,14 @@
 //!
 //! It differs from version 1, [`super::bandersnatch`], in two places:
 //!
-//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v2".
+//! - `SUITE_ID` = `b"Bandersnatch-SHA512-ELL2-v2"`.
+//! - The zero prefix `Z_pad` of `expand_message_xmd` has 128 bytes, the SHA-512
+//!   block that RFC 9380 section 5.3.1 requires, and not 48 bytes.
 //!
-//! * The zero prefix `Z_pad` of `expand_message_xmd` has 128 bytes, the
-//!   SHA-512 input block that RFC 9380 section 5.3.1 requires, and not the
-//!   48 bytes of the arkworks 0.6 `DefaultFieldHasher`.
-//!
-//! The blinding base, the accumulator base and the padding point are this
+//! The blinding base, the accumulator base and the padding point are the
 //! suite's own. The
 //! [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-//! currently recommends version 1.
+//! recommends version 1.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;

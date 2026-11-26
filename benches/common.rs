@@ -82,7 +82,6 @@ fn bench_nonce<S: Suite>(c: &mut Criterion) {
     });
 }
 
-// All common benchmarks for a single suite.
 fn bench_common_suite<S: Suite>(c: &mut Criterion) {
     println!("\nSuite: {}", S::SUITE_NAME);
     bench_vrf_output::<S>(c);
@@ -93,7 +92,6 @@ fn bench_common_suite<S: Suite>(c: &mut Criterion) {
 }
 
 fn bench_common(c: &mut Criterion) {
-    // Per-suite benchmarks.
     for_each_suite!(c, bench_common_suite);
 
     // ELL2 bench only for suites that support it.

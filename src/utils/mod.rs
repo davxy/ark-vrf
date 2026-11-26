@@ -1,7 +1,6 @@
-//! # Common utilities
+//! # Utilities
 //!
-//! This module provides cryptographic utility functions and curve mappings used
-//! throughout the VRF implementations.
+//! Hashing, transcripts and curve maps of the schemes.
 
 pub mod common;
 pub mod hash_to_curve;
@@ -11,34 +10,14 @@ pub mod transcript;
 
 pub(crate) mod canonical;
 
-/// Standard cryptographic procedures.
-///
-/// Includes challenge generation, nonce derivation, and point-to-hash conversions
-/// inspired by RFC-9381 and RFC-8032.
 pub use common::*;
-
-/// Hash-to-curve implementations (TAI, Elligator2 with XMD/XOF).
 pub use hash_to_curve::*;
-
-/// Twisted Edwards to Short Weierstrass curve mapping.
-///
-/// Provides bidirectional mappings between different curve representations,
-/// allowing operations to be performed in the most convenient form.
 pub use te_sw_map::*;
-
-/// Fiat-Shamir transcript abstraction.
 pub use transcript::*;
 
-/// Point scalar multiplication with optional secret splitting.
-///
-/// When the `secret-split` feature is enabled, this macro splits the secret scalar
-/// into the sum of two randomly generated scalars that retain the same sum. This
-/// technique provides side-channel resistance at the cost of doubling the number
-/// of scalar multiplications.
-///
-/// Without the feature enabled, it performs a standard scalar multiplication.
-///
-/// Neither form is constant time, see the timing note on `Secret`.
+/// `smul!`: scalar multiplication by a secret. With `secret-split`, it uses two
+/// random shares of the scalar (see the crate docs). Neither form is constant
+/// time.
 mod secret_split {
     #[cfg(feature = "secret-split")]
     macro_rules! smul {

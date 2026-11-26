@@ -1,7 +1,4 @@
-//! # Twisted Edwards to Short Weierstrass curve mapping utilities.
-//!
-//! This module provides bidirectional mappings between different curve representations,
-//! allowing operations to be performed in the most convenient form for a given task.
+//! # Maps between twisted Edwards, Montgomery and short Weierstrass forms
 
 use ark_ec::{
     CurveConfig,
@@ -12,11 +9,8 @@ use ark_ff::{Field, One};
 use ark_std::borrow::Cow;
 use ark_std::vec::Vec;
 
-/// Constants used in mapping TE form to SW form and vice versa.
-/// Configuration trait for curves that support mapping between representations.
-///
-/// This trait must be implemented for curves that need to be converted between
-/// Twisted Edwards, Short Weierstrass, and Montgomery forms.
+/// Constants of the maps between the twisted Edwards, Montgomery and short
+/// Weierstrass forms of a curve.
 pub trait MapConfig: TECurveConfig + SWCurveConfig + MontCurveConfig {
     /// Precomputed value of Montgomery curve parameter A divided by 3.
     const MONT_A_OVER_THREE: <Self as CurveConfig>::BaseField;
@@ -25,10 +19,8 @@ pub trait MapConfig: TECurveConfig + SWCurveConfig + MontCurveConfig {
     const MONT_B_INV: <Self as CurveConfig>::BaseField;
 }
 
-/// Map a point in Short Weierstrass form into its corresponding point in Twisted Edwards form.
-///
-/// This function performs the conversion by first mapping from Short Weierstrass to Montgomery form,
-/// then from Montgomery to Twisted Edwards form.
+/// Map a short Weierstrass point to twisted Edwards form, through Montgomery
+/// form.
 pub fn sw_to_te<C: MapConfig>(point: &SWAffine<C>) -> Option<TEAffine<C>> {
     // First map the point from SW to Montgomery
     // (Bx - A/3, By)
@@ -46,10 +38,8 @@ pub fn sw_to_te<C: MapConfig>(point: &SWAffine<C>) -> Option<TEAffine<C>> {
     Some(TEAffine::new_unchecked(v, w))
 }
 
-/// Map a point in Twisted Edwards form into its corresponding point in Short Weierstrass form.
-///
-/// This function performs the conversion by first mapping from Twisted Edwards to Montgomery form,
-/// then from Montgomery to Short Weierstrass form.
+/// Map a twisted Edwards point to short Weierstrass form, through Montgomery
+/// form.
 pub fn te_to_sw<C: MapConfig>(point: &TEAffine<C>) -> Option<SWAffine<C>> {
     // Map from TE to Montgomery: (1+y)/(1-y), (1+y)/(x(1-y))
     let v_denom = <<C as CurveConfig>::BaseField as One>::one() - point.y;
@@ -67,10 +57,7 @@ pub fn te_to_sw<C: MapConfig>(point: &TEAffine<C>) -> Option<SWAffine<C>> {
     Some(SWAffine::new_unchecked(x, y))
 }
 
-/// Trait for types that can be converted from/to Short Weierstrass form.
-///
-/// This trait provides methods to convert between a type and its Short Weierstrass representation,
-/// both for individual points and slices of points.
+/// Conversion from and to short Weierstrass form.
 pub trait SWMapping<C: SWCurveConfig>: Sized {
     /// Convert a Short Weierstrass point to this type.
     ///
@@ -140,10 +127,7 @@ impl<C: MapConfig> SWMapping<C> for TEAffine<C> {
     }
 }
 
-/// Trait for types that can be converted from/to Twisted Edwards form.
-///
-/// This trait provides methods to convert between a type and its Twisted Edwards representation,
-/// both for individual points and slices of points.
+/// Conversion from and to twisted Edwards form.
 pub trait TEMapping<C: TECurveConfig>: Sized {
     /// Convert a Twisted Edwards point to this type.
     ///

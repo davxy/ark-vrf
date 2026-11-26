@@ -1,47 +1,17 @@
 //! # ECVRF Baby-JubJub SHA-512 TAI suite
 //!
-//! Configuration:
+//! With the shared rules of [`crate::suites`].
 //!
-//! * `SUITE_ID` = b"BabyJubJub-SHA512-TAI-v1".
-//!
-//! - The EC group **G** is the prime subgroup of the Baby-JubJub elliptic curve
-//!   as defined by <https://github.com/barryWhiteHat/baby_jubjub>.
-//!   For this group, `fLen` = `qLen` = $32$ and `cofactor` = $8$.
-//!
-//! - The prime subgroup generator G is defined as follows:
-//!   - G.x = 19698561148652590122159747500897617769866003486955115824547446575314762165298
-//!   - G.y = 19298250018296453272277890825869354524455968081175474282777126169995084727839
-//!
-//! * `cLen` = 16 (128-bit security level).
-//!
-//! * The key pair generation primitive is `PK = sk * G`, with x the secret
-//!   key scalar and `G` the group generator. In this ciphersuite, the secret
-//!   scalar x is equal to the secret key scalar sk.
-//!
-//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
-//!   adapted to use the suite's pluggable transcript.
-//!
-//! * The int_to_string function encodes into the 32 bytes little endian
-//!   representation.
-//!
-//! * The string_to_int function decodes from the 32 bytes little endian
-//!   representation.
-//!
-//! * The point_to_string function converts a point in **G** to an octet
-//!   string using compressed form. The y coordinate is encoded using
-//!   int_to_string function and the most significant bit of the last
-//!   octet is set when the integer x is greater than `(p - 1) / 2`. This
-//!   implies that the point is encoded on 32 bytes.
-//!
-//! * The string_to_point function tries to decompress the point encoded
-//!   according to `point_to_string` procedure. This function MUST outputs
-//!   "INVALID" if the octet string does not decode to a point on G.
-//!
-//! * The hash function Hash is SHA-512 as specified in
-//!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
-//!
-//! * The `ECVRF_encode_to_curve` function uses Try-And-Increment, inspired
-//!   by Section 5.4.1.1 of RFC-9381.
+//! - `SUITE_ID` = `b"BabyJubJub-SHA512-TAI-v1"`.
+//! - `G` is the prime-order subgroup of the Baby-JubJub curve of
+//!   <https://github.com/barryWhiteHat/baby_jubjub>. `fLen` = `qLen` = 32 and
+//!   `cofactor` = 8. The generator is:
+//!   - `G.x` = 19698561148652590122159747500897617769866003486955115824547446575314762165298
+//!   - `G.y` = 19298250018296453272277890825869354524455968081175474282777126169995084727839
+//! - Hash: SHA-512 ([RFC 6234](https://www.rfc-editor.org/rfc/rfc6234)),
+//!   `hLen` = 64.
+//! - `ECVRF_encode_to_curve`: try-and-increment, after RFC 9381 section
+//!   5.4.1.1.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;

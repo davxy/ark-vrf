@@ -1,58 +1,26 @@
 //! # ECVRF Bandersnatch SHA-512 Elligator2 suite
 //!
-//! Configuration:
+//! With the shared rules of [`crate::suites`]. The
+//! [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
+//! recommends this version. Version 2, [`super::bandersnatch_v2`], pads
+//! `expand_message_xmd` as RFC 9380 requires.
 //!
-//! * `SUITE_ID` = b"Bandersnatch-SHA512-ELL2-v1" for Twisted Edwards form.
-//!   The [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-//!   currently recommends this version. Version 2, [`super::bandersnatch_v2`],
-//!   pads `expand_message_xmd` as RFC 9380 requires.
-//!
-//! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
-//!   in Twisted Edwards form, with finite field and curve parameters as specified in
-//!   [MSZ21](https://eprint.iacr.org/2021/1152).
-//!   For this group, `fLen` = `qLen` = $32$ and `cofactor` = $4$.
-//!
-//! - The prime subgroup generator G is defined as follows:
-//!   - G.x = 18886178867200960497001835917649091219057080094937609519140440539760939937304
-//!   - G.y = 19188667384257783945677642223292697773471335439753913231509108946878080696678
-//!
-//! * `cLen` = 16 (128-bit security level).
-//!
-//! * The key pair generation primitive is _PK = sk * G_, with x the secret
-//!   key scalar and G the group generator. In this ciphersuite, the secret
-//!   scalar x is equal to the secret key scalar sk.
-//!
-//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
-//!   adapted to use the suite's pluggable transcript.
-//!
-//! * The int_to_string function encodes into the 32 bytes little endian
-//!   representation.
-//!
-//! * The string_to_int function decodes from the 32 bytes little endian
-//!   representation.
-//!
-//! * The point_to_string function converts a point in **G** to an octet
-//!   string using compressed form. The y coordinate is encoded using
-//!   int_to_string function and the most significant bit of the last
-//!   octet is set when the integer x is greater than `(p - 1) / 2`. This
-//!   implies that the point is encoded on 32 bytes.
-//!
-//! * The string_to_point function tries to decompress the point encoded
-//!   according to `point_to_string` procedure. This function MUST outputs
-//!   "INVALID" if the octet string does not decode to a point on G.
-//!
-//! * The hash function Hash is SHA-512 as specified in
-//!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
-//!
-//! * The `ECVRF_encode_to_curve` function uses *Elligator2* method described in
-//!   section 6.8.2 of [RFC-9380](https://datatracker.ietf.org/doc/rfc9380).
-//!   Field element expansion uses `expand_message_xmd` (RFC 9380 §5.3.1) with
-//!   SHA-512 as the fixed-output hash, except that the zero prefix `Z_pad` has
-//!   48 bytes, the expanded field element length of the arkworks 0.6
-//!   `DefaultFieldHasher`, and not the 128 byte SHA-512 input block.
-//!   The domain separation tag is `DST = SUITE_ID || DomSep::HashToCurve`,
-//!   where `DomSep::HashToCurve` is the protocol-internal hash-to-curve tag
-//!   byte shared by the transcript-based paths (see [`crate::utils::hash_to_curve_ell2_xmd`]).
+//! - `SUITE_ID` = `b"Bandersnatch-SHA512-ELL2-v1"`.
+//! - `G` is the prime-order subgroup of the Bandersnatch curve in twisted
+//!   Edwards form, with the parameters of
+//!   [MSZ21](https://eprint.iacr.org/2021/1152). `fLen` = `qLen` = 32 and
+//!   `cofactor` = 4. The generator is:
+//!   - `G.x` = 18886178867200960497001835917649091219057080094937609519140440539760939937304
+//!   - `G.y` = 19188667384257783945677642223292697773471335439753913231509108946878080696678
+//! - Hash: SHA-512 ([RFC 6234](https://www.rfc-editor.org/rfc/rfc6234)),
+//!   `hLen` = 64.
+//! - `ECVRF_encode_to_curve`: Elligator2 of
+//!   [RFC 9380](https://datatracker.ietf.org/doc/rfc9380) section 6.8.2, with
+//!   `expand_message_xmd` over SHA-512 (section 5.3.1) and
+//!   `DST = SUITE_ID || DomSep::HashToCurve` (see
+//!   [`crate::utils::hash_to_curve_ell2_xmd`]). The zero prefix `Z_pad` has 48
+//!   bytes, the element length of the arkworks 0.6 `DefaultFieldHasher`, and not
+//!   the 128 bytes of the SHA-512 block.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;

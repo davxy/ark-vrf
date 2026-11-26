@@ -1,29 +1,19 @@
 # Elliptic Curve VRF
 
-Implementations of Verifiable Random Function with Additional Data (VRF-AD)
-schemes built on a transcript-based Fiat-Shamir transform with support for
-multiple input/output pairs via delinearization.
-
-Built on the [Arkworks](https://github.com/arkworks-rs) framework with
-configurable cryptographic parameters and `no_std` support.
+Verifiable random functions with additional data (VRF-AD) on
+[arkworks](https://github.com/arkworks-rs) curves, with `no_std` support. All
+schemes use a transcript-based Fiat-Shamir transform and accept several
+input/output pairs in one proof.
 
 ## Supported Schemes
 
-- **Tiny VRF**: Compact proof. Loosely inspired by [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-  adapted with a transcript-based Fiat-Shamir transform, support for additional
-  data, and multiple I/O pairs via delinearization.
-
-- **Thin VRF**: Same structure as Tiny VRF but stores the nonce commitment instead
-  of the challenge, enabling batch verification at the cost of a slightly larger proof.
-
-- **Pedersen VRF**: Key-hiding VRF based on the construction introduced by
-  [BCHSV23](https://eprint.iacr.org/2023/002). Replaces the public key with a
-  Pedersen commitment to the secret key, serving as a building block for anonymized
-  ring signatures.
-
-- **Ring VRF**: Anonymized ring VRF combining Pedersen VRF with the ring proof scheme
-  derived from [CSSV22](https://eprint.iacr.org/2022/1205). Proves that a single
-  blinded key is a member of a committed ring without revealing which one.
+- **Tiny VRF**: compact proof `(c, s)`, close to
+  [RFC 9381](https://datatracker.ietf.org/doc/rfc9381).
+- **Thin VRF**: proof `(R, s)`, with batch verification.
+- **Pedersen VRF**: the public key is hidden in a Pedersen commitment
+  ([BCHSV23](https://eprint.iacr.org/2023/002)).
+- **Ring VRF**: Pedersen VRF plus a proof that the committed key is in a ring
+  ([CSSV22](https://eprint.iacr.org/2022/1205)).
 
 ### Specifications
 
@@ -32,16 +22,15 @@ configurable cryptographic parameters and `no_std` support.
 
 ## Built-In Suites
 
-The library conditionally includes the following pre-configured suites (see features section):
+Each suite has a feature (see [Features](#features)).
 
-- **Ed25519**: Supports Tiny, Thin, and Pedersen VRF.
-- **Secp256r1**: Supports Tiny, Thin, and Pedersen VRF.
-- **Bandersnatch** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
-  `bandersnatch_v2` is version 2 of this suite, with the `expand_message_xmd` padding of RFC 9380.
-  The [Bandersnatch VRF specification](https://github.com/davxy/bandersnatch-vrf-spec)
-  currently recommends version 1.
-- **JubJub** (_Edwards curve on BLS12-381_): Supports Tiny, Thin, Pedersen, and Ring VRF.
-- **Baby-JubJub** (_Edwards curve on BN254_): Supports Tiny, Thin, Pedersen, and Ring VRF.
+- **Ed25519**: Tiny, Thin and Pedersen VRF.
+- **Secp256r1**: Tiny, Thin and Pedersen VRF.
+- **Bandersnatch** (_Edwards curve on BLS12-381_): Tiny, Thin, Pedersen and Ring VRF.
+  `bandersnatch_v2` uses the RFC 9380 `expand_message_xmd` padding. The
+  [specification](https://github.com/davxy/bandersnatch-vrf-spec) recommends version 1.
+- **JubJub** (_Edwards curve on BLS12-381_): Tiny, Thin, Pedersen and Ring VRF.
+- **Baby-JubJub** (_Edwards curve on BN254_): Tiny, Thin, Pedersen and Ring VRF.
 
 The test vectors of each suite, the Ring VRF setup files and the RFC 9380
 vectors are in `data/`; see [`data/README.md`](data/README.md).
@@ -91,9 +80,7 @@ The keys have the same operations as methods: `secret.prove_tiny(io, ad)` and
 
 ### Thin-VRF
 
-The Thin VRF merges the public-key Schnorr pair and the VRF I/O pair into a
-single DLEQ relation via delinearization, then proves it with a Schnorr-like
-proof (R, s).
+VRF-AD with an `(R, s)` proof, which supports batch verification.
 
 _Prove_
 ```rust,ignore
@@ -123,7 +110,7 @@ assert!(batch.verify().is_ok());
 
 ### Pedersen-VRF
 
-Key-hiding VRF that replaces the public key with a Pedersen commitment to the secret key.
+The proof holds a Pedersen commitment to the secret key instead of the public key.
 
 _Prove_
 ```rust,ignore
@@ -158,7 +145,7 @@ Verification needs no public key, so `Public` has no Pedersen method.
 
 ### Ring-VRF
 
-The Ring VRF provides anonymity within a set of public keys using zero-knowledge proofs.
+The proof shows that the key is in a ring of public keys, but not which key it is.
 
 _Ring construction_
 ```rust,ignore
@@ -188,10 +175,10 @@ let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
 
 _Trusted setup_
 
-`from_seed_insecure` and `from_rand_insecure` generate the KZG trapdoor locally,
-so whoever generated it can forge ring proofs. A deployment loads the SRS of a
-trusted setup ceremony instead. The repository ships the Zcash ceremony SRS for
-the BLS12-381 suites:
+`from_seed_insecure` and `from_rand_insecure` know the KZG trapdoor, and with it
+anybody can forge ring proofs. Use them for tests only, and load the SRS of a
+trusted setup ceremony instead. The repository has the Zcash ceremony SRS for the
+BLS12-381 suites:
 
 ```rust,ignore
 use ark_serialize::CanonicalDeserialize;
@@ -258,26 +245,18 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 
 ## Features
 
-- `default`: `std`. The test suite needs it: `cargo test --no-default-features`
-  stops with one error that says so. The `no_std` build is checked with
-  `cargo check --no-default-features --features full`, and with `secret-split`
-  by the application crate in `.github/no-std-check` on `x86_64-unknown-none`.
-- `full`: All the curves below plus `ring`.
-- `secret-split`: Split-secret scalar multiplication. Secret scalar is split into the sum
-   of two scalars, which randomly mutate but retain the same sum. Incurs 2x penalty in the
-   secret scalar multiplications of the Tiny, Thin and Pedersen VRFs (public key
-   derivation, output, nonce and blinding), but provides side channel defenses for them.
-   The split draws from `OsRng` on every secret scalar multiplication, `Secret`
-   deserialization included. The feature is `no_std`. It enables
-   `rand/getrandom`, so the application must give `getrandom` a backend where
-   it has none: `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom`
-   or `getrandom/rdrand` on bare metal. `OsRng` panics where the backend fails
-   at run time.
-   The multiplication stays variable time with the feature and without it.
-   Ring proof witness generation is not covered by this feature: it relies on the
-   branch-free handling of the secret bits
-   implemented in the `w3f-ring-proof` and `w3f-plonk-common` crates.
-- `ring`: Ring-VRF for the curves supporting it.
+- `default`: `std`. The tests need it.
+- `full`: all the curves below, and `ring`.
+- `secret-split`: each secret scalar multiplication of Tiny, Thin and Pedersen VRF
+  (public key, output, nonce, blinding) uses two random shares of the scalar. This
+  protects the scalar value against side channels, at twice the cost. The timing
+  stays variable. Ring proof witness generation does not use the split.
+  The shares come from `OsRng` at each multiplication, also when a `Secret` is
+  decoded, and `OsRng` panics when its backend fails. The feature works with
+  `no_std`, but where `getrandom` has no backend, the application must select one:
+  `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom` or
+  `getrandom/rdrand` on bare metal.
+- `ring`: Ring VRF for the curves that support it.
 - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
 
 ### Curves
@@ -290,8 +269,8 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 
 ### Arkworks optimizations
 
-- `parallel`: Parallel execution where worth using `rayon`.
-- `asm`: Assembly implementation of some low level operations.
+- `parallel`: parallel execution with `rayon`.
+- `asm`: assembly for some low level operations.
 
 ## License
 

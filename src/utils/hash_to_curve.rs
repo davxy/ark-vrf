@@ -1,7 +1,4 @@
-//! Hash-to-curve implementations.
-//!
-//! Provides Try-And-Increment (TAI) and Elligator2 hash-to-curve methods
-//! following RFC 9380 and RFC 9381.
+//! Hash-to-curve: try-and-increment (RFC 9381) and Elligator2 (RFC 9380).
 
 use crate::utils::transcript::Transcript;
 use crate::*;
@@ -18,19 +15,12 @@ use super::common::DomSep;
 #[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
 
-/// Try-And-Increment hash-to-curve, inspired by RFC-9381 section 5.4.1.1.
+/// Try-and-increment hash-to-curve, after RFC 9381 section 5.4.1.1.
 ///
-/// 1. Absorbs `SUITE_ID || DomSep::HashToCurve || len(data) || data || ctr`
-///    into the suite transcript and squeezes a candidate value. The data
-///    length is encoded as a little-endian `u64` to keep the encoding
-///    unambiguous regardless of `data` length.
-/// 2. Attempts to interpret the squeezed bytes as a curve point via
-///    [`AffineRepr::from_random_bytes`].
-/// 3. Clears the cofactor and checks the point is not the identity.
-/// 4. Repeats with an incremented counter (up to 256 attempts) if no valid
-///    point is found.
-///
-/// Returns `None` if no valid point is found after 256 attempts.
+/// For `ctr` in `0..=255`: absorb `SUITE_ID || DomSep::HashToCurve || len(data)
+/// || data || ctr`, with the length as a little-endian `u64`, squeeze a
+/// candidate, read it with [`AffineRepr::from_random_bytes`] and clear the
+/// cofactor. Returns the first point that is not the identity, or `None`.
 pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     let base_len = BaseField::<S>::default().serialized_size(ark_serialize::Compress::Yes);
     let mut hash_buf = [0u8; 128];
@@ -56,13 +46,8 @@ pub fn hash_to_curve_tai<S: Suite>(data: &[u8]) -> Option<AffinePoint<S>> {
     None
 }
 
-/// Elligator2 hash-to-curve generic over the field hasher.
-///
-/// Both [`hash_to_curve_ell2_xmd`] and [`hash_to_curve_ell2_xof`] delegate to this,
-/// differing only in the `H2F` type parameter (`XmdFieldHasher` vs `XofFieldHasher`).
-///
-/// Domain Separation Tag is `S::SUITE_ID || DomSep::HashToCurve`, mirroring the
-/// per-operation tagging used by transcript-based paths.
+/// Elligator2 hash-to-curve with the field hasher `H2F`. The DST is
+/// `SUITE_ID || DomSep::HashToCurve`.
 fn hash_to_curve_ell2<S: Suite, H2F>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H2F: HashToField<BaseField<S>>,
@@ -89,10 +74,9 @@ where
     .ok()
 }
 
-/// Elligator2 hash-to-curve using `expand_message_xmd` (RFC 9380 section 5.3.1).
-///
-/// Uses a fixed-output hash (e.g. SHA-512) for field element expansion.
-/// Any salting of `data` must be applied by the caller.
+/// Elligator2 hash-to-curve with `expand_message_xmd` (RFC 9380 section 5.3.1)
+/// and a fixed-output hash such as SHA-512. The caller applies any salt to
+/// `data`.
 pub fn hash_to_curve_ell2_xmd<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::FixedOutputReset + digest::core_api::BlockSizeUser + Default + Clone,
@@ -120,11 +104,8 @@ where
     hash_to_curve_ell2::<S, XmdFieldHasher<H, S, ArkworksCompat>>(data)
 }
 
-/// Elligator2 hash-to-curve using an XOF (extendable output function).
-///
-/// Uses `expand_message_xof` (RFC 9380 section 5.3.2) for field element expansion.
-/// This is the natural expansion mode for XOF hash functions like BLAKE3 and SHAKE128.
-/// Any salting of `data` must be applied by the caller.
+/// Elligator2 hash-to-curve with `expand_message_xof` (RFC 9380 section 5.3.2)
+/// and an XOF such as SHAKE128. The caller applies any salt to `data`.
 pub fn hash_to_curve_ell2_xof<S: Suite, H>(data: &[u8]) -> Option<AffinePoint<S>>
 where
     H: digest::ExtendableOutput + Default + Clone,
@@ -240,11 +221,8 @@ where
     }
 }
 
-/// XOF-based field hasher implementing `expand_message_xof` from RFC 9380 section 5.3.2.
-///
-/// Used with `MapToCurveBasedHasher` for hash-to-curve with extendable output functions
-/// like BLAKE3 and SHAKE128. The expansion length follows
-/// [`Suite::SECURITY_PARAMETER`].
+/// Field hasher with `expand_message_xof` (RFC 9380 section 5.3.2), for XOFs such
+/// as SHAKE128. The expansion length follows [`Suite::SECURITY_PARAMETER`].
 struct XofFieldHasher<H, S> {
     dst: Vec<u8>,
     len_per_base_elem: usize,

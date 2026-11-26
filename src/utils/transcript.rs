@@ -7,47 +7,26 @@ use digest::generic_array::GenericArray;
 use sha2::Sha512;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Fiat-Shamir transcript with absorb/squeeze interface.
+/// Fiat-Shamir transcript: absorb bytes, then squeeze output of any length.
 ///
-/// Provides a streaming hash abstraction where data is absorbed into an
-/// internal state and arbitrary-length output is squeezed out.
-///
-/// Implements [`io::Write`] so that serializable types (points, scalars)
-/// can be written directly into the transcript without intermediate buffers.
-///
-/// Implementations do **not** need to handle domain separation or
-/// length-prefixing of variable-length inputs. The protocol layer
-/// takes care of this by absorbing domain-separation tags and explicit
-/// lengths before variable-length data. Since `absorb_raw` is a plain
-/// concatenation into a single hash stream (absorb then squeeze, no
-/// resets), the domain-separation bytes injected by the caller are
-/// sufficient to prevent ambiguous parses.
+/// It implements [`io::Write`], so serializable values go in with no buffer. An
+/// implementation does not need domain separation or length prefixes: the
+/// schemes absorb tags and lengths before variable-length data.
 pub trait Transcript: Clone + io::Read + io::Write {
     /// Create a new transcript.
     fn new(label: &[u8]) -> Self;
 
-    /// Absorb raw bytes into the transcript.
-    ///
-    /// This is a plain concatenation into the internal hash state.
-    /// Domain separation and length-prefixing of variable-length fields
-    /// are the caller's responsibility (handled by the protocol layer).
+    /// Absorb raw bytes. The caller adds domain separation and length prefixes.
     ///
     /// # Panics
     ///
     /// Panics if called after `squeeze_raw`.
     fn absorb_raw(&mut self, data: &[u8]);
 
-    /// Squeeze output bytes from the transcript.
-    ///
-    /// The first call finalizes the internal hash and transitions to squeezing.
-    ///
-    /// After the first `squeeze_raw` call, `absorb_raw` must not be called.
+    /// Squeeze output bytes. The first call ends the absorb phase.
     fn squeeze_raw(&mut self, buf: &mut [u8]);
 
-    /// Absorb a serializable object into the transcript.
-    ///
-    /// Serializes the object directly into the transcript via the
-    /// [`io::Write`] implementation, avoiding intermediate allocations.
+    /// Absorb a serializable value, with no intermediate buffer.
     fn absorb_serialize(&mut self, obj: &impl CanonicalSerialize) {
         obj.serialize_compressed(self).unwrap();
     }
@@ -83,10 +62,6 @@ impl<T: Transcript> ark_std::rand::RngCore for TranscriptRng<T> {
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// XofTranscript: single transcript implementation for all XOF-like hashers
-// ---------------------------------------------------------------------------
 
 /// Transcript backed by any [`ExtendableOutput`](digest::ExtendableOutput) hasher.
 ///
@@ -187,10 +162,6 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// DigestXof: counter-mode XOF adapter for fixed-output hashes
-// ---------------------------------------------------------------------------
-
 /// Wraps any [`Digest`] hash into an [`ExtendableOutput`](digest::ExtendableOutput)
 /// function using counter-mode expansion.
 ///
@@ -288,14 +259,7 @@ impl<H: Digest> digest::XofReader for DigestXofReader<H> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Type aliases
-// ---------------------------------------------------------------------------
-
-/// Hash-based transcript using counter-mode expansion for fixed-output hashes.
-///
-/// The squeeze output is produced by hashing a seed with an incrementing
-/// counter, generating `H::OutputSize` bytes per block:
+/// Transcript for a fixed-output hash, with counter-mode expansion:
 ///
 /// ```text
 /// seed = H(label || absorbed_data)
@@ -395,9 +359,8 @@ mod tests {
     transcript_tests!(HashTranscript<sha2::Sha512>, hash_sha512);
     transcript_tests!(HashTranscript<sha2::Sha256>, hash_sha256);
 
-    /// The reader seed is the preimage of every squeezed byte, and the buffer
-    /// holds the last squeezed block. For a nonce derivation both are key
-    /// material, so `Drop` wipes them through `zeroize`. This checks the wipe.
+    /// The reader seed and buffer are key material for a nonce derivation, so
+    /// `Drop` must wipe them.
     #[test]
     fn digest_xof_reader_zeroize() {
         use digest::{ExtendableOutput, Update, XofReader};

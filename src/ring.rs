@@ -1,23 +1,19 @@
 //! # Ring VRF
 //!
-//! Anonymized ring VRF combining Pedersen VRF with the ring proof scheme derived
-//! from [CSSV22](https://eprint.iacr.org/2022/1205). Proves that a single blinded
-//! key is a member of a committed ring without revealing which one.
+//! Pedersen VRF plus a ring proof after
+//! [CSSV22](https://eprint.iacr.org/2022/1205): the committed key is in the
+//! ring, and the proof does not show which key it is. Needs the `ring` feature.
 //!
-//! This module is gated by the `ring` feature.
-//!
-//! The ring prover draws its column blinding from the OS random source and
-//! panics at `prove` where `getrandom` has no source.
-//! [`RingContext::new_without_blinding`] skips the draw, and the zero
-//! knowledge with it.
+//! The ring prover draws its blinding from the OS random source, and `prove`
+//! panics where `getrandom` has no source. [`RingContext::new_without_blinding`]
+//! does not draw, and its proofs are not zero knowledge.
 //!
 //! ## Setup
 //!
-//! A deployment builds its [`RingSetup`] from the SRS of a trusted setup
-//! ceremony with [`RingSetup::from_pcs_params`]. The repository ships the
-//! Zcash ceremony SRS in `data/srs/`. [`RingSetup::from_seed_insecure`] and
-//! [`RingSetup::from_rand_insecure`] generate the trapdoor locally and are
-//! for tests only.
+//! Build the [`RingSetup`] from the SRS of a trusted setup ceremony with
+//! [`RingSetup::from_pcs_params`]. The repository has the Zcash ceremony SRS in
+//! `data/srs/`. [`RingSetup::from_seed_insecure`] and
+//! [`RingSetup::from_rand_insecure`] know the trapdoor and are for tests only.
 //!
 //! ## Usage
 //!
@@ -82,11 +78,8 @@ pub const ACCUMULATOR_BASE_SEED: &[u8] = b"ring-accumulator";
 /// Seed hashed to curve to produce [`RingSuite::PADDING`] in built-in suites.
 pub const PADDING_SEED: &[u8] = b"ring-padding";
 
-/// Suite extension for Ring VRF support.
-///
-/// Provides the additional cryptographic parameters required by the Ring VRF
-/// scheme. The bounds on the associated type are the ones the ring proof
-/// backend requires.
+/// Suites with Ring VRF. The bounds on `Affine` come from the ring proof
+/// backend.
 pub trait RingSuite:
     PedersenSuite<
     Affine: AffineRepr<
@@ -98,22 +91,17 @@ pub trait RingSuite:
     /// Pairing type.
     type Pairing: ark_ec::pairing::Pairing<ScalarField = BaseField<Self>>;
 
-    /// Accumulator base.
+    /// Accumulator base. Nobody may know its discrete log to the generator, and
+    /// it must not be the identity. It need not be in the prime-order subgroup.
     ///
-    /// Point with unknown discrete log relative to the generator. It must not
-    /// be the identity. The backend accumulates from it in affine Twisted
-    /// Edwards coordinates. The built-in suites do not need membership in the
-    /// prime order subgroup: the Twisted Edwards ones hash
-    /// [`ACCUMULATOR_BASE_SEED`] to the curve, and the Short Weierstrass
-    /// Bandersnatch suite adds a fixed point outside the subgroup to the
-    /// hashed point and passes its vectors with it.
+    /// The built-in twisted Edwards suites hash [`ACCUMULATOR_BASE_SEED`] to the
+    /// curve. The short Weierstrass Bandersnatch suite adds a fixed point
+    /// outside the subgroup to the hashed point.
     const ACCUMULATOR_BASE: AffinePoint<Self>;
 
-    /// Padding point.
-    ///
-    /// Point with unknown discrete log relative to the generator, usable in
-    /// place of any key during ring construction. Built-in suites derive it by
-    /// hashing [`PADDING_SEED`] to the curve.
+    /// Padding point. Nobody may know its discrete log to the generator, so it
+    /// can replace any key in a ring. The built-in suites hash [`PADDING_SEED`]
+    /// to the curve.
     const PADDING: AffinePoint<Self>;
 }
 
@@ -123,29 +111,20 @@ pub type Kzg<S> = ring_proof::pcs::kzg::KZG<<S as RingSuite>::Pairing>;
 /// KZG commitment.
 pub type PcsCommitment<S> = <Kzg<S> as ring_proof::pcs::PCS<BaseField<S>>>::C;
 
-/// KZG Polynomial Commitment Scheme parameters.
-///
-/// Basically powers of tau SRS.
+/// KZG parameters: the powers-of-tau SRS.
 pub type PcsParams<S> = ring_proof::pcs::kzg::urs::URS<<S as RingSuite>::Pairing>;
 
-/// PCS parameters required by the verifier.
-///
-/// A few points extracted from the SRS, independent of ring size. Together
-/// with a [`RingCommitment`] it is sufficient to reconstruct a
-/// [`RingVerifierKey`] via [`verifier_key_from_commitment`], without access
-/// to the full [`RingSetup`]. See [`RingVerifierKey`] for the uncompressed
-/// decode caveat.
+/// PCS parameters of the verifier: a few SRS points, independent of the ring
+/// size. With a [`RingCommitment`], they give a [`RingVerifierKey`] (see
+/// [`verifier_key_from_commitment`]). See [`RingVerifierKey`] for the
+/// uncompressed decoder.
 pub type PcsVerifierParams<S> = <PcsParams<S> as ring_proof::pcs::PcsParams>::RVK;
 
-/// Polynomial Interactive Oracle Proof (IOP) parameters.
-///
-/// Basically all the application specific parameters required to construct and
-/// verify the ring proof.
+/// Polynomial IOP parameters of the ring proof.
 pub type PiopParams<S> = ring_proof::PiopParams<TEAffine<CurveConfig<S>>>;
 
-/// Ring keys commitment.
-///
-/// See [`RingVerifierKey`] for the uncompressed decode caveat.
+/// Commitment to the ring keys. See [`RingVerifierKey`] for the uncompressed
+/// decoder.
 pub type RingCommitment<S> = ring_proof::FixedColumnsCommitted<BaseField<S>, PcsCommitment<S>>;
 
 /// Ring prover key.
@@ -153,10 +132,10 @@ pub type RingProverKey<S> = ring_proof::ProverKey<BaseField<S>, Kzg<S>, TEAffine
 
 /// Ring verifier key.
 ///
-/// A backend type with the arkworks decoder, which does not check that an
-/// uncompressed BLS12-381 point is on the curve. After an uncompressed decode
-/// of untrusted bytes call `Valid::check`, or use the compressed form. The
-/// same holds for [`RingCommitment`] and [`PcsVerifierParams`].
+/// The backend decoder does not check that an uncompressed BLS12-381 point is
+/// on the curve. After an uncompressed decode of untrusted bytes, call
+/// `Valid::check`, or use the compressed form. The same holds for
+/// [`RingCommitment`] and [`PcsVerifierParams`].
 pub type RingVerifierKey<S> = ring_proof::VerifierKey<BaseField<S>, Kzg<S>>;
 
 /// Ring prover.
@@ -166,40 +145,23 @@ pub type RingProver<S> = ring_proof::ring_prover::RingProver<BaseField<S>, Kzg<S
 pub type RingVerifier<S> =
     ring_proof::ring_verifier::RingVerifier<BaseField<S>, Kzg<S>, CurveConfig<S>>;
 
-/// Multi-ring KZG batch verifier.
-///
-/// Accumulates ring proofs from one or more rings (sharing the same KZG SRS)
-/// into a single batched pairing check.
+/// KZG batch verifier for the ring proofs of one or more rings with the same
+/// SRS: one pairing check for all.
 pub type RingBatchVerifier<S> = ring_proof::multi_ring_batch_verifier::BatchVerifier<
     <S as RingSuite>::Pairing,
     ring_proof::ArkTranscript,
 >;
 
-/// Raw ring proof.
-///
-/// This is the primitive ring proof used in conjunction with Pedersen proof to
-/// construct the actual ring vrf proof [`Proof`].
+/// Ring membership proof of the backend, the second part of a [`Proof`].
 pub type RingBareProof<S> = ring_proof::RingProof<BaseField<S>, Kzg<S>>;
 
-/// Ring VRF proof.
+/// Ring VRF proof: a Pedersen VRF proof, and a proof that its key commitment
+/// `Yb` is in the ring.
 ///
-/// Pedersen VRF proof combined with a ring membership proof:
-/// - `pedersen_proof`: Key commitment and VRF correctness proof
-/// - `ring_proof`: Membership proof binding the key commitment `Yb` to the ring
-///
-/// Construct it with [`Proof::prove`] or by deserialization. Deserialization
-/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
-/// every proof holds valid points unless built with a `deserialize_*_unchecked`
-/// method.
-///
-/// Both decoding paths accept one encoding per proof, but do not reject
-/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
-/// return an error when the input is not completely consumed.
+/// Decoding follows the rules in [`PointWrapper`].
 #[derive(Clone, CanonicalSerialize)]
 pub struct Proof<S: RingSuite> {
-    /// Pedersen VRF proof (key commitment and VRF correctness).
     pub(crate) pedersen_proof: PedersenProof<S>,
-    /// Ring membership proof binding the key commitment to the ring.
     pub(crate) ring_proof: RingBareProof<S>,
 }
 
@@ -240,11 +202,10 @@ impl<S: RingSuite + core::fmt::Debug> core::fmt::Debug for Proof<S> {
 }
 
 impl<S: RingSuite> Proof<S> {
-    /// Generate a proof for the given VRF I/O pairs and additional data.
+    /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
     ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    /// `ring_prover` must be built for the ring and for the position of the
-    /// key of `secret` in it (see [`RingContext::ring_prover`]).
+    /// `ring_prover` must be built for the ring and for the position of the key
+    /// of `secret` in it (see [`RingContext::ring_prover`]).
     pub fn prove(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -260,34 +221,13 @@ impl<S: RingSuite> Proof<S> {
         }
     }
 
-    /// Verify the proof for the given VRF I/O pairs and additional data.
+    /// Verify the proof for the VRF I/O pairs `ios` and the additional data `ad`.
+    /// `verifier` must be built for the ring (see [`RingContext::ring_verifier`]).
     ///
-    /// Verifies that each VRF output was correctly derived using a secret key
-    /// belonging to one of the ring's public keys, without revealing which one.
-    /// Multiple I/O pairs are delinearized into a single merged pair before
-    /// verifying. `verifier` must be built for the ring the proof claims
-    /// membership in (see [`RingContext::ring_verifier`]).
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// key commitment or any I/O pair point is the group identity or the key
-    /// commitment cannot be mapped to Twisted Edwards form,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// All curve points involved in verification (I/O pairs and proof points)
-    /// are assumed to be in the prime-order subgroup. This is guaranteed when
-    /// points come from checked deserialization (see [`PointWrapper`]) or from
-    /// trusted operations like [`Input::new`] (hash-to-curve) and
-    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
-    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
-    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
-    ///
-    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
-    /// the burden of subgroup validation on the caller. Passing points with
-    /// cofactor components leads to undefined verification behavior.
-    ///
-    /// The group identity is checked unconditionally, for the key commitment and
-    /// for every I/O pair, by the embedded Pedersen verification (see
-    /// [`pedersen::Proof::verify`]).
+    /// Returns `Error::InvalidData` if the key commitment or a point of `ios` is
+    /// the identity, or if the key commitment has no twisted Edwards form, and
+    /// `Error::VerificationFailure` if the proof is not valid. Subgroup
+    /// membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -319,17 +259,12 @@ impl<S: RingSuite> Secret<S> {
     }
 }
 
-/// Lightweight ring proof context.
+/// Ring proof context: the PIOP parameters, without the SRS.
 ///
-/// Contains only the PIOP parameters needed to construct prover and verifier
-/// instances from pre-built keys, without the KZG SRS required for key generation.
-///
-/// Cheap to construct from a ring size alone via [`RingContext::new`], or
-/// extractable from a [`RingSetup`] via [`RingSetup::ring_context`].
-/// [`Self::piop_params`] reads the parameters.
+/// Build it from a ring size with [`RingContext::new`], or take it from a
+/// [`RingSetup`] with [`RingSetup::ring_context`].
 #[derive(Clone)]
 pub struct RingContext<S: RingSuite> {
-    /// PIOP parameters.
     piop_params: PiopParams<S>,
 }
 
@@ -353,11 +288,10 @@ impl<S: RingSuite> RingContext<S> {
         Self::construct(min_ring_size, true)
     }
 
-    /// Construct a context whose provers generate deterministic proofs.
+    /// Context whose provers make deterministic proofs, with no blinding.
     ///
-    /// Column blinding is disabled: proofs are reproducible, thus NOT zero-knowledge,
-    /// but remain valid for verifiers using a regular context for the same ring size.
-    /// Useful for reproducible test vectors generation.
+    /// The proofs are not zero knowledge, but verifiers with a regular context
+    /// of the same ring size accept them. Use it for test vectors.
     pub fn new_without_blinding(min_ring_size: usize) -> Self {
         Self::construct(min_ring_size, false)
     }
@@ -382,7 +316,7 @@ impl<S: RingSuite> RingContext<S> {
         Self { piop_params }
     }
 
-    /// The max ring size this context is able to handle.
+    /// Maximum ring size of this context.
     #[inline(always)]
     pub fn max_ring_size(&self) -> usize {
         self.piop_params.keyset_part_size
@@ -408,10 +342,7 @@ impl<S: RingSuite> RingContext<S> {
         self.clone().into_ring_verifier(verifier_key)
     }
 
-    /// Create a prover instance, consuming the context to avoid cloning.
-    ///
-    /// See [`Self::ring_prover`] for the handling of `key_index` and of
-    /// `prover_key`.
+    /// Same as [`Self::ring_prover`], but consumes the context.
     pub fn into_ring_prover(self, prover_key: RingProverKey<S>, key_index: usize) -> RingProver<S> {
         let key_index = wrap_key_index(key_index, self.max_ring_size());
         RingProver::<S>::init(
@@ -422,7 +353,7 @@ impl<S: RingSuite> RingContext<S> {
         )
     }
 
-    /// Create a verifier instance, consuming the context to avoid cloning.
+    /// Same as [`Self::ring_verifier`], but consumes the context.
     pub fn into_ring_verifier(self, verifier_key: RingVerifierKey<S>) -> RingVerifier<S> {
         RingVerifier::<S>::init(
             verifier_key,
@@ -432,27 +363,19 @@ impl<S: RingSuite> RingContext<S> {
     }
 }
 
-/// Ring proof setup.
+/// Ring proof setup: the KZG parameters and the [`RingContext`].
 ///
-/// Contains the cryptographic parameters needed for ring proof key construction,
-/// proving and verification:
-/// - `pcs_params`: Polynomial Commitment Scheme parameters (KZG setup)
-/// - `ring_ctx`: Ring context containing the PIOP parameters
-///
-/// The serialized form is the SRS, trimmed to the domain, so the G1 length
-/// carries the ring capacity and decoding accepts only that exact shape. A raw
-/// SRS file is not a setup: decode it as [`PcsParams`] and call
-/// [`Self::from_pcs_params`].
+/// The encoding is the SRS trimmed to the domain, so its G1 length gives the
+/// ring capacity, and the decoder accepts only that length. A raw SRS file is
+/// not a setup: decode it as [`PcsParams`] and call [`Self::from_pcs_params`].
 #[derive(Clone)]
 pub struct RingSetup<S: RingSuite> {
-    /// PCS parameters.
     pcs_params: PcsParams<S>,
-    /// Ring context (PIOP parameters).
     ring_ctx: RingContext<S>,
 }
 
-/// Collects at most `capacity` ring members as Twisted Edwards points. The
-/// ring proof backend asserts on the identity, so it is rejected here.
+/// At most `capacity` ring members as twisted Edwards points. The backend
+/// asserts on the identity, so this rejects it.
 fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
     pks: impl IntoIterator<Item = P>,
     capacity: usize,
@@ -473,25 +396,20 @@ fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
 }
 
 impl<S: RingSuite> Public<S> {
-    /// The padding point [`RingSuite::PADDING`] as a ring member.
-    ///
-    /// Nobody knows its discrete log, so it can take the place of any key in
-    /// the ring, for example the key of a removed member.
+    /// [`RingSuite::PADDING`] as a ring member, for example in place of a
+    /// removed key.
     pub fn padding() -> Self {
         Self::from_affine_unchecked(S::PADDING)
     }
 }
 
 impl<S: RingSuite> RingSetup<S> {
-    /// Construct deterministic ring proof params for a ring of at least
-    /// `min_ring_size` keys.
-    ///
-    /// Creates parameters using a transcript-based RNG seeded with `seed`.
+    /// Setup for at least `min_ring_size` keys, from `seed`.
     ///
     /// # Insecure
     ///
-    /// Anyone who knows the seed knows the KZG trapdoor and can forge ring
-    /// proofs. For tests only; a deployment uses [`Self::from_pcs_params`].
+    /// Anybody who knows the seed knows the KZG trapdoor and can forge ring
+    /// proofs. Use it for tests only.
     pub fn from_seed_insecure(min_ring_size: usize, seed: [u8; 32]) -> Self {
         let mut t = S::Transcript::new(S::SUITE_ID);
         t.absorb_raw(&seed);
@@ -499,15 +417,12 @@ impl<S: RingSuite> RingSetup<S> {
         Self::from_rand_insecure(min_ring_size, &mut rng)
     }
 
-    /// Construct random ring proof params for a ring of at least `min_ring_size`
-    /// keys.
-    ///
-    /// Generates a new KZG setup with sufficient degree for that ring size.
+    /// Random setup for at least `min_ring_size` keys.
     ///
     /// # Insecure
     ///
-    /// Whoever runs the generation knows the KZG trapdoor and can forge ring
-    /// proofs. For tests only; a deployment uses [`Self::from_pcs_params`].
+    /// The party that runs it knows the KZG trapdoor and can forge ring proofs.
+    /// Use it for tests only.
     pub fn from_rand_insecure(min_ring_size: usize, rng: &mut impl ark_std::rand::RngCore) -> Self {
         use ring_proof::pcs::PCS;
         let max_degree = pcs_domain_size::<S>(min_ring_size) - 1;
@@ -515,16 +430,13 @@ impl<S: RingSuite> RingSetup<S> {
         Self::from_pcs_params(min_ring_size, pcs_params).expect("PCS params is correct")
     }
 
-    /// Construct ring proof params from existing KZG setup.
+    /// Setup for at least `min_ring_size` keys from a KZG SRS, trimmed to the
+    /// domain. Returns `Error::RingCapacityExceeded` if the SRS is too short.
     ///
-    /// Truncates the setup if larger than needed, or returns
-    /// `Error::RingCapacityExceeded` if it is insufficient for `min_ring_size` keys.
-    ///
-    /// Ring VRF soundness rests on the KZG trapdoor staying unknown, so
-    /// `pcs_params` must come from a trusted setup ceremony. The repository
-    /// ships the Zcash ceremony SRS for the BLS12-381 suites in
-    /// `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin`, which holds
-    /// 1791 Bandersnatch or 1792 Jubjub keys.
+    /// `pcs_params` must come from a trusted setup ceremony: anybody who knows
+    /// the trapdoor can forge ring proofs. The Zcash ceremony SRS in
+    /// `data/srs/bls12-381-srs-2-11-uncompressed-zcash.bin` holds 1791
+    /// Bandersnatch or 1792 Jubjub keys.
     pub fn from_pcs_params(
         min_ring_size: usize,
         mut pcs_params: PcsParams<S>,
@@ -537,7 +449,6 @@ impl<S: RingSuite> RingSetup<S> {
         {
             return Err(Error::RingCapacityExceeded);
         }
-        // Keep only the required powers of tau
         pcs_params
             .powers_in_g1
             .truncate(pcs_domain_size::<S>(min_ring_size));
@@ -549,21 +460,16 @@ impl<S: RingSuite> RingSetup<S> {
         })
     }
 
-    /// Create both keys for the given ring of public keys.
+    /// Prover key and verifier key for the ring `pks`, in one pass. Calling
+    /// [`Self::prover_key`] and [`Self::verifier_key`] costs twice as much.
     ///
-    /// The backend builds the two keys in one pass. [`Self::prover_key`] and
-    /// [`Self::verifier_key`] each drop one half, so a party that needs both
-    /// keys pays twice if it calls them.
+    /// `pks` iterates over keys or key references, for example `&ring` for a
+    /// `Vec<Public<S>>`. Subgroup membership is not checked (see
+    /// [`PointWrapper`]).
     ///
-    /// `pks` is any iterator of keys or of references to keys, for example
-    /// `&ring` for a `Vec<Public<S>>`. The keys are assumed to be in the
-    /// prime-order subgroup, which the checked deserialization of [`Public`]
-    /// guarantees; a key from unchecked deserialization places that check on
-    /// the caller.
-    ///
-    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
-    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
-    /// Twisted Edwards form.
+    /// Returns `Error::RingCapacityExceeded` if `pks` is larger than the ring
+    /// capacity, and `Error::InvalidData` if a key is the identity or has no
+    /// twisted Edwards form.
     pub fn keys<P: Borrow<Public<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
@@ -576,14 +482,7 @@ impl<S: RingSuite> RingSetup<S> {
         ))
     }
 
-    /// Create a prover key for the given ring of public keys.
-    ///
-    /// Use [`Self::keys`] if the verifier key is needed too. `pks` is as for
-    /// [`Self::keys`].
-    ///
-    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
-    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
-    /// Twisted Edwards form.
+    /// Prover key for the ring `pks`. Same inputs and errors as [`Self::keys`].
     pub fn prover_key<P: Borrow<Public<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
@@ -591,14 +490,7 @@ impl<S: RingSuite> RingSetup<S> {
         Ok(self.keys(pks)?.0)
     }
 
-    /// Create a verifier key for the given ring of public keys.
-    ///
-    /// Use [`Self::keys`] if the prover key is needed too. `pks` is as for
-    /// [`Self::keys`].
-    ///
-    /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
-    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
-    /// Twisted Edwards form.
+    /// Verifier key for the ring `pks`. Same inputs and errors as [`Self::keys`].
     pub fn verifier_key<P: Borrow<Public<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
@@ -606,10 +498,7 @@ impl<S: RingSuite> RingSetup<S> {
         Ok(self.keys(pks)?.1)
     }
 
-    /// Create a verifier key from a precomputed ring commitment.
-    ///
-    /// The commitment can be obtained from an existing verifier key via
-    /// [`RingVerifierKey::commitment`].
+    /// Verifier key from a ring commitment (see [`RingVerifierKey::commitment`]).
     pub fn verifier_key_from_commitment(
         &self,
         commitment: RingCommitment<S>,
@@ -617,17 +506,13 @@ impl<S: RingSuite> RingSetup<S> {
         verifier_key_from_commitment::<S>(commitment, self.pcs_verifier_params())
     }
 
-    /// Extract the PCS parameters required by the verifier.
-    ///
-    /// Small (a few points) and independent of ring size. Sufficient,
-    /// together with a ring commitment, to reconstruct a verifier key via
-    /// [`verifier_key_from_commitment`] without access to the full setup.
+    /// PCS parameters of the verifier (see [`PcsVerifierParams`]).
     pub fn pcs_verifier_params(&self) -> PcsVerifierParams<S> {
         use ring_proof::pcs::PcsParams;
         self.pcs_params.raw_vk()
     }
 
-    /// Create a builder for incremental construction of the verifier key.
+    /// Builder for a verifier key that takes the keys in parts.
     pub fn verifier_key_builder(&self) -> (VerifierKeyBuilder<S>, RingBuilderPcsParams<S>) {
         type RingBuilderKey<S> =
             ring_proof::ring::RingBuilderKey<BaseField<S>, <S as RingSuite>::Pairing>;
@@ -644,23 +529,18 @@ impl<S: RingSuite> RingSetup<S> {
         &self.pcs_params
     }
 
-    /// Get a reference to the lightweight [`RingContext`].
+    /// Get a reference to the [`RingContext`].
     pub fn ring_context(&self) -> &RingContext<S> {
         &self.ring_ctx
     }
 }
 
-/// Create a verifier key from a precomputed ring commitment and the PCS
-/// verifier parameters.
+/// Verifier key from a ring commitment and the PCS verifier parameters, with
+/// no SRS.
 ///
-/// Lightweight alternative to [`RingSetup::verifier_key_from_commitment`] for
-/// verifier-only users: no SRS required. The parameters can be obtained once
-/// via [`RingSetup::pcs_verifier_params`] and distributed independently.
-///
-/// Soundness rests on `pcs_params` matching the trusted setup the commitment
-/// was produced under. Deserialization validates the points, but cannot tell
-/// a legitimate setup from a malicious one: obtain the parameters from a
-/// trusted source, not alongside untrusted proof data.
+/// `pcs_params` must come from the trusted setup of the commitment. The decoder
+/// cannot tell a valid setup from a malicious one, so take the parameters from
+/// a trusted source, not from the proof data.
 pub fn verifier_key_from_commitment<S: RingSuite>(
     commitment: RingCommitment<S>,
     pcs_params: PcsVerifierParams<S>,
@@ -710,27 +590,21 @@ impl<S: RingSuite> ark_serialize::Valid for RingSetup<S> {
     }
 }
 
-/// Information required for incremental ring construction.
-///
-/// Basically the SRS in Lagrangian form.
-/// Can be constructed via the `PcsParams::ck_with_lagrangian()` method.
+/// SRS in Lagrangian form, for the [`VerifierKeyBuilder`]. See
+/// `PcsParams::ck_with_lagrangian()`.
 #[derive(Clone, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RingBuilderPcsParams<S: RingSuite>(pub Vec<G1Affine<S>>);
 
-// Under construction ring commitment.
 type PartialRingCommitment<S> =
     ring_proof::ring::Ring<BaseField<S>, <S as RingSuite>::Pairing, TEAffine<CurveConfig<S>>>;
 
-/// Builder for incremental construction of ring verifier keys.
+/// Builder for a ring verifier key that takes the keys in parts, for large rings
+/// or small memory.
 ///
-/// Allows constructing a verifier key by adding public keys in batches,
-/// which is useful for large rings or memory-constrained environments.
-///
-/// A serialized builder holds the ring commitment built so far, so it defines
-/// the ring like a verifier key does. Load a builder only from a source that
-/// you trust as much as a verifier key. Decoding rejects a padding point other
-/// than [`RingSuite::PADDING`] and a capacity that no PIOP domain gives, but it
-/// cannot check the commitment itself.
+/// An encoded builder holds the ring commitment, so it defines the ring like a
+/// verifier key does: load it only from a trusted source. The decoder rejects a
+/// padding point other than [`RingSuite::PADDING`] and a capacity that no PIOP
+/// domain gives, but it cannot check the commitment.
 #[derive(Clone, CanonicalSerialize)]
 pub struct VerifierKeyBuilder<S: RingSuite> {
     partial: PartialRingCommitment<S>,
@@ -788,13 +662,10 @@ pub type G1Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G1Affine;
 /// Pairing G2 affine point type.
 pub type G2Affine<S> = <<S as RingSuite>::Pairing as Pairing>::G2Affine;
 
-/// Trait for accessing Structured Reference String entries in Lagrangian basis.
-///
-/// Provides access to precomputed SRS elements needed for efficient ring operations.
+/// Access to SRS points in Lagrangian form.
 pub trait SrsLookup<S: RingSuite> {
-    /// Look up a range of SRS elements. Returns `None` if the range is out of bounds.
-    ///
-    /// A result with a length other than `range.len()` counts as a failed lookup.
+    /// SRS points of `range`, or `None` if the range is out of bounds. A result
+    /// with a length other than `range.len()` counts as a failed lookup.
     fn lookup(&self, range: Range<usize>) -> Option<Vec<G1Affine<S>>>;
 }
 
@@ -820,8 +691,8 @@ impl<S: RingSuite> SrsLookup<S> for &RingBuilderPcsParams<S> {
 type SrsSegment<S> = Result<Vec<G1Affine<S>>, ()>;
 
 /// The backend asks its lookup closure for one range, once, and panics on an
-/// error. This fetches that range through the caller's fallible [`SrsLookup`]
-/// up front and returns a closure that serves it once and fails otherwise.
+/// error. So fetch the range first with the fallible [`SrsLookup`], and give the
+/// backend a closure that serves only that range, once.
 fn prefetched_lookup<S: RingSuite>(
     lookup: impl SrsLookup<S>,
     range: Range<usize>,
@@ -840,10 +711,8 @@ fn prefetched_lookup<S: RingSuite>(
 }
 
 impl<S: RingSuite> VerifierKeyBuilder<S> {
-    /// Create a new empty ring verifier key builder.
-    ///
-    /// Returns `Error::SrsLookupFailed` if `lookup` does not cover
-    /// `max_ring_size..piop_domain_size`, the part of the SRS behind the keys.
+    /// Empty builder. Returns `Error::SrsLookupFailed` if `lookup` does not cover
+    /// `max_ring_size..piop_domain_size`, the part of the SRS after the keys.
     pub fn new(ring_setup: &RingSetup<S>, lookup: impl SrsLookup<S>) -> Result<Self, Error> {
         let keys = ring_setup.ring_ctx.max_ring_size();
         let srs = prefetched_lookup(lookup, keys..piop_domain_size::<S>(keys))?;
@@ -859,27 +728,24 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         })
     }
 
-    /// Get the number of remaining slots available in the ring.
+    /// Number of free key slots.
     #[inline(always)]
     pub fn free_slots(&self) -> usize {
         self.partial.max_keys - self.partial.curr_keys
     }
 
-    /// Get the PCS parameters required by the verifier.
-    ///
-    /// Same value as [`RingSetup::pcs_verifier_params`] for the setup this
-    /// builder was created from.
+    /// Same as [`RingSetup::pcs_verifier_params`] of the setup of the builder.
     pub fn pcs_verifier_params(&self) -> PcsVerifierParams<S> {
         self.pcs_params.clone()
     }
 
-    /// Add public keys to the ring being built.
+    /// Add the keys `pks` (as for [`RingSetup::keys`]). On an error, no key is
+    /// added.
     ///
-    /// `pks` is as for [`RingSetup::keys`]. On failure nothing is appended. Returns `Error::RingCapacityExceeded` if the
-    /// keys do not fit in the ring ([`Self::free_slots`] gives the remaining
-    /// capacity), `Error::SrsLookupFailed` if the SRS lookup fails,
-    /// `Error::InvalidData` if a key is the identity or cannot be mapped to
-    /// Twisted Edwards form.
+    /// Returns `Error::RingCapacityExceeded` if the keys do not fit in
+    /// [`Self::free_slots`], `Error::SrsLookupFailed` if the SRS lookup fails, and
+    /// `Error::InvalidData` if a key is the identity or has no twisted Edwards
+    /// form.
     pub fn append<P: Borrow<Public<S>>>(
         &mut self,
         pks: impl IntoIterator<Item = P>,
@@ -894,7 +760,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
         Ok(())
     }
 
-    /// Complete the building process and create the verifier key.
+    /// The verifier key of the keys added so far.
     pub fn finalize(self) -> RingVerifierKey<S> {
         RingVerifierKey::<S>::from_ring_and_kzg_vk(&self.partial, self.pcs_params)
     }
@@ -903,25 +769,18 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
 type RingProofBatchItem<S> =
     ring_proof::multi_ring_batch_verifier::BatchItem<<S as RingSuite>::Pairing>;
 
-/// Deferred Ring VRF verification data for batch verification.
-///
-/// Holds the prepared Pedersen VRF item and the prepared ring proof item.
+/// Ring VRF proof prepared for [`BatchVerifier`].
 pub struct BatchItem<S: RingSuite> {
     ring: RingProofBatchItem<S>,
     pedersen: pedersen::BatchItem<S>,
 }
 
 impl<S: RingSuite> BatchItem<S> {
-    /// Prepare a proof for batch verification.
+    /// Prepare a proof for batch verification. This is cheap and can run in
+    /// parallel. `verifier` must be built for the ring of the proof.
     ///
-    /// Performs the cheap per-proof work (hashing, transcript setup) without
-    /// the expensive pairing and MSM checks, and packages all data needed for
-    /// deferred verification in [`BatchVerifier::verify`]. This can be done in
-    /// parallel. `verifier` must be the ring verifier the proof was produced
-    /// against.
-    ///
-    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
+    /// Returns `Error::InvalidData` if the key commitment has no twisted Edwards
+    /// form (for example the identity on a short Weierstrass suite).
     pub fn new(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -939,26 +798,16 @@ impl<S: RingSuite> BatchItem<S> {
     }
 }
 
-/// Batch verifier for Ring VRF proofs.
-///
-/// Collects ring proofs from one or more rings (sharing the same KZG SRS)
-/// and verifies them together, amortizing the cost of pairing checks and
-/// multi-scalar multiplications.
-///
-/// The same subgroup membership assumptions as [`Proof::verify`] apply to all
-/// points fed into the batch (I/O pairs and proof points).
+/// Batch verifier for Ring VRF proofs of one or more rings with the same SRS.
 pub struct BatchVerifier<S: RingSuite> {
     ring_batch: RingBatchVerifier<S>,
     pedersen_batch: pedersen::BatchVerifier<S>,
 }
 
 impl<S: RingSuite> BatchVerifier<S> {
-    /// Create a new empty batch verifier.
-    ///
-    /// The KZG verifier key is taken from `ring_verifier`.
-    /// Any ring verifier sharing the same SRS can later be passed to
-    /// [`Self::push`] or [`BatchItem::new`]; the verifier supplied here is
-    /// only used to extract the KZG verifier key.
+    /// Empty batch verifier with the KZG verifier key of `ring_verifier`. Each
+    /// ring verifier with the same SRS can then go to [`Self::push`] or
+    /// [`BatchItem::new`].
     pub fn new(ring_verifier: &RingVerifier<S>) -> Self {
         Self {
             ring_batch: RingBatchVerifier::<S>::new(
@@ -975,10 +824,8 @@ impl<S: RingSuite> BatchVerifier<S> {
         self.ring_batch.push_prepared(item.ring);
     }
 
-    /// Prepare and push a proof in one step.
-    ///
-    /// Returns `Error::InvalidData` if the proof's key commitment cannot be
-    /// mapped to Twisted Edwards form (e.g. identity point on SW-form suites).
+    /// Prepare and push a proof in one step. Returns the errors of
+    /// [`BatchItem::new`].
     pub fn push(
         &mut self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -991,18 +838,12 @@ impl<S: RingSuite> BatchVerifier<S> {
         Ok(())
     }
 
-    /// Batch-verify all collected proofs.
+    /// Verify all the proofs: one multi-scalar multiplication for the Pedersen
+    /// proofs and one pairing check for the ring proofs.
     ///
-    /// Checks the Pedersen proofs with a single multi-scalar multiplication
-    /// and the ring proofs with a single batched pairing check.
-    ///
-    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
-    /// key commitment or I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by [`Input::new`] and by the checked deserialization of the
-    /// point wrappers (see [`PointWrapper`]).
+    /// Returns `Error::InvalidData` if a key commitment or a point of an I/O
+    /// pair is the identity, and `Error::VerificationFailure` if a proof is not
+    /// valid. Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         self.pedersen_batch.verify()?;
         self.ring_batch
@@ -1061,52 +902,39 @@ macro_rules! ring_suite_types {
     };
 }
 
-/// Domain size conversion utilities
+/// Ring and domain sizes.
 ///
-/// The ring proof system operates with four related size parameters:
+/// - `min_ring_size`: the number of keys that the caller asks for.
+/// - `max_ring_size`: the number of keys that the domain holds.
+/// - `piop_domain_size`: the PIOP domain size.
+/// - `pcs_domain_size`: the number of G1 points of the SRS.
 ///
-/// 1. `min_ring_size`: Number of keys that the ring should accommodate (user-facing parameter)
-/// 2. `max_ring_size`: Max number of keys that the ring can accommodate
-/// 3. `piop_domain_size`: Size of the PIOP (Polynomial IOP) domain
-/// 4. `pcs_domain_size`: Size of the PCS (Polynomial Commitment Scheme) domain
+/// ```text
+/// piop_domain_size = (max(min_ring_size, 1) + PIOP_OVERHEAD).next_power_of_two()
+/// pcs_domain_size  = 3 * piop_domain_size + 1
+/// max_ring_size    = piop_domain_size - PIOP_OVERHEAD
+/// PIOP_OVERHEAD    = 4 + MODULUS_BIT_SIZE
+/// ```
 ///
-/// Relationships:
-///   piop_domain_size = (max(min_ring_size, 1) + PIOP_OVERHEAD).next_power_of_two()
-///   pcs_domain_size  = 3 * piop_domain_size + 1
-///   max_ring_size    = piop_domain_size - PIOP_OVERHEAD
-///
-/// where PIOP_OVERHEAD = 4 + MODULUS_BIT_SIZE accounts for:
-///   - 3 points for zero-knowledge blinding
-///   - 1 extra point used internally by the PIOP
-///   - MODULUS_BIT_SIZE bits for blinding factor
-///
-/// Note: Multiple ring sizes map to the same domain sizes due to power-of-2 rounding.
-/// For example, ring sizes 1-254 (with 254-bit scalar) all map to piop_domain_size=512
-/// and pcs_domain_size=1537.
+/// The overhead holds 3 blinding rows, 1 row of the PIOP and the bits of the
+/// blinding factor. With a 254-bit scalar, ring sizes 1 to 254 all give
+/// `piop_domain_size = 512` and `pcs_domain_size = 1537`.
 pub mod dom_utils {
     use super::*;
 
-    /// Returns the actual ring capacity for a given minimum size requirement.
-    ///
-    /// Because domain sizes round up to powers of 2, allocating for `min_ring_size`
-    /// keys typically provides capacity for more. This function returns that actual
-    /// capacity: the largest ring size that uses the same domain as `min_ring_size`.
-    ///
-    /// Always returns a value `>= min_ring_size`.
+    /// Ring capacity of the domain for `min_ring_size` keys. It is at least
+    /// `min_ring_size`.
     pub const fn max_ring_size<S: Suite>(min_ring_size: usize) -> usize {
         piop_domain_size::<S>(min_ring_size) - piop_overhead::<S>()
     }
 
-    /// PIOP overhead: accounts for 3 ZK blinding points + 1 internal point + scalar field bits.
+    /// PIOP overhead (see the module docs).
     pub const fn piop_overhead<S: Suite>() -> usize {
         4 + ScalarField::<S>::MODULUS_BIT_SIZE as usize
     }
 
-    /// PIOP domain size required to support the given ring size.
-    ///
-    /// Returns the smallest power of 2 that can accommodate `min_ring_size` members.
-    /// This is the domain size used for polynomial operations in the ring proof and
-    /// already accounts for the PIOP overhead. A `min_ring_size` of 0 counts as 1.
+    /// PIOP domain size for `min_ring_size` keys. A `min_ring_size` of 0 counts
+    /// as 1.
     ///
     /// # Panics
     ///
@@ -1120,10 +948,7 @@ pub mod dom_utils {
         domain_size.expect("PIOP domain size overflows usize")
     }
 
-    /// Maximum ring size supported by a given PIOP domain size.
-    ///
-    /// Returns the largest ring that fits in the domain, or `None` when the
-    /// domain holds no key.
+    /// Ring capacity of a PIOP domain, or `None` if the domain holds no key.
     pub const fn max_ring_size_from_piop_domain_size<S: Suite>(
         piop_domain_size: usize,
     ) -> Option<usize> {
@@ -1134,17 +959,12 @@ pub mod dom_utils {
         }
     }
 
-    /// PCS domain size required to support the given ring size.
-    ///
-    /// Returns `3 * piop_domain_size + 1`. This is the number of G1 elements required
-    /// in the SRS (powers of tau) for the prover. The verifier only needs the PIOP domain size.
+    /// PCS domain size for `min_ring_size` keys: the SRS G1 points of the prover.
     pub const fn pcs_domain_size<S: Suite>(min_ring_size: usize) -> usize {
         pcs_domain_size_from_piop_domain_size(piop_domain_size::<S>(min_ring_size))
     }
 
-    /// PCS domain size for a given PIOP domain size.
-    ///
-    /// Returns `3 * piop_domain_size + 1`.
+    /// PCS domain size of a PIOP domain: `3 * piop_domain_size + 1`.
     ///
     /// # Panics
     ///
@@ -1157,10 +977,8 @@ pub mod dom_utils {
         domain_size.expect("PCS domain size overflows usize")
     }
 
-    /// PIOP domain size extracted from a PCS domain size.
-    ///
-    /// Rounds down to a power of two. Returns `None` when `pcs_domain_size` is
-    /// below 4.
+    /// PIOP domain size of a PCS domain, rounded down to a power of two. Returns
+    /// `None` if `pcs_domain_size` is below 4.
     pub const fn piop_domain_size_from_pcs_domain_size(pcs_domain_size: usize) -> Option<usize> {
         match (pcs_domain_size.saturating_sub(1) / 3).checked_ilog2() {
             Some(log2) => Some(1 << log2),
@@ -1168,10 +986,7 @@ pub mod dom_utils {
         }
     }
 
-    /// Maximum ring size supported by a given PCS domain size.
-    ///
-    /// Composes `piop_domain_size_from_pcs_domain_size` and
-    /// `max_ring_size_from_piop_domain_size`. Returns `None` when no domain fits.
+    /// Ring capacity of a PCS domain, or `None` if no domain fits.
     pub const fn max_ring_size_from_pcs_domain_size<S: Suite>(
         pcs_domain_size: usize,
     ) -> Option<usize> {
@@ -1200,12 +1015,9 @@ pub(crate) mod testing {
 
     const MAX_AD_LEN: usize = 100;
 
-    /// The backend asks its lookup closure for one range, once, and panics
-    /// on an error. The closure must serve the prefetched range and nothing
-    /// else: another range, the same range a second time, or a lookup that
-    /// failed up front must surface instead of feeding the backend wrong or
-    /// stale points. The backend also panics on a range with the wrong
-    /// number of points, so that is a failed lookup too.
+    /// The backend panics on a lookup error, so the closure must serve the
+    /// prefetched range once and nothing else. A failed lookup, also one with
+    /// the wrong number of points, must give an error up front.
     pub fn prefetched_lookup_serves_the_range_once<S: RingSuite>() {
         let points = vec![G1Affine::<S>::generator(); 4];
         let srs = prefetched_lookup::<S>(|_: Range<usize>| Some(points.clone()), 3..7).unwrap();
@@ -1330,8 +1142,8 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
-    /// With an empty I/O list `Ok` is the identity, which arkworks reads from
-    /// several byte strings. The ring part goes through the same check.
+    /// One proof must have one encoding. With no I/O pairs, `Ok` is the
+    /// identity, which arkworks reads from several byte strings.
     pub fn proof_encoding_is_canonical<S: RingSuite>() {
         use ark_serialize::Compress;
 
@@ -1371,8 +1183,8 @@ pub(crate) mod testing {
         );
         assert!(!aliases.is_empty());
 
-        // BN254 ignores the sign flag of an uncompressed point; the BLS12-381
-        // encoding has no alias, so nothing is found there.
+        // BN254 ignores the sign flag of an uncompressed point. BLS12-381 has no
+        // alias there.
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
         let decoded = Proof::<S>::deserialize_uncompressed(&bytes[..]).unwrap();
@@ -1390,7 +1202,6 @@ pub(crate) mod testing {
         );
     }
 
-    /// N=3 multi proof via ring prove/verify.
     #[allow(unused)]
     pub fn prove_verify_multi<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
@@ -1423,12 +1234,10 @@ pub(crate) mod testing {
         let proof = secret.prove_ring(&ios[..], b"bar", &prover);
         assert!(proof.verify(&ios[..], b"bar", &verifier).is_ok());
 
-        // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
         assert!(proof.verify(&bad_ios[..], b"bar", &verifier).is_err());
 
-        // Tamper: wrong ad
         assert!(proof.verify(&ios[..], b"baz", &verifier).is_err());
     }
 
@@ -1452,7 +1261,6 @@ pub(crate) mod testing {
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        // Generate proofs in parallel
         let batch: Vec<_> = (0..BATCH_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
@@ -1462,12 +1270,10 @@ pub(crate) mod testing {
 
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
-        // Batch verify all proofs
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let res = batch_verifier.verify();
         assert!(res.is_ok());
 
-        // Prove incrementally constructed batches
         for item in batch.iter() {
             batch_verifier
                 .push(item.io, &item.ad, &item.proof, &verifier)
@@ -1476,7 +1282,6 @@ pub(crate) mod testing {
             assert!(res.is_ok());
         }
 
-        // Prepared items
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let prepared: Vec<_> = batch
             .par_iter()
@@ -1487,8 +1292,7 @@ pub(crate) mod testing {
             .for_each(|p| batch_verifier.push_prepared(p));
         assert!(batch_verifier.verify().is_ok());
 
-        // Multi-ring batch: build a second ring sharing the same KZG SRS,
-        // then aggregate proofs from both rings into a single batch verifier.
+        // A second ring with the same SRS, in the same batch.
         let mut pks_b = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx_b = 1;
         pks_b[prover_idx_b] = public;
@@ -1516,9 +1320,7 @@ pub(crate) mod testing {
         }
         batch_verifier.verify().expect("multi-ring batch verifies");
 
-        // Negative case: pushing a ring-B proof against verifier_a must not
-        // produce a batch that verifies. This guards against the per-item
-        // verifier argument being silently ignored.
+        // The batch must use the verifier of each item.
         let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
         let item_b = &batch_b[0];
         batch_verifier
@@ -1530,8 +1332,8 @@ pub(crate) mod testing {
         );
     }
 
-    /// Ring size violations must be told apart from malformed data: the
-    /// caller fixes them with larger parameters, not by rejecting the input.
+    /// A ring that is too large is not malformed data: the caller fixes it with
+    /// larger parameters.
     #[allow(unused)]
     pub fn ring_size_exceeded<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
@@ -1552,16 +1354,14 @@ pub(crate) mod testing {
             Err(Error::RingCapacityExceeded)
         ));
 
-        // The key functions stop at the capacity, so an endless iterator ends
-        // with an error, not with unbounded memory use.
+        // An endless iterator must end with an error, not fill the memory.
         let endless = core::iter::repeat(Public::<S>::padding());
         assert!(matches!(
             ring_setup.keys(endless),
             Err(Error::RingCapacityExceeded)
         ));
 
-        // SRS sized for `TEST_RING_SIZE` cannot back a ring beyond its capacity,
-        // also when the domain size of that ring does not fit in a `usize`.
+        // Also when the domain size does not fit in a `usize`.
         for min_ring_size in [max_ring_size + 1, usize::MAX / 3 + 1, usize::MAX] {
             let pcs_params = ring_setup.pcs_params.clone();
             assert!(matches!(
@@ -1571,14 +1371,14 @@ pub(crate) mod testing {
         }
     }
 
-    /// No domain holds a ring of `usize::MAX` keys. The domain arithmetic
-    /// must not wrap to a small domain whose context claims a wrong capacity.
+    /// The domain arithmetic must not wrap to a small domain with a false
+    /// capacity.
     pub fn huge_ring_size_panics<S: RingSuite>() {
         RingContext::<S>::new(usize::MAX);
     }
 
-    /// The ring proof backend asserts on the identity, so every entry point
-    /// that hands it keys must reject it first.
+    /// The backend asserts on the identity, so each function that gives it keys
+    /// must reject it first.
     pub fn identity_in_ring_rejected<S: RingSuite>() {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
@@ -1670,11 +1470,9 @@ pub(crate) mod testing {
         assert!(ark_serialize::Valid::check(&unchecked).is_err());
     }
 
-    /// A builder checkpoint carries the padding point and the ring capacity.
-    /// The encoder writes the suite padding and a capacity that a PIOP domain
-    /// gives. Any other value must fail to decode, on the unchecked path too:
-    /// `append` would subtract the wrong padding from every key, and
-    /// `free_slots` would report a false capacity.
+    /// A builder with another padding point or a capacity that no PIOP domain
+    /// gives must not decode, also on the unchecked path. `append` would remove
+    /// the wrong padding from each key, and `free_slots` would be false.
     pub fn builder_decode_rejects_foreign_ring_shape<S: RingSuiteExt + 'static>() {
         let (builder, _) = S::ring_setup().verifier_key_builder();
         let decode = |builder: &VerifierKeyBuilder<S>| {
@@ -1688,8 +1486,7 @@ pub(crate) mod testing {
         foreign_padding.partial.padding = S::BLINDING_BASE.into_te().unwrap();
         assert!(decode(&foreign_padding).is_err());
 
-        // `usize::MAX` would overflow a capacity computation that rounds up
-        // to the next power of two.
+        // `usize::MAX` overflows when rounded up to a power of two.
         for max_keys in [builder.partial.max_keys + 1, usize::MAX] {
             let mut foreign_capacity = builder.clone();
             foreign_capacity.partial.max_keys = max_keys;
@@ -1697,9 +1494,8 @@ pub(crate) mod testing {
         }
     }
 
-    /// The G1 length carries the ring capacity. A restored setup keeps its
-    /// bytes and capacity; any other G1 length is a decode error, or a raw
-    /// SRS file would decode as a setup of another domain.
+    /// The G1 length gives the capacity, so any other length must not decode.
+    /// Otherwise a raw SRS file decodes as a setup of another domain.
     pub fn ring_setup_serialization<S: RingSuite>() {
         use ark_serialize::SerializationError;
 
@@ -1760,14 +1556,10 @@ pub(crate) mod testing {
     where
         AffinePoint<S>: CheckPoint,
     {
-        // Check that point has been computed using the magic spell.
         assert_eq!(S::PADDING, S::data_to_point(PADDING_SEED).unwrap());
-
-        // Check that the point is on curve.
         assert!(S::PADDING.check(true).is_ok());
 
-        // Callers put the padding in the ring in place of a missing key, so
-        // it must be a valid `Public`: in the subgroup and not the identity.
+        // The padding replaces keys, so it must be a valid `Public`.
         assert!(ark_serialize::Valid::check(&Public::<S>::padding()).is_ok());
         assert_eq!(Public::<S>::padding().into_affine(), S::PADDING);
     }
@@ -1777,14 +1569,12 @@ pub(crate) mod testing {
     where
         AffinePoint<S>: FindAccumulatorBase<S> + CheckPoint,
     {
-        // Check that point has been computed using the magic spell.
         assert_eq!(
             S::ACCUMULATOR_BASE,
             AffinePoint::<S>::find_accumulator_base(ACCUMULATOR_BASE_SEED).unwrap()
         );
 
-        // Built-in SW suites place the base outside the prime order subgroup,
-        // built-in TE suites inside it.
+        // Outside the prime-order subgroup on SW suites, inside on TE suites.
         let in_prime_subgroup = <AffinePoint<S> as FindAccumulatorBase<S>>::IN_PRIME_ORDER_SUBGROUP;
         assert!(S::ACCUMULATOR_BASE.check(in_prime_subgroup).is_ok());
     }
@@ -1809,8 +1599,7 @@ pub(crate) mod testing {
 
         let commitment = verifier_key.commitment();
 
-        // Round-trip the params to mimic a verifier-only user holding just
-        // the serialized params, the ring commitment and the ring size.
+        // A verifier with only the encoded params, the commitment and the size.
         let mut buf = Vec::new();
         ring_setup
             .pcs_verifier_params()
@@ -1846,12 +1635,10 @@ pub(crate) mod testing {
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
         let proof = secret.prove_ring(io, b"foo", &prover);
 
-        // Incremental ring verifier key construction
         let (mut vk_builder, lookup) = ring_setup.verifier_key_builder();
         assert_eq!(vk_builder.free_slots(), pks.len());
 
-        // `append` stops at the free slots, so an endless iterator ends with
-        // an error, not with unbounded memory use, and appends nothing.
+        // An endless iterator must end with an error and add nothing.
         let endless = core::iter::repeat(Public::<S>::padding());
         assert_eq!(
             vk_builder.append(endless, &lookup).unwrap_err(),
@@ -1875,7 +1662,6 @@ pub(crate) mod testing {
             vk_builder.append(&chunk[..], &lookup).unwrap();
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
-        // No more space left; `free_slots` reports the remaining capacity.
         let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
             vk_builder.append([extra_pk], &lookup).unwrap_err(),
@@ -1888,9 +1674,8 @@ pub(crate) mod testing {
         assert!(result.is_ok());
     }
 
-    /// Downstream types that derive `Debug` need `Proof<S>: Debug`. The
-    /// backend ring proof type has no `Debug`, so the impl is manual and a
-    /// refactor can drop it without any other test noticing.
+    /// Downstream types that derive `Debug` need `Proof<S>: Debug`. The impl is
+    /// manual, so only this test notices if it goes away.
     #[allow(unused)]
     pub fn proof_is_debug<S: RingSuite + core::fmt::Debug>() {
         fn assert_debug<T: core::fmt::Debug>() {}
@@ -1908,21 +1693,14 @@ pub(crate) mod testing {
             assert!(piop_dom_size.is_power_of_two());
             assert_eq!(pcs_dom_size, 3 * piop_dom_size + 1);
 
-            // piop_domain_size must fit ring_size + overhead
             assert!(piop_dom_size >= ring_size + overhead);
-            // piop_domain_size is the smallest power of 2 that fits
             assert!(piop_dom_size / 2 < ring_size + overhead);
-            // piop_dom_size is sufficient for max_ring_size
             assert_eq!(piop_dom_size, piop_domain_size::<S>(max_ring_size));
-            // ring_size <= max_ring_size for the computed domain
             assert!(ring_size <= max_ring_size);
 
-            // max_ring_size() helper equivalence
             assert_eq!(dom_utils::max_ring_size::<S>(ring_size), max_ring_size);
-            // max_ring_size() is idempotent
             assert_eq!(dom_utils::max_ring_size::<S>(max_ring_size), max_ring_size);
 
-            // Round-trip
             let piop_dom_rt = piop_domain_size_from_pcs_domain_size(pcs_dom_size).unwrap();
             assert_eq!(piop_dom_size, piop_dom_rt);
             let pcs_dom_rt = pcs_domain_size_from_piop_domain_size(piop_dom_rt);
@@ -1931,26 +1709,20 @@ pub(crate) mod testing {
             let max_ring_from_pcs = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size).unwrap();
             assert_eq!(max_ring_size, max_ring_from_pcs);
 
-            // max_ring + 1 should require a larger piop domain
             let next_piop = piop_domain_size::<S>(max_ring_size + 1);
             assert!(next_piop > piop_dom_size,);
             assert!(next_piop.is_power_of_two());
         }
 
-        // Test inverse with arbitrary PCS values (not necessarily properly constructed)
-        // The inverse function should recover the largest valid piop that fits
+        // Any PCS size gives the largest PIOP domain that fits in it.
         for pcs_dom_size in [1 << 11, 1 << 12, 1 << 14, 1 << 16] {
             let piop_dom = piop_domain_size_from_pcs_domain_size(pcs_dom_size).unwrap();
             let max_ring = max_ring_size_from_pcs_domain_size::<S>(pcs_dom_size).unwrap();
 
             assert!(piop_dom.is_power_of_two());
-            // piop should satisfy: 3 * piop + 1 <= pcs
             assert!(3 * piop_dom < pcs_dom_size);
-            // but 3 * (2 * piop) + 1 > pcs (piop is maximal)
             assert!(3 * (2 * piop_dom) + 1 > pcs_dom_size);
-            // max_ring should map back to this piop
             assert_eq!(piop_domain_size::<S>(max_ring), piop_dom);
-            // max_ring + 1 should require larger piop
             assert!(piop_domain_size::<S>(max_ring + 1) > piop_dom);
         }
 
@@ -2089,8 +1861,7 @@ pub(crate) mod testing {
             let mut file = File::open(Self::SRS_FILE).unwrap();
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).unwrap();
-            // The whole SRS: the ring vectors use the domain of spec section 5,
-            // not the smallest domain for `TEST_RING_SIZE` keys.
+            // The whole SRS: the ring vectors use the domain of spec section 5.
             RingSetup::deserialize_uncompressed_unchecked(&buf[..]).unwrap()
         }
 
@@ -2156,7 +1927,7 @@ pub(crate) mod testing {
             let mut ring_pks = random_ring::<S>(TEST_RING_SIZE, rng);
             ring_pks[prover_idx] = public;
 
-            // Blinding is disabled to make the proof reproducible
+            // No blinding, so the proof is reproducible.
             let ring_ctx = RingContext::<S>::new_without_blinding(max_ring_size);
             let (prover_key, verifier_key) = ring_setup.keys(&ring_pks).unwrap();
             let prover = ring_ctx.into_ring_prover(prover_key, prover_idx);
@@ -2165,7 +1936,6 @@ pub(crate) mod testing {
             let ring_pks_com = verifier_key.commitment();
 
             {
-                // Just in case...
                 let mut p = (Vec::new(), Vec::new());
                 pedersen.proof.serialize_compressed(&mut p.0).unwrap();
                 proof.pedersen_proof.serialize_compressed(&mut p.1).unwrap();
@@ -2218,7 +1988,7 @@ pub(crate) mod testing {
 
             let prover_idx = self.ring_pks.iter().position(|pk| *pk == public).unwrap();
 
-            // Blinding is disabled to reproduce the exact proof in the vector
+            // No blinding, so the proof is reproducible.
             let ring_ctx =
                 RingContext::<S>::new_without_blinding(ring_setup.ring_context().max_ring_size());
             let (prover_key, verifier_key) = ring_setup.keys(self.ring_pks).unwrap();
@@ -2230,7 +2000,6 @@ pub(crate) mod testing {
             let proof = secret.prove_ring(io, &self.pedersen.base.ad, &prover);
 
             {
-                // Check if Pedersen proof matches
                 let mut p = (Vec::new(), Vec::new());
                 self.pedersen.proof.serialize_compressed(&mut p.0).unwrap();
                 proof.pedersen_proof.serialize_compressed(&mut p.1).unwrap();
@@ -2238,7 +2007,6 @@ pub(crate) mod testing {
             }
 
             {
-                // Check if the (deterministic) ring proof matches
                 let mut p = (Vec::new(), Vec::new());
                 self.ring_proof.serialize_compressed(&mut p.0).unwrap();
                 proof.ring_proof.serialize_compressed(&mut p.1).unwrap();

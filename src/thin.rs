@@ -1,8 +1,8 @@
 //! # Thin VRF
 //!
-//! Same structure as Tiny VRF but produces an `(R, s)` proof storing the nonce
-//! commitment rather than the challenge. This enables batch verification at the
-//! cost of a slightly larger proof.
+//! VRF-AD with an `(R, s)` proof. The proof holds the nonce commitment instead
+//! of the challenge, so it is larger than a Tiny VRF proof but supports batch
+//! verification.
 //!
 //! ## Usage
 //!
@@ -31,32 +31,18 @@ use crate::{
     utils::common::ProjectiveZ, utils::weight_scalar, *,
 };
 
-/// Marker trait for suites that support the Thin VRF scheme.
-///
-/// Blanket-implemented for all types implementing [`Suite`].
+/// Suites with Thin VRF. Every [`Suite`] implements it.
 pub trait ThinSuite: Suite {}
 
 impl<T> ThinSuite for T where T: Suite {}
 
-/// Thin VRF proof.
+/// Thin VRF proof: the nonce commitment `R = k * I_m` and the response
+/// `s = k + c * x`.
 ///
-/// Schnorr-like proof over the delinearized merged DLEQ relation:
-/// - `r`: Nonce commitment on the merged input (`R = k * I_m`)
-/// - `s`: Response scalar (`s = k + c * x`)
-///
-/// Construct it with [`Proof::prove`] or by deserialization. Deserialization
-/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
-/// every proof holds valid points unless built with a `deserialize_*_unchecked`
-/// method.
-///
-/// Both decoding paths accept one encoding per proof, but do not reject
-/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
-/// return an error when the input is not completely consumed.
+/// Decoding follows the rules in [`PointWrapper`].
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: ThinSuite> {
-    /// Nonce commitment on the merged input.
     pub(crate) r: AffinePoint<S>,
-    /// Response scalar.
     pub(crate) s: ScalarField<S>,
 }
 
@@ -102,22 +88,14 @@ fn vrf_transcript_scalars<S: ThinSuite>(
 }
 
 impl<S: ThinSuite> Proof<S> {
-    /// Generate a proof for the given VRF I/O pairs and additional data.
-    ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
+    /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
     pub fn prove(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, secret: &Secret<S>) -> Self {
         let (t, input) = vrf_transcript_input::<S>(secret.public.0, ios, ad);
 
-        // Nonce
         let mut k = S::nonce(&secret.scalar, t.clone());
-
-        // R = k * I_m (secret nonce on merged input)
         let r = smul!(input.0, k).into_affine();
-
-        // Challenge
         let c = S::challenge(&[&r], t);
 
-        // Response
         let mut cx = c * secret.scalar;
         let s = k + cx;
         k.zeroize();
@@ -126,34 +104,12 @@ impl<S: ThinSuite> Proof<S> {
         Proof { r, s }
     }
 
-    /// Verify the proof for the given VRF I/O pairs, additional data and
-    /// public key.
+    /// Verify the proof for the VRF I/O pairs `ios`, the additional data `ad`
+    /// and the key `public`.
     ///
-    /// Verifies that each VRF output is correctly derived from its input using
-    /// the secret key of `public`. Multiple I/O pairs are delinearized into a
-    /// single merged pair before verifying.
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// public key or any I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// All curve points involved in verification (public key, I/O pairs, and proof
-    /// points) are assumed to be in the prime-order subgroup. This is guaranteed
-    /// when points come from checked deserialization (see [`PointWrapper`]) or
-    /// from trusted operations like [`Input::new`] (hash-to-curve) and
-    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
-    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
-    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
-    ///
-    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
-    /// the burden of subgroup validation on the caller. Passing points with
-    /// cofactor components leads to undefined verification behavior.
-    ///
-    /// The group identity is checked unconditionally, for the public key and for
-    /// every I/O pair. Neither binds the proof to a signer: the secret scalar of
-    /// the identity key is publicly known, and a pair holding the identity is
-    /// satisfied by every secret key. It stays a legal value for the nonce
-    /// commitment `R`, which commits to nothing.
+    /// Returns `Error::InvalidData` if the key or a point of `ios` is the
+    /// identity, and `Error::VerificationFailure` if the proof is not valid.
+    /// Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
@@ -167,11 +123,9 @@ impl<S: ThinSuite> Proof<S> {
 
         let Proof { r, s } = self;
         let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
-
-        // Challenge
         let c = S::challenge(&[r], t);
 
-        // Verification: s * I_m - c * O_m == R
+        // s * I_m - c * O_m == R
         let lhs = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, c);
         if !lhs.has_affine_form() || lhs != r.into_group() {
             return Err(Error::VerificationFailure);
@@ -200,11 +154,7 @@ impl<S: ThinSuite> Public<S> {
     }
 }
 
-/// Deferred Thin VRF verification data for batch verification.
-///
-/// Stores raw points and delinearization scalars instead of the merged pair,
-/// so that [`Self::new`] requires no EC ops (just hashing). The expanded
-/// verification equation uses these directly in the batch MSM.
+/// Thin VRF proof prepared for [`BatchVerifier`].
 pub struct BatchItem<S: ThinSuite> {
     c: ScalarField<S>,
     pk: Public<S>,
@@ -215,12 +165,8 @@ pub struct BatchItem<S: ThinSuite> {
 }
 
 impl<S: ThinSuite> BatchItem<S> {
-    /// Prepare a proof for batch verification.
-    ///
-    /// Computes delinearization scalars and challenge via hashing only (no EC
-    /// ops). Stores the raw points and z scalars for the expanded verification
-    /// equation in [`BatchVerifier::verify`]. This is cheap and can be done in
-    /// parallel.
+    /// Prepare a proof for batch verification. This only hashes, so it is cheap
+    /// and can run in parallel.
     pub fn new(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -242,12 +188,6 @@ impl<S: ThinSuite> BatchItem<S> {
 }
 
 /// Batch verifier for Thin VRF proofs.
-///
-/// Collects multiple proofs and verifies them together via a single
-/// multi-scalar multiplication.
-///
-/// The same subgroup membership assumptions as [`Proof::verify`] apply to all
-/// points fed into the batch (public keys, I/O pairs, and proof points).
 pub struct BatchVerifier<S: ThinSuite> {
     items: Vec<BatchItem<S>>,
 }
@@ -280,25 +220,11 @@ impl<S: ThinSuite> BatchVerifier<S> {
         self.push_prepared(BatchItem::new(ios, ad, proof, public));
     }
 
-    /// Batch-verify all collected proofs using a single multi-scalar multiplication.
+    /// Verify all the proofs with one multi-scalar multiplication.
     ///
-    /// For each proof j, the expanded verification equation is:
-    ///   R_j + c_j*pk_j + sum_i(c_j*z_ij*O_ij) - s_j*G - sum_i(s_j*z_ij*I_ij) == 0
-    ///
-    /// The Schnorr pair `(G, pk_j)` is the first pair of the transcript, so its
-    /// delinearization scalar `z_0` is one and does not appear above.
-    ///
-    /// With random weights w_j, G is accumulated as a shared base, yielding a
-    /// `(sum_j(2 + 2*M_j) + 1)`-point MSM (where M_j is the number of VRF
-    /// pairs in proof j).
-    ///
-    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
-    /// public key or I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by [`Input::new`] and by the checked deserialization of the
-    /// point wrappers (see [`PointWrapper`]).
+    /// Returns `Error::InvalidData` if a key or a point of an I/O pair is the
+    /// identity, and `Error::VerificationFailure` if a proof is not valid.
+    /// Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         use ark_ec::VariableBaseMSM;
         use ark_ff::Zero;
@@ -315,14 +241,16 @@ impl<S: ThinSuite> BatchVerifier<S> {
             return Err(Error::InvalidData);
         }
 
-        // Deterministic random scalars derived from all (c, s) pairs.
+        // The weights depend on all the (c, s) pairs of the batch.
         let mut t = utils::batch_transcript::<S>(DomSep::ThinVrf);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);
         }
 
-        // Build MSM with expanded equation: per-proof (2+2M) points + 1 shared G.
+        // Proof j, weighted by w_j:
+        //   R_j + c_j * Y_j + sum_i(c_j * z_i * O_i) - s_j * G - sum_i(s_j * z_i * I_i) = 0
+        // with z_0 = 1 for the Schnorr pair (G, Y_j). All proofs share the G base.
         let total_points: usize = items.iter().map(|e| 2 + 2 * e.ios.len()).sum::<usize>() + 1;
         let mut bases = Vec::with_capacity(total_points);
         let mut scalars = Vec::with_capacity(total_points);
@@ -335,18 +263,14 @@ impl<S: ThinSuite> BatchVerifier<S> {
             let wc = w * item.c;
             let ws = w * item.s;
 
-            // R_j with scalar w_j
             bases.push(item.r);
             scalars.push(w);
 
-            // pk_j with scalar w_j*c_j
             bases.push(item.pk.0);
             scalars.push(wc);
 
-            // Accumulate G scalar: -w_j*s_j
             g_scalar -= ws;
 
-            // Per VRF pair: O_i with w*c*z_i, I_i with -w*s*z_i
             for (i, io) in item.ios.iter().enumerate() {
                 bases.push(io.output.0);
                 scalars.push(wc * item.zs[i + 1]);
@@ -356,7 +280,6 @@ impl<S: ThinSuite> BatchVerifier<S> {
             }
         }
 
-        // Shared generator base.
         bases.push(S::GENERATOR);
         scalars.push(g_scalar);
 
@@ -396,17 +319,14 @@ pub(crate) mod testing {
         let proof1 = secret.prove_thin(io, b"foo");
         let proof2 = secret.prove_thin(io, b"bar");
 
-        // Single-proof verification still works.
         assert!(public.verify_thin(io, b"foo", &proof1).is_ok());
         assert!(public.verify_thin(io, b"bar", &proof2).is_ok());
 
-        // Batch using push.
         let mut batch = BatchVerifier::new();
         batch.push(io, b"foo", &proof1, &public);
         batch.push(io, b"bar", &proof2, &public);
         assert!(batch.verify().is_ok());
 
-        // Batch using BatchItem::new + push_prepared.
         let mut batch = BatchVerifier::new();
         let entry1 = BatchItem::new(io, b"foo", &proof1, &public);
         let entry2 = BatchItem::new(io, b"bar", &proof2, &public);
@@ -414,11 +334,9 @@ pub(crate) mod testing {
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());
 
-        // Empty batch is ok.
         let batch = BatchVerifier::<S>::new();
         assert!(batch.verify().is_ok());
 
-        // Bad additional data should fail.
         let mut batch = BatchVerifier::new();
         batch.push(io, b"foo", &proof1, &public);
         batch.push(io, b"wrong", &proof2, &public);
@@ -435,26 +353,18 @@ pub(crate) mod testing {
         let proof_single = secret.prove_thin(io, b"foo");
         let proof_slice = secret.prove_thin([io], b"foo");
 
-        // Byte-identical proofs
         let encode = |p: &thin::Proof<S>| {
             let mut buf = Vec::new();
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
         assert_eq!(encode(&proof_single), encode(&proof_slice));
-
-        // Cross-verification
         assert!(public.verify_thin(io, b"foo", &proof_slice).is_ok());
         assert!(public.verify_thin([io], b"foo", &proof_single).is_ok());
     }
 
-    /// An identity public key must be rejected by both verifiers.
-    ///
-    /// With `Y = 0` the verification equation degenerates to `s * G == R`, which
-    /// anyone can satisfy without knowing any secret: no proving is involved
-    /// below, `s` is picked and `R` derived from it. Verification is handed a raw
-    /// `Public` to make sure the rejection does not depend on the key having gone
-    /// through the checked decoder.
+    /// With `Y = 0` the equation is `s * G == R`, which anybody can satisfy. Both
+    /// verifiers must reject it also for a key that skipped the checked decoder.
     pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
@@ -472,11 +382,9 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
-    /// An unchecked point can be off the curve. On a twisted Edwards curve,
-    /// (0, 0) as the key or as an input gives `s * I_m - c * O_m` the
-    /// projective value (0, 0, 0, 0), which arkworks finds equal to every
-    /// point. Verify must reject a proof of another key or input, as the
-    /// batch verifier does.
+    /// An off-curve key or input, such as `(0, 0)` on a twisted Edwards curve,
+    /// gives `s * I_m - c * O_m = (0, 0, 0, 0)`, which arkworks finds equal to
+    /// every point. Verify must reject it, as the batch verifier does.
     pub fn off_curve_point_rejected<S: ThinSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let io = secret.vrf_io(Input::new(b"foo").unwrap());
@@ -491,14 +399,9 @@ pub(crate) mod testing {
         assert!(secret.public().verify_thin(io, b"bar", &proof).is_err());
     }
 
-    /// An I/O pair holding the identity must be rejected by both verifiers.
-    ///
-    /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so the
-    /// verification equation accepts it and two different keys produce two
-    /// valid proofs for the same pair. The pair therefore binds its VRF output
-    /// to nobody, and only an explicit check keeps it out. The second case
-    /// hides the bad pair behind a good one, where the merged pair alone is not
-    /// enough to catch it.
+    /// `(0, 0)` satisfies `O = x * I` for every key, so it binds its output to no
+    /// signer. The second case hides it behind a valid pair, where the merged
+    /// pair does not show it.
     pub fn identity_io_pair_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
@@ -548,21 +451,18 @@ pub(crate) mod testing {
         let proof = secret.prove_thin(&ios[..], b"bar");
         assert!(public.verify_thin(&ios[..], b"bar", &proof).is_ok());
 
-        // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
         assert!(public.verify_thin(&bad_ios[..], b"bar", &proof).is_err());
 
-        // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
         bad_ios[0].input = ios[1].input;
         assert!(public.verify_thin(&bad_ios[..], b"bar", &proof).is_err());
 
-        // Tamper: wrong ad
         assert!(public.verify_thin(&ios[..], b"baz", &proof).is_err());
     }
 
-    /// N=0 VRF pairs degenerates to Schnorr signature over ad.
+    /// With no VRF pairs, the proof is a Schnorr signature over `ad`.
     pub fn prove_verify_multi_empty<S: ThinSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
         let public = secret.public();
@@ -570,12 +470,11 @@ pub(crate) mod testing {
         let proof = secret.prove_thin([], b"bar");
         assert!(public.verify_thin([], b"bar", &proof).is_ok());
 
-        // Wrong ad should fail
         assert!(public.verify_thin([], b"baz", &proof).is_err());
     }
 
-    /// `R` is the identity only for a zero nonce, so that proof is built by
-    /// hand. One proof must have one encoding.
+    /// One proof must have one encoding. `R` is the identity only for a zero
+    /// nonce, so that proof is built by hand.
     pub fn proof_encoding_is_canonical<S: ThinSuite>() {
         use ark_serialize::Compress;
 
@@ -612,10 +511,8 @@ pub(crate) mod testing {
         assert!(!aliases.is_empty());
     }
 
-    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs, and
-    /// the prover and the plain verifier share that merge. The batch verifier
-    /// expands the equation with the raw `z` scalars and never merges, so it
-    /// is the independent check that the prover merged correctly.
+    /// Runs the MSM branch of `merge_ios` (`MSM_THRESHOLD` pairs). The batch
+    /// verifier does not merge, so it checks the merge of the prover.
     pub fn prove_verify_multi_msm<S: ThinSuite>() {
         use crate::utils::common::MSM_THRESHOLD;
         use thin::BatchVerifier;
@@ -632,7 +529,6 @@ pub(crate) mod testing {
         batch.push(&ios[..], b"msm", &proof, &public);
         assert!(batch.verify().is_ok());
 
-        // Tamper: wrong output on the last pair
         let mut bad_ios = ios.clone();
         bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
         assert!(public.verify_thin(&bad_ios[..], b"msm", &proof).is_err());
@@ -788,11 +684,8 @@ pub(crate) mod testing {
         }
     }
 
-    /// Demonstrates that a malicious prover who knows the discrete-log relation
-    /// between the VRF input `I` and the generator `G` (i.e. knows `d` s.t.
-    /// `I = d * G`) can forge a valid Thin-VRF proof for an arbitrary output.
-    ///
-    /// This is why `Input` **must** be constructed via hash-to-curve.
+    /// A prover who knows `d` with `I = d * G` can prove any output for `I`, so
+    /// `Input` comes only from hash-to-curve.
     #[test]
     fn known_dlog_input_forgery() {
         use ark_ff::Field;
@@ -802,19 +695,15 @@ pub(crate) mod testing {
 
         let g = S::GENERATOR;
 
-        // Attacker's key pair.
         let sk = Sc::from(42);
         let pk = (g * sk).into_affine();
 
-        // Input with KNOWN discrete log: I = d * G.
         let d = Sc::from(7);
         let input_pt = (g * d).into_affine();
         let input = Input::<S>::from_affine_unchecked(input_pt);
 
-        // Honest output would be O = sk * I.
         let honest_output = (input_pt * sk).into_affine();
 
-        // Attacker picks a DIFFERENT output: O' = t * G, with t != sk * d.
         let t_scalar = Sc::from(1234);
         let fake_output_pt = (g * t_scalar).into_affine();
         assert_ne!(fake_output_pt, honest_output);
@@ -826,22 +715,15 @@ pub(crate) mod testing {
             output: fake_output,
         };
 
-        // Replicate what prove/verify do.
         let fake_ios: &[VrfIo<S>] = &[fake_io];
         let (transcript, zs) = vrf_transcript_scalars::<S>(pk, fake_ios, ad);
         let (z0, z1) = (zs[0], zs[1]);
 
-        // Compute merged input I_m = z0*G + z1*I for the forgery.
         let merged_input = (g * z0 + input_pt * z1).into_affine();
 
-        // --- Forge the proof ---
-        //
-        // Because I = d*G, the merged input is I_m = (z0 + z1*d) * G and the
-        // merged output is O_m = (z0*sk + z1*t) * G, both multiples of G.
-        // The effective DLEQ secret is x = (z0*sk + z1*t) / (z0 + z1*d).
+        // I_m and O_m are multiples of G, so the prover knows the DLEQ secret.
         let x = (z0 * sk + z1 * t_scalar) * (z0 + z1 * d).inverse().unwrap();
 
-        // Standard Schnorr proof with the derived secret.
         let k = Sc::from(9999);
         let r = (merged_input * k).into_affine();
         let c = S::challenge(&[&r], transcript);
@@ -849,22 +731,6 @@ pub(crate) mod testing {
 
         let forged_proof = Proof::<S> { r, s };
 
-        // The forged proof verifies despite O' != sk * I.
-        //
-        // The verifier checks: s * I_m == R + c * O_m
-        //
-        // Expanding with I = d*G (everything collapses to multiples of G):
-        //   I_m = z0*G + z1*I = (z0 + z1*d) * G
-        //   O_m = z0*pk + z1*O' = (z0*sk + z1*t) * G
-        //
-        // LHS: s * I_m = (k + c*x) * (z0 + z1*d) * G
-        // RHS: R + c * O_m = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
-        //
-        // Since x = (z0*sk + z1*t) / (z0 + z1*d):
-        //   LHS = (k + c*x) * (z0 + z1*d) * G
-        //       = k*(z0 + z1*d)*G + c * [(z0*sk + z1*t) / (z0 + z1*d)] * (z0 + z1*d) * G
-        //       = k*(z0 + z1*d)*G + c*(z0*sk + z1*t)*G
-        //       = RHS
         let public = Public::<S>::from_affine_unchecked(pk);
         assert!(
             public.verify_thin(fake_io, ad, &forged_proof).is_ok(),

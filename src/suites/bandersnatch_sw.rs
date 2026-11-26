@@ -1,50 +1,18 @@
-//! # ECVRF Bandersnatch-SW SHA-512 TAI suite.
+//! # ECVRF Bandersnatch-SW SHA-512 TAI suite
 //!
-//! Configuration:
+//! With the shared rules of [`crate::suites`].
 //!
-//! * `SUITE_ID` = b"Bandersnatch-SW-SHA512-TAI-v1" for Short Weierstrass form.
-//!
-//! - The EC group **G** is the prime subgroup of the Bandersnatch elliptic curve,
-//!   in Short Weierstrass form, with finite field and curve parameters as specified in
-//!   [MSZ21](https://eprint.iacr.org/2021/1152).
-//!   For this group, `fLen` = `qLen` = $32$ and `cofactor` = $4$.
-//!
-//! - The prime subgroup generator G is defined as follows:
-//!   - G.x = 30900340493481298850216505686589334086208278925799850409469406976849338430199
-//!   - G.y = 12663882780877899054958035777720958383845500985908634476792678820121468453298
-//!
-//! * `cLen` = 16 (128-bit security level).
-//!
-//! * The key pair generation primitive is `PK = sk * G`, with x the secret
-//!   key scalar and `G` the group generator. In this ciphersuite, the secret
-//!   scalar x is equal to the secret key scalar sk.
-//!
-//! * Nonce generation is inspired by Section 5.4.2.2 of RFC-9381,
-//!   adapted to use the suite's pluggable transcript.
-//!
-//! * The int_to_string function encodes into the 32 bytes little endian
-//!   representation.
-//!
-//! * The string_to_int function decodes from the 32 bytes little endian
-//!   representation.
-//!
-//! * The point_to_string function converts a point in **G** to an octet
-//!   string using compressed form: the x coordinate encoded with
-//!   int_to_string, followed by one flag octet. The flag is `0x00` when the
-//!   integer y is at most `(p - 1) / 2` and `0x80` otherwise; the identity
-//!   has its own flag `0x40` and is never a valid public key or output.
-//!   This implies that the point is encoded on 33 bytes.
-//!
-//! * The string_to_point function tries to decompress the point encoded
-//!   according to `point_to_string` procedure. This function MUST outputs
-//!   "INVALID" if the octet string does not decode to a point on G.
-//!
-//! * The hash function Hash is SHA-512 as specified in
-//!   [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
-//!
-//! * The `ECVRF_encode_to_curve` function uses *Try and Increment*, inspired
-//!   by section 5.4.1.1 of [RFC-9381](https://datatracker.ietf.org/doc/rfc9381),
-//!   adapted to use the suite's pluggable transcript seeded with `SUITE_ID`.
+//! - `SUITE_ID` = `b"Bandersnatch-SW-SHA512-TAI-v1"`.
+//! - `G` is the prime-order subgroup of the Bandersnatch curve in short
+//!   Weierstrass form, with the parameters of
+//!   [MSZ21](https://eprint.iacr.org/2021/1152). `fLen` = `qLen` = 32 and
+//!   `cofactor` = 4. The generator is:
+//!   - `G.x` = 30900340493481298850216505686589334086208278925799850409469406976849338430199
+//!   - `G.y` = 12663882780877899054958035777720958383845500985908634476792678820121468453298
+//! - Hash: SHA-512 ([RFC 6234](https://www.rfc-editor.org/rfc/rfc6234)),
+//!   `hLen` = 64.
+//! - `ECVRF_encode_to_curve`: try-and-increment, after RFC 9381 section
+//!   5.4.1.1.
 
 use crate::{pedersen::PedersenSuite, utils::te_sw_map::*, *};
 use ark_ff::MontFp;

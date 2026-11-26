@@ -9,11 +9,9 @@ pub trait SuiteExt: Suite {
 
 impl<T: Suite> SuiteExt for T {}
 
-/// Dispatches a benchmark function for all enabled suites.
-///
-/// The `ring` form dispatches for the enabled ring-capable suites only. One
-/// macro serves both forms, so every bench binary uses it and none needs an
-/// `unused_macros` exemption.
+/// Run a benchmark function for each enabled suite, or, in the `ring` form, for
+/// each enabled ring suite. One macro serves both forms, so no bench binary
+/// needs an `unused_macros` exemption.
 macro_rules! for_each_suite {
     (ring, $c:expr, $fn:ident) => {
         #[cfg(feature = "bandersnatch")]

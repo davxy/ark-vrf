@@ -1,26 +1,25 @@
-//! # Built-in Cipher Suites
+//! # Built-in cipher suites
 //!
-//! This module provides pre-configured cipher suites for various elliptic curves.
-//! Each suite is conditionally compiled based on its corresponding feature flag.
+//! Each suite has a feature (see the crate docs). The suites follow the format
+//! of the RFC 9381 suites. These rules are the same for all of them:
 //!
-//! ## Available Suites
+//! - `cLen` = 16 (128-bit security level).
+//! - Key pair: `PK = sk * G`, and the secret scalar `x` is `sk`. A seed gives a
+//!   secret with [`crate::Secret::from_seed`], with no clamping.
+//! - Nonce: deterministic through the suite transcript (see
+//!   [`crate::Suite::nonce`]), after RFC 9381 section 5.4.2.2.
+//! - `int_to_string` and `string_to_int`: 32 bytes, little-endian. The challenge
+//!   `c` is encoded on its low `cLen` bytes.
+//! - `point_to_string`, compressed:
+//!   - twisted Edwards: `y`, with the top bit of the last byte set when
+//!     `x > (p - 1) / 2` (32 bytes);
+//!   - short Weierstrass: `x`, then a flag byte, `0x00` when `y <= (p - 1) / 2`
+//!     and `0x80` otherwise, or `0x40` for the identity (33 bytes).
+//! - `string_to_point` returns "INVALID" if the string does not decode to a
+//!   point of `G`.
 //!
-//! - **Ed25519**: Edwards curve with SHA-512 hash function and Try-And-Increment (TAI)
-//!   hash-to-curve method. Supports Tiny, Thin, and Pedersen VRF schemes.
-//!
-//! - **Secp256r1**: NIST P-256 curve with SHA-256 hash function and TAI hash-to-curve
-//!   method. Supports Tiny, Thin, and Pedersen VRF schemes.
-//!
-//! - **Bandersnatch**: Edwards curve defined over the BLS12-381 scalar field with
-//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
-//!   Available in both Edwards and Short Weierstrass forms.
-//!
-//! - **JubJub**: Edwards curve defined over the BLS12-381 scalar field with
-//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
-//!
-//! - **Baby-JubJub**: Edwards curve defined over the BN254 scalar field with
-//!   SHA-512 hash function. Supports Tiny, Thin, Pedersen, and Ring VRF schemes.
-//!   Optimized for Ethereum compatibility.
+//! Each suite module gives the rest: `SUITE_ID`, the group, the hash and the
+//! hash-to-curve method.
 
 #[cfg(test)]
 pub(crate) mod testing;

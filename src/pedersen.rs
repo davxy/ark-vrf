@@ -1,10 +1,9 @@
 //! # Pedersen VRF
 //!
-//! Key-hiding VRF based on the PedVRF construction from Section 4 of
-//! [BCHSV23](https://eprint.iacr.org/2023/002). Replaces the public key with a
-//! Pedersen commitment to the secret key, allowing verification without revealing
-//! which specific public key was used. Serves as a building block for anonymized
-//! ring signatures.
+//! Key-hiding VRF after PedVRF in section 4 of
+//! [BCHSV23](https://eprint.iacr.org/2023/002). A Pedersen commitment to the
+//! secret key replaces the public key, so the proof does not show the key. Ring
+//! VRF builds on it.
 //!
 //! ## Usage
 //!
@@ -40,19 +39,14 @@ use ark_ec::VariableBaseMSM;
 /// Seed hashed to curve to produce [`PedersenSuite::BLINDING_BASE`] in built-in suites.
 pub const PEDERSEN_BLINDING_BASE_SEED: &[u8] = b"pedersen-blinding";
 
-/// Suite extension for Pedersen VRF support.
-///
-/// Provides the additional cryptographic parameters required by the Pedersen VRF scheme.
+/// Suites with Pedersen VRF.
 pub trait PedersenSuite: Suite {
-    /// Blinding base.
-    ///
-    /// Point with unknown discrete log relative to the generator. Built-in
-    /// suites derive it by hashing [`PEDERSEN_BLINDING_BASE_SEED`] to the curve.
+    /// Blinding base `B`. Nobody may know its discrete log to the generator. The
+    /// built-in suites hash [`PEDERSEN_BLINDING_BASE_SEED`] to the curve.
     const BLINDING_BASE: AffinePoint<Self>;
 
-    /// Pedersen blinding factor.
-    ///
-    /// Default implementation is deterministic. All parameters but `secret` are public.
+    /// Blinding factor from the secret key and the transcript. The default is
+    /// deterministic.
     fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
         Self::nonce(secret, transcript)
@@ -64,13 +58,11 @@ fn vrf_transcript<S: PedersenSuite>(ios: &[VrfIo<S>], ad: &[u8]) -> S::Transcrip
     utils::vrf_transcript_plain(DomSep::PedersenVrf, ios, ad)
 }
 
-/// Absorb the key commitment, then merge the I/O pairs with scalars forked
-/// after it.
+/// Absorb the key commitment, then merge the I/O pairs.
 ///
-/// Tiny and Thin bind the key through the Schnorr pair at the head of the
-/// I/O list. Here the key commitment is the only binding: with scalars drawn
-/// before it, a prover picks its secret key after the scalars and proves
-/// pairs that the key did not produce.
+/// The key commitment is the only binding to the key, so the scalars must
+/// depend on it. With scalars drawn before it, a prover can choose its key
+/// after the scalars and prove pairs that the key did not produce.
 fn merge_with_key_commitment<S: PedersenSuite>(
     t: &mut S::Transcript,
     key_commitment: &AffinePoint<S>,
@@ -90,24 +82,12 @@ fn merge_inputs_with_key_commitment<S: PedersenSuite>(
     utils::delinearize_inputs(t, ios)
 }
 
-/// Pedersen VRF proof.
+/// Pedersen VRF proof:
+/// - the key commitment `Yb = x * G + b * B`,
+/// - the nonce commitments `R = k * G + kb * B` and `Ok = k * I_m`,
+/// - the responses `s = k + c * x` and `sb = kb + c * b`.
 ///
-/// Schnorr-like proof over the delinearized merged DLEQ relation, with the
-/// public key replaced by a Pedersen commitment:
-/// - `pk_com`: Public key commitment (`Yb = x * G + b * B`)
-/// - `r`: Nonce commitment on `G` and `B` (`R = k * G + kb * B`)
-/// - `ok`: Nonce commitment on the merged input (`Ok = k * I_m`)
-/// - `s`: Response scalar for the secret key (`s = k + c * x`)
-/// - `sb`: Response scalar for the blinding factor (`sb = kb + c * b`)
-///
-/// Construct it with [`Proof::prove`] or by deserialization. Deserialization
-/// via [`CanonicalDeserialize`] includes subgroup checks for curve points, so
-/// every proof holds valid points unless built with a `deserialize_*_unchecked`
-/// method.
-///
-/// Both decoding paths accept one encoding per proof, but do not reject
-/// trailing bytes left in the input. Use [`CanonicalDeserializeExact`] to
-/// return an error when the input is not completely consumed.
+/// Decoding follows the rules in [`PointWrapper`].
 #[derive(Debug, Clone, CanonicalSerialize)]
 pub struct Proof<S: PedersenSuite> {
     pub(crate) pk_com: AffinePoint<S>,
@@ -164,15 +144,11 @@ impl<S: PedersenSuite> Proof<S> {
 }
 
 impl<S: PedersenSuite> Proof<S> {
-    /// Generate a proof for the given VRF I/O pairs and additional data.
+    /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
     ///
-    /// Multiple I/O pairs are delinearized into a single merged pair before proving.
-    ///
-    /// Returns the proof together with the associated blinding factor. The
-    /// blinding factor is secret material: whoever knows it can open the key
-    /// commitment `Yb` to the public key, which is what the scheme hides. The
-    /// caller must keep it private and zeroize it after use. The prover
-    /// zeroizes its other secret temporaries but not this returned value.
+    /// Also returns the blinding factor `b`. It is secret: with it, anybody can
+    /// open `Yb` to the public key. The caller must keep it private and zeroize
+    /// it.
     pub fn prove(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
@@ -181,14 +157,11 @@ impl<S: PedersenSuite> Proof<S> {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
-        // Build blinding factor from T.fork()
         let blinding = S::blinding(&secret.scalar, t.clone());
 
-        // Yb = x*G + b*B = PK + b*B
         let bb = smul!(S::BLINDING_BASE, blinding);
         let pk_com = (secret.public.0.into_group() + bb).into_affine();
 
-        // Absorb Yb, then merge the I/O pairs with scalars that depend on it
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
         // Nonces from T.fork(). The extra byte is temporary. Releases before
@@ -201,24 +174,19 @@ impl<S: PedersenSuite> Proof<S> {
         let mut k = S::nonce(&secret.scalar, nonce_transcript.clone());
         let mut kb = S::nonce(&blinding, nonce_transcript);
 
-        // R = k*G + kb*B
         let kg = smul!(S::GENERATOR, k);
         let kbb = smul!(S::BLINDING_BASE, kb);
         let r = kg + kbb;
 
-        // Ok = k*I
         let ok = smul!(input.0, k);
 
         let norms = CurveGroup::normalize_batch(&[r, ok]);
         let (r, ok) = (norms[0], norms[1]);
 
-        // c = challenge([R, Ok], T)
         let c = S::challenge(&[&r, &ok], t);
 
-        // s = k + c*x
         let mut cx = c * secret.scalar;
         let s = k + cx;
-        // sb = kb + c*b
         let mut cb = c * blinding;
         let sb = kb + cb;
         k.zeroize();
@@ -236,35 +204,11 @@ impl<S: PedersenSuite> Proof<S> {
         (proof, blinding)
     }
 
-    /// Verify the proof for the given VRF I/O pairs and additional data.
+    /// Verify the proof for the VRF I/O pairs `ios` and the additional data `ad`.
     ///
-    /// Verifies that each VRF output is correctly derived from its input using
-    /// the public key committed in the proof, without revealing which public
-    /// key it is. Multiple I/O pairs are delinearized into a single merged pair
-    /// before verifying.
-    ///
-    /// Returns `Ok(())` if verification succeeds, `Err(Error::InvalidData)` if the
-    /// key commitment or any I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// All curve points involved in verification (I/O pairs and proof points)
-    /// are assumed to be in the prime-order subgroup. This is guaranteed when
-    /// points come from checked deserialization (see [`PointWrapper`]) or from
-    /// trusted operations like [`Input::new`] (hash-to-curve) and
-    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
-    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
-    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
-    ///
-    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
-    /// the burden of subgroup validation on the caller. Passing points with
-    /// cofactor components leads to undefined verification behavior.
-    ///
-    /// The group identity is checked unconditionally, for the key commitment and
-    /// for every I/O pair. Neither binds the proof to a signer: the opening of the
-    /// identity commitment is the public `(0, 0)`, and a pair holding the identity
-    /// is satisfied by every secret key. It stays a legal value for the nonce
-    /// commitments `R` and `Ok`, which commit to nothing, and `Ok` is necessarily
-    /// the identity when no I/O pair is supplied.
+    /// Returns `Error::InvalidData` if the key commitment or a point of `ios` is
+    /// the identity, and `Error::VerificationFailure` if the proof is not valid.
+    /// Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Result<(), Error> {
         let Proof {
             pk_com,
@@ -281,27 +225,19 @@ impl<S: PedersenSuite> Proof<S> {
 
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
-        // Absorb Yb, then merge the I/O pairs with scalars that depend on it
         let io = merge_with_key_commitment::<S>(&mut t, pk_com, ios);
 
-        // c = challenge([R, Ok], T)
         let c = S::challenge(&[r, ok], t);
 
         let neg_c = -c;
 
-        // Eq1: s*I - c*O == Ok
-        // Verifies that the VRF output O is correctly derived from the input I
-        // using the same secret scalar x committed in the proof. Expanding the
-        // response s = k + c*x gives s*I = k*I + c*x*I = Ok + c*O.
+        // s * I_m - c * O_m == Ok
         let lhs1 = short_msm(&[io.input.0, io.output.0], &[*s, neg_c], 2);
         if lhs1 != ok.into_group() {
             return Err(Error::VerificationFailure);
         }
 
-        // Eq2: s*G + sb*B - c*Yb == R
-        // Verifies knowledge of both the secret key x and blinding factor b
-        // committed in the public key commitment Yb = x*G + b*B. Expanding
-        // s = k + c*x and sb = kb + c*b gives s*G + sb*B = R + c*Yb.
+        // s * G + sb * B - c * Yb == R
         let lhs2 = short_msm(
             &[S::GENERATOR, S::BLINDING_BASE, *pk_com],
             &[*s, *sb, neg_c],
@@ -326,10 +262,7 @@ impl<S: PedersenSuite> Secret<S> {
     }
 }
 
-/// Deferred Pedersen VRF verification data for batch verification.
-///
-/// Stores the merged pair, the proof points and scalars, and the challenge.
-/// The two verification equations use these directly in the batch MSM.
+/// Pedersen VRF proof prepared for [`BatchVerifier`].
 pub struct BatchItem<S: PedersenSuite> {
     c: ScalarField<S>,
     input: AffinePoint<S>,
@@ -339,19 +272,14 @@ pub struct BatchItem<S: PedersenSuite> {
     ok: AffinePoint<S>,
     s: ScalarField<S>,
     sb: ScalarField<S>,
-    /// Set when the key commitment or a supplied I/O pair held the identity.
-    /// Recorded here because only the merged pair survives, and that one is
-    /// legitimately the identity when no pair is supplied at all.
+    /// Whether the key commitment or a pair is the identity. The merged pair
+    /// cannot show it: it is also the identity when there is no pair.
     identity: bool,
 }
 
 impl<S: PedersenSuite> BatchItem<S> {
-    /// Prepare a proof for batch verification.
-    ///
-    /// Computes the challenge and packages all data needed for deferred
-    /// verification in [`BatchVerifier::verify`]. For a single I/O pair this
-    /// is hashing only. With several pairs it also computes the merged pair.
-    /// This is cheap and can be done in parallel.
+    /// Prepare a proof for batch verification. With one I/O pair this only
+    /// hashes. It can run in parallel.
     pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
         let identity = utils::has_identity(proof.pk_com, ios);
@@ -373,12 +301,6 @@ impl<S: PedersenSuite> BatchItem<S> {
 }
 
 /// Batch verifier for Pedersen VRF proofs.
-///
-/// Collects multiple proofs and verifies them together via a single
-/// multi-scalar multiplication.
-///
-/// The same subgroup membership assumptions as [`Proof::verify`] apply to all
-/// points fed into the batch (I/O pairs and proof points).
 pub struct BatchVerifier<S: PedersenSuite> {
     items: Vec<BatchItem<S>>,
 }
@@ -405,22 +327,11 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         self.push_prepared(BatchItem::new(ios, ad, proof));
     }
 
-    /// Batch-verify all collected proofs using a single multi-scalar multiplication.
+    /// Verify all the proofs with one multi-scalar multiplication.
     ///
-    /// For each proof i, two equations are checked with independent random scalars
-    /// t_i (eq1) and u_i (eq2):
-    ///   Eq1: O_i*c_i + Ok_i == I_i*s_i
-    ///   Eq2: Yb_i*c_i + R_i == G*s_i + B*sb_i
-    ///
-    /// The random linear combination yields a (5N + 2)-point MSM.
-    ///
-    /// Returns `Ok(())` if all proofs verify, `Err(Error::InvalidData)` if any
-    /// key commitment or I/O pair point is the group identity,
-    /// `Err(Error::VerificationFailure)` otherwise.
-    ///
-    /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by [`Input::new`] and by the checked deserialization of the
-    /// point wrappers (see [`PointWrapper`]).
+    /// Returns `Error::InvalidData` if a key commitment or a point of an I/O
+    /// pair is the identity, and `Error::VerificationFailure` if a proof is not
+    /// valid. Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         let items = &self.items;
         if items.is_empty() {
@@ -434,20 +345,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 
         let n = items.len();
 
-        // Generate deterministic random scalars from entry data.
-        // Absorb (c, s, sb) per entry, then squeeze 2N random scalars.
-        // The challenge c already commits to (Yb, I, O, R, Ok, ad), so only the
-        // response scalars s and sb need to be included separately.
+        // The weights depend on all the proofs. `c` commits to the points and
+        // `ad`, so the responses complete the proof.
         let mut t = utils::batch_transcript::<S>(DomSep::PedersenVrf);
         for e in items {
             t.absorb_serialize(&e.c);
             t.absorb_serialize(&e.s);
             t.absorb_serialize(&e.sb);
         }
-        // Sample 2N random weights of SECURITY_PARAMETER bits (t_i for eq1, u_i
-        // for eq2): enough for the Schwartz-Zippel soundness argument, and
-        // shorter than full-width field elements, so the MSM needs fewer
-        // doublings.
+        // Weights of SECURITY_PARAMETER bits are enough for Schwartz-Zippel and
+        // make the MSM shorter than full-width scalars.
         let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
             .map(|_| {
                 (
@@ -457,7 +364,10 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             })
             .collect();
 
-        // Build MSM: 5N per-proof points + 2 shared bases (G, B)
+        // Proof i, weighted by t_i and u_i:
+        //   t_i * (c_i * O_i + Ok_i - s_i * I_i) = 0
+        //   u_i * (c_i * Yb_i + R_i - s_i * G - sb_i * B) = 0
+        // All proofs share the G and B bases.
         let mut bases = Vec::with_capacity(5 * n + 2);
         let mut scalars = Vec::with_capacity(5 * n + 2);
 
@@ -465,7 +375,6 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let mut b_scalar = ScalarField::<S>::zero();
 
         for (e, (t, u)) in items.iter().zip(random_scalars.iter()) {
-            // Eq1: t_i*c_i*O_i + t_i*Ok_i - t_i*s_i*I_i = 0
             bases.push(e.output);
             scalars.push(*t * e.c);
 
@@ -475,19 +384,16 @@ impl<S: PedersenSuite> BatchVerifier<S> {
             bases.push(e.input);
             scalars.push(-(*t * e.s));
 
-            // Eq2: u_i*c_i*Yb_i + u_i*R_i - u_i*s_i*G - u_i*sb_i*B = 0
             bases.push(e.pk_com);
             scalars.push(*u * e.c);
 
             bases.push(e.r);
             scalars.push(*u);
 
-            // Accumulate shared base scalars
             g_scalar += *u * e.s;
             b_scalar += *u * e.sb;
         }
 
-        // Shared bases: G and B
         bases.push(S::GENERATOR);
         scalars.push(-g_scalar);
 
@@ -533,17 +439,14 @@ pub(crate) mod testing {
         let (proof1, _) = secret.prove_pedersen(io, b"foo");
         let (proof2, _) = secret.prove_pedersen(io, b"bar");
 
-        // Single-proof verification still works.
         assert!(proof1.verify(io, b"foo").is_ok());
         assert!(proof2.verify(io, b"bar").is_ok());
 
-        // Batch using push.
         let mut batch = BatchVerifier::new();
         batch.push(io, b"foo", &proof1);
         batch.push(io, b"bar", &proof2);
         assert!(batch.verify().is_ok());
 
-        // Batch using BatchItem::new + push_prepared.
         let mut batch = BatchVerifier::new();
         let entry1 = BatchItem::new(io, b"foo", &proof1);
         let entry2 = BatchItem::new(io, b"bar", &proof2);
@@ -551,11 +454,9 @@ pub(crate) mod testing {
         batch.push_prepared(entry2);
         assert!(batch.verify().is_ok());
 
-        // Empty batch is ok.
         let batch = BatchVerifier::<S>::new();
         assert!(batch.verify().is_ok());
 
-        // Bad additional data should fail.
         let mut batch = BatchVerifier::new();
         batch.push(io, b"foo", &proof1);
         batch.push(io, b"wrong", &proof2);
@@ -571,7 +472,6 @@ pub(crate) mod testing {
         let (proof_single, blinding_single) = secret.prove_pedersen(io, b"foo");
         let (proof_slice, blinding_slice) = secret.prove_pedersen([io], b"foo");
 
-        // Byte-identical proofs and blinding factors
         let encode = |p: &pedersen::Proof<S>| {
             let mut buf = Vec::new();
             p.serialize_compressed(&mut buf).unwrap();
@@ -579,8 +479,6 @@ pub(crate) mod testing {
         };
         assert_eq!(encode(&proof_single), encode(&proof_slice));
         assert_eq!(blinding_single, blinding_slice);
-
-        // Cross-verification
         assert!(proof_slice.verify(io, b"foo").is_ok());
         assert!(proof_single.verify([io], b"foo").is_ok());
     }
@@ -603,21 +501,18 @@ pub(crate) mod testing {
         let (proof, _) = secret.prove_pedersen(&ios[..], b"bar");
         assert!(proof.verify(&ios[..], b"bar").is_ok());
 
-        // Tamper: wrong output on ios[1]
         let mut bad_ios = ios.clone();
         bad_ios[1].output = secret.output(ios[0].input);
         assert!(proof.verify(&bad_ios[..], b"bar").is_err());
 
-        // Tamper: wrong input on ios[0]
         let mut bad_ios = ios.clone();
         bad_ios[0].input = ios[1].input;
         assert!(proof.verify(&bad_ios[..], b"bar").is_err());
 
-        // Tamper: wrong ad
         assert!(proof.verify(&ios[..], b"baz").is_err());
     }
 
-    /// N=0 reduces to a Schnorr signature over the additional data.
+    /// With no VRF pairs, the proof is a Schnorr signature over `ad`.
     pub fn prove_verify_multi_empty<S: PedersenSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
 
@@ -626,12 +521,11 @@ pub(crate) mod testing {
 
         assert!(proof.verify(ios, b"bar").is_ok());
 
-        // Wrong ad should fail
         assert!(proof.verify(ios, b"baz").is_err());
     }
 
-    /// With an empty I/O list `Ok` is the identity, which arkworks reads from
-    /// several byte strings. One proof must have one encoding.
+    /// One proof must have one encoding. With no I/O pairs, `Ok` is the
+    /// identity, which arkworks reads from several byte strings.
     pub fn proof_encoding_is_canonical<S: PedersenSuite>() {
         use ark_serialize::Compress;
 
@@ -662,10 +556,8 @@ pub(crate) mod testing {
         assert!(!aliases.is_empty());
     }
 
-    /// `merge_ios` switches to its MSM branch at `MSM_THRESHOLD` pairs. Both
-    /// verifiers merge like the prover does, so this runs the branch through
-    /// prove, verify and batch verify; the branch itself is checked against a
-    /// plain sum in `utils::common`.
+    /// Runs the MSM branch of `merge_ios` (`MSM_THRESHOLD` pairs) through prove,
+    /// verify and batch verify.
     pub fn prove_verify_multi_msm<S: PedersenSuite>() {
         use crate::utils::common::MSM_THRESHOLD;
         use pedersen::BatchVerifier;
@@ -681,7 +573,6 @@ pub(crate) mod testing {
         batch.push(&ios[..], b"msm", &proof);
         assert!(batch.verify().is_ok());
 
-        // Tamper: wrong output on the last pair
         let mut bad_ios = ios.clone();
         bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
         assert!(proof.verify(&bad_ios[..], b"msm").is_err());
@@ -690,14 +581,9 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
-    /// An I/O pair holding the identity must be rejected by both verifiers.
-    ///
-    /// `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key, so both
-    /// verification equations accept it and two different keys produce two
-    /// valid proofs for the same pair. The pair therefore binds its VRF output
-    /// to nobody, and only an explicit check keeps it out. The second case
-    /// hides the bad pair behind a good one, where the merged pair alone is not
-    /// enough to catch it.
+    /// `(0, 0)` satisfies `O = x * I` for every key, so it binds its output to no
+    /// signer. The second case hides it behind a valid pair, where the merged
+    /// pair does not show it.
     pub fn identity_io_pair_rejected<S: PedersenSuite>() {
         use pedersen::BatchVerifier;
 
@@ -727,12 +613,8 @@ pub(crate) mod testing {
         }
     }
 
-    /// An identity key commitment must be rejected by both verifiers.
-    ///
-    /// `Yb = 0` is the commitment of the opening `(x, b) = (0, 0)`, which is
-    /// public. The proof below is built without any secret: both responses are
-    /// the nonces themselves, since the challenge multiplies zero. Both
-    /// verification equations hold, so only an explicit check keeps it out.
+    /// `Yb = 0` opens to the public `(x, b) = (0, 0)`, so anybody can build this
+    /// proof. Both equations hold, so both verifiers must reject it explicitly.
     pub fn identity_key_commitment_rejected<S: PedersenSuite>() {
         use pedersen::BatchVerifier;
 
@@ -763,14 +645,10 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
-    /// A key chosen after the delinearization weights must not prove pairs
-    /// that are not its own.
-    ///
-    /// The merged pair binds each pair to the key only when the key is fixed
-    /// before the weights. The attacker gives one input two different outputs,
-    /// takes the weights from the pairs and `ad` alone, and then solves for the
-    /// key that satisfies the merged pair. If the verifiers accept, one key has
-    /// two VRF outputs for one input.
+    /// A key chosen after the delinearization weights must not prove pairs that
+    /// it did not produce. The attacker gives one input two outputs, takes the
+    /// weights from the pairs and `ad`, and solves for the key. If a verifier
+    /// accepts, one key has two outputs for one input.
     pub fn key_chosen_after_weights_rejected<S: PedersenSuite>() {
         use crate::utils::common::DelinearizeScalars;
         use pedersen::BatchVerifier;
@@ -804,12 +682,10 @@ pub(crate) mod testing {
     where
         AffinePoint<S>: CheckPoint,
     {
-        // Check that point has been computed using the magic spell.
         assert_eq!(
             S::BLINDING_BASE,
             S::data_to_point(PEDERSEN_BLINDING_BASE_SEED).unwrap()
         );
-        // Check that the point is on curve.
         assert!(S::BLINDING_BASE.check(true).is_ok());
     }
 

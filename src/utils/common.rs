@@ -1,8 +1,4 @@
-//! Common cryptographic utility functions.
-//!
-//! This module provides implementations of various cryptographic operations
-//! used throughout the VRF schemes, including challenge generation, nonce
-//! derivation, and delinearization.
+//! Challenge, nonce, transcript and delinearization helpers of the schemes.
 
 use crate::utils::straus::short_msm;
 use crate::utils::transcript::Transcript;
@@ -16,11 +12,8 @@ use ark_std::vec::Vec;
 /// Stack buffer size for small serialized objects (compressed points, scalars).
 pub(crate) const STACK_BUF_SIZE: usize = 128;
 
-/// Declare a zeroed `[u8; STACK_BUF_SIZE]` array and bind `$name` to a
-/// `&mut [u8]` slice of the first `$len` bytes.
-///
-/// Intended for small serialized objects such as single compressed points
-/// or scalar field elements. Panics if `$len > STACK_BUF_SIZE`.
+/// Bind `$name` to a zeroed stack slice of `$len` bytes. Panics if
+/// `$len > STACK_BUF_SIZE`.
 macro_rules! stack_buf {
     ($name:ident, $len:expr) => {
         let _sb_len: usize = $len;
@@ -35,14 +28,11 @@ macro_rules! stack_buf {
 }
 pub(crate) use stack_buf;
 
-/// Number of bytes to squeeze for an unbiased scalar via `from_le_bytes_mod_order`.
-///
-/// Returns `ceil((ceil(log2(p)) + SECURITY_PARAMETER) / 8)` where `p` is the
-/// scalar field modulus. The extra padding keeps the bias from modular
-/// reduction at most `2^-SECURITY_PARAMETER`.
+/// Bytes to squeeze for a scalar whose reduction bias is at most
+/// `2^-SECURITY_PARAMETER`: `ceil((ceil(log2(p)) + SECURITY_PARAMETER) / 8)`.
 ///
 /// See sections 5.1 and 5.3 of the
-/// [IETF hash-to-curve draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/).
+/// [hash-to-curve draft](https://datatracker.ietf.org/doc/draft-irtf-cfrg-hash-to-curve/14/).
 pub const fn expanded_scalar_len<S: Suite>() -> usize {
     let base_field_size_in_bits = ScalarField::<S>::MODULUS_BIT_SIZE as usize;
     (base_field_size_in_bits + S::SECURITY_PARAMETER).div_ceil(8)
@@ -80,11 +70,8 @@ pub(crate) fn weight_scalar<S: Suite>(t: &mut S::Transcript) -> ScalarField<S> {
     ScalarField::<S>::from_le_bytes_mod_order(buf)
 }
 
-/// Internal domain separation tags for protocol hashing.
-///
-/// Each variant is absorbed as a single byte after `SUITE_ID` to make every
-/// distinct hashing context produce independent transcript states. Values are
-/// grouped by purpose in blocks of sixteen.
+/// Domain separation tags, absorbed as one byte after `SUITE_ID`. The values
+/// are in blocks of sixteen by purpose.
 #[repr(u8)]
 pub(crate) enum DomSep {
     /// Tiny VRF scheme tag.
@@ -111,11 +98,8 @@ pub(crate) enum DomSep {
     HashToCurve = 0x60,
 }
 
-/// I/O pairs fed to a VRF transcript: an optional Schnorr pair `(G, Y)`
-/// followed by the user pairs.
-///
-/// Tiny and Thin VRF prepend the Schnorr pair, so the public key DLEQ
-/// relation is folded into the delinearized I/O pairs.
+/// I/O pairs of a VRF transcript: the Schnorr pair `(G, Y)` of Tiny and Thin
+/// VRF, if any, and then the user pairs.
 #[derive(Clone, Copy)]
 struct Ios<'a, S: Suite> {
     schnorr: Option<VrfIo<S>>,
@@ -212,12 +196,8 @@ fn vrf_transcript_merged_input<S: Suite>(
     (t, merged_input(ios, scalars))
 }
 
-/// Build a VRF transcript returning raw delinearization scalars.
-///
-/// Same transcript construction as [`vrf_transcript_merged_input`] but
-/// returns the z scalars instead of the merged input. Used by batch
-/// verification which needs the individual points and z scalars to build an
-/// expanded MSM without computing the merged pair.
+/// Same as [`vrf_transcript_merged_input`], but returns the delinearization
+/// scalars. The batch verifiers use them on the raw points.
 fn vrf_transcript_scalars<S: Suite>(
     scheme: DomSep,
     ios: Ios<'_, S>,
@@ -277,13 +257,8 @@ pub(crate) fn batch_transcript<S: Suite>(scheme: DomSep) -> S::Transcript {
     t
 }
 
-/// Whether the key point or a point of an I/O pair is the group identity.
-///
-/// The key point is the public key `Y` of Tiny and Thin, or the key commitment
-/// `Yb` of Pedersen. With `Y = 0` the challenge term drops out of the
-/// verification equation, and anyone can make a proof. `Yb = 0` commits to the
-/// opening `(0, 0)`, which is public. A pair holding the identity satisfies
-/// `O = x*I` for every `x`, so it binds its VRF output to no signer.
+/// Whether the key point (`Y` of Tiny and Thin, `Yb` of Pedersen) or a point of
+/// an I/O pair is the identity.
 pub(crate) fn has_identity<S: Suite>(key: AffinePoint<S>, ios: &[VrfIo<S>]) -> bool {
     key.is_zero() || ios.iter().any(VrfIo::has_identity)
 }
@@ -324,14 +299,12 @@ pub(crate) fn schnorr_lhs<S: Suite>(
     }
 }
 
-/// Projective point type that tells if a value has an affine form.
+/// Projective point that tells whether it has an affine form.
 ///
-/// An off-curve point from the unchecked path can give a twisted Edwards
-/// value with Z = 0 that is not the identity. `into_affine` panics on it, and
-/// `PartialEq` finds (0, 0, 0, 0) equal to every point. Tiny and Thin verify
-/// reject such a value.
-///
-/// Implemented for the arkworks twisted Edwards and short Weierstrass points.
+/// An off-curve point from the unchecked path can give a twisted Edwards value
+/// with Z = 0 that is not the identity. `into_affine` panics on it, and
+/// `PartialEq` finds (0, 0, 0, 0) equal to every point. Implemented for the
+/// arkworks twisted Edwards and short Weierstrass points.
 pub trait ProjectiveZ: CurveGroup {
     /// Returns `true` if the value has an affine form.
     fn has_affine_form(&self) -> bool;
@@ -359,14 +332,8 @@ impl<P: ark_ec::short_weierstrass::SWCurveConfig> ProjectiveZ
     }
 }
 
-/// Challenge generation inspired by RFC-9381 section 5.4.3.
-///
-/// Generates a challenge scalar by absorbing curve points into the transcript
-/// and squeezing. Used in the Schnorr-like proofs for VRF schemes.
-///
-/// The transcript typically carries shared state from `vrf_transcript`.
-///
-/// Returns a scalar field element derived from the hash of the inputs.
+/// Challenge after RFC 9381 section 5.4.3: absorb the points, then squeeze
+/// [`Suite::CHALLENGE_LEN`] bytes into a scalar.
 pub fn challenge<S: Suite>(
     pts: &[&AffinePoint<S>],
     mut transcript: S::Transcript,
@@ -378,14 +345,11 @@ pub fn challenge<S: Suite>(
     challenge_scalar::<S>(&mut transcript)
 }
 
-/// Point-to-hash inspired by RFC-9381 section 5.2.
+/// Point-to-hash after RFC 9381 section 5.2: the VRF output bytes of an output
+/// point.
 ///
-/// Converts an elliptic curve point to a hash value. Used to derive the
-/// final VRF output bytes from the VRF output point.
-///
-/// The `mul_by_cofactor` flag optionally multiplies the point by the cofactor
-/// before hashing, as specified in the RFC. In practice this is unnecessary
-/// when `data_to_point` already yields a prime-order subgroup point.
+/// `mul_by_cofactor` multiplies the point by the cofactor first, as the RFC
+/// does. A point in the prime-order subgroup does not need it.
 pub fn point_to_hash<S: Suite, const N: usize>(
     pt: &AffinePoint<S>,
     mul_by_cofactor: bool,
@@ -403,16 +367,11 @@ pub fn point_to_hash<S: Suite, const N: usize>(
     out
 }
 
-/// Deterministic nonce generation inspired by RFC-8032 section 5.1.6.
+/// Deterministic nonce after RFC 8032 section 5.1.6: hash the secret key to 64
+/// bytes, absorb them into the transcript and squeeze the nonce.
 ///
-/// Hashes the secret key to derive a 64-byte expanded key, then absorbs it
-/// into the transcript and squeezes a nonce. The transcript typically
-/// carries shared state from `vrf_transcript`, binding the nonce to the I/O
-/// pairs and additional data.
-///
-/// The expanded key copy and the nonce reduction buffer are zeroized. The
-/// hasher states that absorbed the secret scalar and the expanded key are
-/// not: see [`crate::utils::DigestXof`].
+/// The expanded key and the reduction buffer are zeroized. The hasher states
+/// that absorbed the secret are not (see [`crate::utils::DigestXof`]).
 pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> ScalarField<S> {
     // Expand sk: H(transcript_state || NonceExpand || sk)
     let mut t_exp = transcript.clone();
@@ -428,22 +387,16 @@ pub fn nonce<S: Suite>(sk: &ScalarField<S>, mut transcript: S::Transcript) -> Sc
     nonce_scalar::<S>(&mut transcript)
 }
 
-/// Stateful stream of delinearization scalars backed by a transcript's
-/// squeeze stream.
-///
-/// The first scalar is always `1` (z_0 = 1); subsequent scalars are
-/// [`Suite::SECURITY_PARAMETER`] bit values squeezed from the transcript.
+/// Delinearization scalars from a transcript. The first is `z_0 = 1`, the next
+/// ones have [`Suite::SECURITY_PARAMETER`] bits.
 pub(crate) struct DelinearizeScalars<S: Suite> {
     transcript: S::Transcript,
     first: bool,
 }
 
 impl<S: Suite> DelinearizeScalars<S> {
-    /// Create a [`DelinearizeScalars`] stream from a transcript that has already
-    /// absorbed the I/O pairs. Adds domain separation and starts the squeeze.
-    ///
-    /// The caller must have absorbed the I/O pairs into `transcript` before
-    /// calling this function (e.g. via [`absorb_ios`]).
+    /// Stream from a transcript that holds the I/O pairs (see [`absorb_ios`]).
+    /// It adds a domain separation tag and starts the squeeze.
     pub fn new(mut transcript: S::Transcript) -> DelinearizeScalars<S> {
         transcript.absorb_raw(&[DomSep::Delinearize as u8]);
         DelinearizeScalars {
@@ -469,12 +422,8 @@ impl<S: Suite> DelinearizeScalars<S> {
     }
 }
 
-/// Absorb I/O pairs into a transcript.
-///
-/// The count is absorbed first as a little-endian `u64` so that the
-/// framing is unambiguous even though each pair is two fixed-size points.
-/// This is cheap and avoids any implicit dependency on the point encoding
-/// being fixed-length.
+/// Absorb the I/O pairs after their count as a little-endian `u64`. The count
+/// keeps the framing unambiguous also for a point encoding of variable length.
 fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
     let n = ios.len() as u64;
     t.absorb_raw(&n.to_le_bytes());
@@ -484,16 +433,11 @@ fn absorb_ios<S: Suite>(t: &mut S::Transcript, ios: Ios<'_, S>) {
     }
 }
 
-/// Pair count at which [`merge_ios`] switches from a fold to an MSM.
-///
-/// MSM has bucket-setup overhead that dominates for small N.
-/// Fold is faster below this threshold; MSM wins above it.
+/// Pair count at which [`merge_ios`] switches from a fold to an MSM. Below it,
+/// the MSM bucket setup costs more than the fold.
 pub(crate) const MSM_THRESHOLD: usize = 16;
 
-/// Fold/MSM `sum(z_i * P_i)` over the points with pre-computed
-/// delinearization scalars.
-///
-/// Caller must ensure that `points` yields exactly `zs.len()` values.
+/// `sum(z_i * P_i)` by fold or MSM. `points` must give `zs.len()` values.
 fn merge_points<S: Suite>(
     points: impl Iterator<Item = AffinePoint<S>>,
     zs: &[ScalarField<S>],
@@ -509,9 +453,8 @@ fn merge_points<S: Suite>(
     }
 }
 
-/// Fold/MSM I/O pairs using pre-computed delinearization scalars.
-///
-/// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
+/// Merge the I/O pairs with the scalars `zs`. Needs `ios.len() >= 2` and
+/// `zs.len() == ios.len()`.
 fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
     let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
     let output = merge_points::<S>(ios.iter().map(|io| io.output.0), zs);
@@ -522,9 +465,7 @@ fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
     }
 }
 
-/// Merge the inputs only, for the provers, which never use the merged output.
-///
-/// Caller must ensure `ios.len() >= 2` and `zs.len() == ios.len()`.
+/// Merge the inputs only, for the provers. Same conditions as [`merge_ios`].
 fn merge_inputs<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> Input<S> {
     let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
     Input::from_affine_unchecked(input.into_affine())
@@ -549,9 +490,8 @@ mod tests {
             .collect()
     }
 
-    /// The Tiny and Thin verifiers expand `s * I_m - c * O_m` over the raw
-    /// pairs when the pairs are few and merge them otherwise. Both paths must
-    /// equal the plain sum, on each side of the point threshold.
+    /// Both paths of `schnorr_lhs` (raw pairs and merged pair) must equal the
+    /// plain sum, on each side of the threshold.
     #[test]
     fn schnorr_lhs_matches_the_plain_sum() {
         let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
@@ -577,11 +517,9 @@ mod tests {
         }
     }
 
-    /// The provers merge the inputs only, so the merged input must equal the
-    /// plain delinearized sum `sum(z_i * I_i)`. The verifier rebuilds the same
-    /// value from the full pairs, so a merge that drifts here gives a proof
-    /// that no verifier accepts. Covers the empty, the single, the fold and
-    /// the MSM branch, with and without the prepended Schnorr pair.
+    /// The merged input of the provers must equal `sum(z_i * I_i)`, or no
+    /// verifier accepts the proof. Covers each branch, with and without the
+    /// Schnorr pair.
     #[test]
     fn merged_input_matches_the_plain_sum() {
         type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
@@ -615,10 +553,8 @@ mod tests {
         }
     }
 
-    /// The Schnorr pair sits at index 0 and draws the scalar one. The Thin
-    /// batch verifier drops the `z_0` factor from its two Schnorr terms, so a
-    /// stream that starts with any other value breaks that equation with no
-    /// sign in the code.
+    /// The Thin batch verifier leaves out `z_0` from its Schnorr terms, so the
+    /// stream must start with one.
     #[test]
     fn schnorr_pair_scalar_is_one() {
         use ark_ff::One;
@@ -633,9 +569,8 @@ mod tests {
         assert_ne!(zs[1], ScalarField::<TestSuite>::one());
     }
 
-    /// The Thin and the Pedersen batch verifiers draw their weights from
-    /// transcripts of the same shape, so the scheme tag is what keeps the
-    /// two hash domains apart.
+    /// The Thin and Pedersen batch weights come from transcripts of the same
+    /// shape. Only the scheme tag separates them.
     #[test]
     fn batch_transcript_domain_separation() {
         let mut thin = batch_transcript::<TestSuite>(DomSep::ThinVrf);
@@ -672,17 +607,13 @@ mod tests {
         let io_thin = merged(DomSep::ThinVrf);
         let io_ped = merged(DomSep::PedersenVrf);
 
-        // Different scheme tags must produce different merged pairs (for n >= 2).
         assert_ne!(io_tiny, io_thin);
         assert_ne!(io_tiny, io_ped);
         assert_ne!(io_thin, io_ped);
     }
 
-    /// `merge_ios` folds below `MSM_THRESHOLD` pairs and switches to an MSM
-    /// at the threshold. Prover and verifier share the function, so a scalar
-    /// misalignment in one branch would round-trip unnoticed. Each branch is
-    /// compared with the plain sum `sum(z_i * P_i)` over scalars drawn from
-    /// the same transcript fork.
+    /// The prover and the verifier share `merge_ios`, so a wrong branch passes
+    /// prove and verify. Compare each branch with the plain sum.
     #[test]
     fn merge_ios_branches_match_plain_sum() {
         type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
@@ -719,10 +650,8 @@ mod tests {
     }
 
     /// The nonce expansion and the delinearization scalars follow
-    /// `Suite::SECURITY_PARAMETER`; the challenge follows
-    /// `Suite::CHALLENGE_LEN`, which defaults to the level and may exceed it.
-    /// A suite at 256 bits must not get 128-bit values, and a wider challenge
-    /// must not widen the delinearization scalars.
+    /// `SECURITY_PARAMETER`, and the challenge follows `CHALLENGE_LEN`. A wider
+    /// challenge must not widen the delinearization scalars.
     #[test]
     fn widths_follow_security_parameter() {
         use crate::suites::testing::{TestSuite256, TestSuiteC32};
@@ -752,9 +681,8 @@ mod tests {
         assert!(!high_half_set(zs[1]));
     }
 
-    /// Tiny and Thin verify rely on `ProjectiveZ` to reject a twisted
-    /// Edwards value with Z = 0 off the identity, on which `into_affine`
-    /// panics. In short Weierstrass, Z = 0 is the identity, a valid value.
+    /// A twisted Edwards value with Z = 0 that is not the identity has no affine
+    /// form. In short Weierstrass, Z = 0 is the identity, a valid value.
     #[test]
     fn projective_z_affine_form() {
         use crate::testing::random_val;

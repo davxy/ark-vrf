@@ -1,52 +1,21 @@
 //! # ECVRF Ed25519 SHA-512 TAI suite
 //!
-//! Configuration inspired by RFC-9381 (ECVRF-EDWARDS25519-SHA512-TAI). The
-//! encodings and the key derivation are the ones shared by every suite of
-//! this crate; they differ from RFC-8032 where this doc says so:
+//! After RFC 9381 (ECVRF-EDWARDS25519-SHA512-TAI), with the shared rules of
+//! [`crate::suites`].
 //!
-//! *  `SUITE_ID` = `b"Ed25519-SHA512-TAI-v1"`.
+//! - `SUITE_ID` = `b"Ed25519-SHA512-TAI-v1"`.
+//! - `G` is the prime-order subgroup of edwards25519, with the parameters of
+//!   [RFC 8032](https://www.rfc-editor.org/rfc/rfc8032) section 5.1, Table 1.
+//!   `fLen` = `qLen` = 32 and `cofactor` = 8.
+//! - Hash: SHA-512 ([RFC 6234](https://www.rfc-editor.org/rfc/rfc6234)),
+//!   `hLen` = 64.
+//! - `ECVRF_encode_to_curve`: try-and-increment (see
+//!   [`crate::utils::hash_to_curve_tai`]).
 //!
-//! *  The EC group G is the prime order subgroup of the edwards25519
-//!    elliptic curve, with the finite field and curve parameters as defined
-//!    in Table 1 in Section 5.1 of
-//!    [RFC8032](https://www.rfc-editor.org/rfc/rfc8032).
-//!    For this group, fLen = qLen = 32 and cofactor = 8.
-//!
-//! *  `cLen` = 16 (128-bit security level).
-//!
-//! *  The key pair generation primitive is _PK = sk * G_, with G the group
-//!    generator. In this ciphersuite, the secret scalar x is equal to the
-//!    secret key scalar sk. A secret derived from a seed follows
-//!    [`Secret::from_seed`]: no SHA-512 expansion of the seed and no
-//!    clamping, unlike Section 5.1.5 of RFC-8032.
-//!
-//! *  Nonce generation is deterministic through the suite transcript, see
-//!    [`Suite::nonce`]. It is inspired by Section 5.4.2.2 of RFC-9381.
-//!
-//! *  The int_to_string function encodes into the 32 bytes little-endian
-//!    representation, as the first paragraph of Section 5.1.2 of RFC-8032.
-//!    The challenge `c` is encoded on its low `cLen` bytes.
-//!
-//! *  The string_to_int function decodes from the 32 bytes little-endian
-//!    representation.
-//!
-//! *  The point_to_string function converts a point in G to an octet
-//!    string using compressed form. The y coordinate is encoded using
-//!    int_to_string function and the most significant bit of the last
-//!    octet is set when the integer x is greater than `(p - 1) / 2`.
-//!    Section 5.1.2 of RFC-8032 stores the least significant bit of x in
-//!    that position instead, so the two encodings differ for about half of
-//!    the points. This implies that ptLen = fLen = 32.
-//!
-//! *  The string_to_point function tries to decompress the point encoded
-//!    according to `point_to_string` procedure. This function MUST output
-//!    "INVALID" if the octet string does not decode to a point on G.
-//!
-//! *  The hash function Hash is SHA-512 as specified in
-//!    [RFC6234](https://www.rfc-editor.org/rfc/rfc6234), with hLen = 64.
-//!
-//! *  The ECVRF_encode_to_curve function uses Try-And-Increment, inspired
-//!    by Section 5.4.1.1 of RFC-9381, see [`crate::utils::hash_to_curve_tai`].
+//! Differences from RFC 8032: a seed does not get the SHA-512 expansion and the
+//! clamping of section 5.1.5. The point encoding marks `x > (p - 1) / 2`, where
+//! RFC 8032 section 5.1.2 stores the parity of `x`, so the encodings differ for
+//! about half of the points.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;

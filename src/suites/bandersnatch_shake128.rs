@@ -1,22 +1,16 @@
 //! # ECVRF Bandersnatch SHAKE128 Elligator2 suite
 //!
 //! Same curve, generator and encodings as [`super::bandersnatch`], with
-//! SHAKE128 in place of SHA-512 in the two places that hash:
+//! SHAKE128 in place of SHA-512:
 //!
-//! * `SUITE_ID` = b"Bandersnatch-SHAKE128-ELL2-v1"
+//! - `SUITE_ID` = `b"Bandersnatch-SHAKE128-ELL2-v1"`.
+//! - The transcript is a [`Shake128Transcript`](crate::utils::Shake128Transcript).
+//! - `ECVRF_encode_to_curve`: Elligator2 with `expand_message_xof` over SHAKE128
+//!   (RFC 9380 section 5.3.2), see [`crate::utils::hash_to_curve_ell2_xof`]. The
+//!   DST is `SUITE_ID || DomSep::HashToCurve`.
 //!
-//! * `cLen` = 16 (128-bit security level).
-//!
-//! * The Fiat-Shamir transcript is a
-//!   [`Shake128Transcript`](crate::utils::Shake128Transcript), SHAKE128 in
-//!   XOF mode, instead of the SHA-512 based one.
-//!
-//! * The `ECVRF_encode_to_curve` function uses the *Elligator2* method of
-//!   RFC 9380 section 6.8.2 with `expand_message_xof` over SHAKE128
-//!   (section 5.3.2) in place of `expand_message_xmd` over SHA-512, see
-//!   [`crate::utils::hash_to_curve_ell2_xof`]. The domain separation tag has
-//!   the same `DST = SUITE_ID || DomSep::HashToCurve` form. The blinding
-//!   base, the accumulator base and the padding point are this suite's own.
+//! The blinding base, the accumulator base and the padding point are the
+//! suite's own.
 
 use crate::{pedersen::PedersenSuite, *};
 use ark_ff::MontFp;

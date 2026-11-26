@@ -183,7 +183,7 @@ where
     }
 }
 
-/// The suite module docs state the point and scalar encodings. This pins
+/// The `suites` module docs state the point and scalar encodings. This pins
 /// them, so that the docs and the bytes cannot drift apart.
 pub fn encodings_follow_the_module_doc<S: Suite>()
 where
@@ -483,12 +483,9 @@ impl<C: SWCurveConfig> TorsionPoint for SWAffine<C> {
     }
 }
 
-/// Points outside the prime-order subgroup must not pass any checked path.
-///
-/// A key holder can add a torsion point `T` to the honest output `O`. The
-/// verifiers accept `O + T` for about half of the additional data values,
-/// while `O` and `O + T` hash to different VRF outputs. The checked
-/// deserialization is the only barrier (Cure53 PAR-03-010).
+/// Points outside the prime-order subgroup must not pass a checked path. The
+/// verifiers accept `O + T`, with `T` a torsion point, for about half of the
+/// `ad` values, and it hashes to another VRF output (Cure53 PAR-03-010).
 pub fn low_order_point_rejected<S: Suite>()
 where
     AffinePoint<S>: TorsionPoint,
@@ -518,11 +515,9 @@ fn assert_torsion_rejected<S: Suite, K: Serializable>(
     unchecked
 }
 
-/// `Input::new` must give points in the prime-order subgroup.
-///
-/// `Input` has no checked constructor and the verifiers do not repeat the
-/// subgroup check, so the suite map is the only barrier. A map that does not
-/// clear the cofactor gives a torsion part to most inputs.
+/// `Input::new` must give points in the prime-order subgroup, because nothing
+/// else checks the inputs. A map that does not clear the cofactor gives a
+/// torsion part to most inputs.
 pub fn input_in_prime_subgroup<S: Suite>() {
     for data in 0..16_u8 {
         let input = Input::<S>::new(&[data]).unwrap();

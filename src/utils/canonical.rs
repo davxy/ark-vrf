@@ -73,18 +73,14 @@ impl ark_std::io::Write for Matcher<'_> {
     }
 }
 
-/// Decode a value and accept only the bytes that the value itself encodes to.
+/// Decode a value and accept only the bytes that the value encodes to.
 ///
-/// The comparison covers the consumed bytes, so it runs per component inside
-/// a stream decoder; [`CanonicalDeserializeExact`] covers the end of the
-/// string. It runs on both paths, because arkworks sequences decode their
-/// elements with `Validate::No` and batch check them afterwards. `validate`
-/// gates a `Valid::check` of the value, because the arkworks BLS12-381
-/// decoder skips the on-curve test of an uncompressed point. The consumed
-/// bytes are kept in a stack buffer that holds a point of every built-in
-/// suite, and spill to the heap past it.
-///
-/// Implemented for every type that serializes and deserializes.
+/// The check covers the consumed bytes, so it also works inside a stream
+/// decoder; [`CanonicalDeserializeExact`] checks the end of the string. It runs
+/// also without validation, because arkworks sequences decode their items with
+/// `Validate::No` and check them later. `validate` also gates a `Valid::check`,
+/// because the arkworks BLS12-381 decoder does not check that an uncompressed
+/// point is on the curve.
 pub(crate) trait CanonicalDeserializeStrict:
     ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize
 {
@@ -119,16 +115,15 @@ impl<T: ark_serialize::CanonicalSerialize + ark_serialize::CanonicalDeserialize>
 {
 }
 
-/// Decode a value from a byte string that holds nothing else.
+/// Decode a value from a byte string that holds only that value.
 ///
-/// The arkworks decoders stop after the value and leave trailing bytes
-/// unread, so every value has an encoding of every longer length, and a
-/// deduplication on the bytes of a proof or of a key sees one value many
-/// times. These decoders reject a byte string with a byte past the value.
+/// The arkworks decoders stop after the value and do not read the trailing
+/// bytes. So a value has encodings of every greater length, and a deduplication
+/// on bytes sees one value many times. These methods return an error if a byte
+/// is left over.
 ///
 /// Each method is the [`CanonicalDeserialize`](ark_serialize::CanonicalDeserialize)
 /// method of the same name, on a byte string instead of a reader.
-/// Implemented for every type of that trait.
 pub trait CanonicalDeserializeExact: ark_serialize::CanonicalDeserialize {
     /// [`deserialize_with_mode`](ark_serialize::CanonicalDeserialize::deserialize_with_mode)
     /// on `bytes`, and an error if a byte is left over.
@@ -199,11 +194,8 @@ mod tests {
     use crate::*;
     use ark_serialize::{Compress, SerializationError, Validate};
 
-    /// Arkworks stops after the value and leaves the rest of the string
-    /// unread, so a proof with a byte appended still decodes, and a
-    /// deduplication on proof bytes sees two proofs. Every exact decoder
-    /// accepts the value alone; each convenience is checked on its own, as
-    /// a wrong mode in one of them would go unnoticed otherwise.
+    /// Each exact decoder must accept the value alone and reject one more byte.
+    /// Each one is checked, because a wrong mode in one would go unnoticed.
     #[test]
     fn exact_decode_rejects_trailing_bytes() {
         type Proof = crate::thin::Proof<TestSuite>;
