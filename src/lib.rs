@@ -226,11 +226,17 @@ pub trait Suite: Copy {
     /// scalar field, does not compile.
     const CHALLENGE_LEN: usize = Self::SECURITY_PARAMETER / 8;
 
+    /// Generator used through all the suite.
+    ///
+    /// Defaults to Arkworks provided generator.
+    const GENERATOR: AffinePoint<Self> = <Self::Affine as AffineRepr>::GENERATOR;
+
     /// Curve point in affine representation.
     ///
     /// The `AffineRepr` bound does not guarantee prime-order subgroup
     /// membership: a value of this type may be any point on the curve. The
-    /// [`PointWrapper`] checked paths enforce membership.
+    /// checked decoders of [`Public`] and [`Output`] enforce membership, and
+    /// [`Self::data_to_point`] must give it for [`Input`].
     type Affine: AffineRepr<Group: utils::ProjectiveZ>;
 
     /// Fiat-Shamir transcript.
@@ -238,11 +244,6 @@ pub trait Suite: Copy {
     /// Provides absorb/squeeze interface for challenge generation,
     /// nonce derivation, delinearization, and other hash-based operations.
     type Transcript: Transcript;
-
-    /// Generator used through all the suite.
-    ///
-    /// Defaults to Arkworks provided generator.
-    const GENERATOR: AffinePoint<Self> = <Self::Affine as AffineRepr>::GENERATOR;
 
     /// Generate a nonce scalar from the secret key and transcript state.
     ///
@@ -274,6 +275,10 @@ pub trait Suite: Copy {
     ///
     /// The input `data` is the raw pre-image; any salting must be applied
     /// by the caller before invoking this method.
+    ///
+    /// The point must be in the prime-order subgroup, and nobody may know its
+    /// discrete log to [`Self::GENERATOR`]. [`Input::new`] does not check
+    /// this, and the verifiers do not check subgroup membership.
     ///
     /// Defaults to [`utils::hash_to_curve_tai`] (try-and-increment).
     /// Override for alternative methods like [`utils::hash_to_curve_ell2_xmd`] (Elligator2).
@@ -596,7 +601,8 @@ impl<S: Suite> Input<S> {
     /// Construct from [`Suite::data_to_point`].
     ///
     /// Maps arbitrary data to a curve point via hash-to-curve. Returns
-    /// `Error::InvalidData` if no point is found.
+    /// `Error::InvalidData` if no point is found. The point is not checked:
+    /// it is valid when the suite meets the [`Suite::data_to_point`] contract.
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         S::data_to_point(data)
             .map(Self::from_point)
@@ -736,7 +742,7 @@ mod tests {
     use super::*;
     use ark_ec::AffineRepr;
     use suites::testing::{Input, Secret, TestSuite};
-    use testing::{TEST_SEED, random_val};
+    use testing::{random_val, TEST_SEED};
 
     #[test]
     fn vrf_output_check() {
@@ -939,11 +945,9 @@ mod tests {
         };
 
         // 4. Verify the malicious proof
-        assert!(
-            public
-                .verify_tiny(malicious_io, ad.as_bytes(), &proof)
-                .is_ok()
-        );
+        assert!(public
+            .verify_tiny(malicious_io, ad.as_bytes(), &proof)
+            .is_ok());
 
         // 5. Verify the honest proof still works
         let honest_io = VrfIo {
@@ -951,11 +955,9 @@ mod tests {
             output: honest_output,
         };
         let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
-        assert!(
-            public
-                .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
-                .is_ok()
-        );
+        assert!(public
+            .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
+            .is_ok());
 
         // Two different outputs for the same input and public key.
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());

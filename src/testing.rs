@@ -518,6 +518,18 @@ fn assert_torsion_rejected<S: Suite, K: Serializable>(
     unchecked
 }
 
+/// `Input::new` must give points in the prime-order subgroup.
+///
+/// `Input` has no checked constructor and the verifiers do not repeat the
+/// subgroup check, so the suite map is the only barrier. A map that does not
+/// clear the cofactor gives a torsion part to most inputs.
+pub fn input_in_prime_subgroup<S: Suite>() {
+    for data in 0..16_u8 {
+        let input = Input::<S>::new(&[data]).unwrap();
+        assert!(ark_serialize::Valid::check(&input).is_ok());
+    }
+}
+
 /// Flip each bit of `component`; a mutation that arkworks decodes to the same
 /// value is an alias, and `decode` must reject it. Returns the aliases.
 pub fn assert_aliases_rejected<T: CanonicalSerialize + CanonicalDeserialize>(
@@ -648,6 +660,11 @@ macro_rules! suite_tests {
         #[test]
         fn low_order_point_rejected() {
             $crate::testing::low_order_point_rejected::<$suite>();
+        }
+
+        #[test]
+        fn input_in_prime_subgroup() {
+            $crate::testing::input_in_prime_subgroup::<$suite>();
         }
 
         #[test]

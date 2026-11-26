@@ -140,17 +140,6 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn elligator2_hash_to_curve() {
-        use crate::testing::CheckPoint;
-        let raw = crate::testing::random_vec(42, None);
-        assert!(
-            ThisSuite::data_to_point(&raw)
-                .map(|p| p.check(true).ok())
-                .is_some()
-        );
-    }
-
     /// Arkworks reads the identity `(0, 1)` with either sign flag, since both
     /// roots of `x` are zero. The crate decoders accept the clear flag only.
     #[test]
