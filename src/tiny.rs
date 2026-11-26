@@ -179,13 +179,11 @@ impl<S: TinySuite> Proof<S> {
     ///
     /// All curve points involved in verification (public key and I/O pairs)
     /// are assumed to be in the prime-order subgroup. This is guaranteed
-    /// when points are constructed through checked constructors ([`Public::from_affine`],
-    /// [`Input::from_affine`], [`Output::from_affine`]), checked deserialization
-    /// (see [`PointWrapper`]) or through trusted operations like [`Input::new`]
-    /// (hash-to-curve) and [`Secret::vrf_io`]. Subgroup membership is not
-    /// re-checked here.
+    /// when points come from checked deserialization (see [`PointWrapper`]) or
+    /// from trusted operations like [`Input::new`] (hash-to-curve) and
+    /// [`Secret::vrf_io`]. Subgroup membership is not re-checked here.
     ///
-    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
     /// the burden of subgroup validation on the caller. Passing points with
     /// cofactor components leads to undefined verification behavior.
     ///
@@ -296,7 +294,7 @@ pub mod testing {
     /// `Y = 0` is the public key of the zero secret key, which everybody knows,
     /// so the proof built below is one any attacker can build. Verification is
     /// handed a raw `Public` to make sure the rejection does not depend on the
-    /// key having gone through a checked constructor.
+    /// key having gone through the checked decoder.
     pub fn identity_public_key_rejected<S: TinySuite>() {
         let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let zero_secret = Secret::<S>::from_scalar(ScalarField::<S>::zero());

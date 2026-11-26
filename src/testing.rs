@@ -488,8 +488,7 @@ impl<C: SWCurveConfig> TorsionPoint for SWAffine<C> {
 /// A key holder can add a torsion point `T` to the honest output `O`. The
 /// verifiers accept `O + T` for about half of the additional data values,
 /// while `O` and `O + T` hash to different VRF outputs. The checked
-/// constructors and checked deserialization are the only barrier
-/// (Cure53 PAR-03-010).
+/// deserialization is the only barrier (Cure53 PAR-03-010).
 pub fn low_order_point_rejected<S: Suite>()
 where
     AffinePoint<S>: TorsionPoint,
@@ -502,7 +501,6 @@ where
     let output = secret.output(input);
 
     assert_torsion_rejected(secret.public(), torsion);
-    assert!(Input::<S>::from_affine((input.0 + torsion).into_affine()).is_err());
     let bad_output = assert_torsion_rejected(output, torsion);
     assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
 }
@@ -513,12 +511,23 @@ fn assert_torsion_rejected<S: Suite, K: Serializable>(
     torsion: AffinePoint<S>,
 ) -> PointWrapper<S, K> {
     let bad = (honest.0 + torsion).into_affine();
-    assert!(PointWrapper::<S, K>::from_affine(bad).is_err());
     let buf = point_encode::<S>(&bad);
     assert!(PointWrapper::<S, K>::deserialize_compressed(&buf[..]).is_err());
     let unchecked = PointWrapper::<S, K>::deserialize_compressed_unchecked(&buf[..]).unwrap();
     assert_eq!(unchecked.0, bad);
     unchecked
+}
+
+/// `Input::new` must give points in the prime-order subgroup.
+///
+/// `Input` has no checked constructor and the verifiers do not repeat the
+/// subgroup check, so the suite map is the only barrier. A map that does not
+/// clear the cofactor gives a torsion part to most inputs.
+pub fn input_in_prime_subgroup<S: Suite>() {
+    for data in 0..16_u8 {
+        let input = Input::<S>::new(&[data]).unwrap();
+        assert!(ark_serialize::Valid::check(&input).is_ok());
+    }
 }
 
 /// Flip each bit of `component`; a mutation that arkworks decodes to the same
@@ -611,13 +620,13 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
 
-    let point = Secret::<S>::from_seed(TEST_SEED).public().point();
+    let point = Secret::<S>::from_seed(TEST_SEED).public().into_affine();
     for compress in [Compress::Yes, Compress::No] {
         let mut bytes = Vec::new();
         point.serialize_with_mode(&mut bytes, compress).unwrap();
         let decode =
             |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
-        assert_eq!(decode(&bytes).unwrap().point(), point);
+        assert_eq!(decode(&bytes).unwrap().into_affine(), point);
         assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
             decode(bytes).is_ok() || decodes_inside_vec::<Public<S>>(bytes, compress)
         });
@@ -635,9 +644,13 @@ pub fn decoder_reads_one_value<S: Suite>() {
     buf.push(0xff);
 
     let mut reader = &buf[..];
-    let decode = |reader: &mut &[u8]| Public::<S>::deserialize_compressed(reader).unwrap().point();
-    assert_eq!(decode(&mut reader), first.point());
-    assert_eq!(decode(&mut reader), second.point());
+    let decode = |reader: &mut &[u8]| {
+        Public::<S>::deserialize_compressed(reader)
+            .unwrap()
+            .into_affine()
+    };
+    assert_eq!(decode(&mut reader), first.into_affine());
+    assert_eq!(decode(&mut reader), second.into_affine());
     assert_eq!(reader, &[0xff][..]);
 }
 
@@ -647,6 +660,11 @@ macro_rules! suite_tests {
         #[test]
         fn low_order_point_rejected() {
             $crate::testing::low_order_point_rejected::<$suite>();
+        }
+
+        #[test]
+        fn input_in_prime_subgroup() {
+            $crate::testing::input_in_prime_subgroup::<$suite>();
         }
 
         #[test]

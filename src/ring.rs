@@ -275,14 +275,13 @@ impl<S: RingSuite> Proof<S> {
     ///
     /// All curve points involved in verification (I/O pairs and proof points)
     /// are assumed to be in the prime-order subgroup. This is guaranteed when
-    /// points are constructed through checked constructors ([`Input::from_affine`],
-    /// [`Output::from_affine`]), checked deserialization (see [`PointWrapper`])
-    /// or through trusted operations like [`Input::new`] (hash-to-curve) and
+    /// points come from checked deserialization (see [`PointWrapper`]) or from
+    /// trusted operations like [`Input::new`] (hash-to-curve) and
     /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
     /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
     /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
     ///
-    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
     /// the burden of subgroup validation on the caller. Passing points with
     /// cofactor components leads to undefined verification behavior.
     ///
@@ -558,9 +557,9 @@ impl<S: RingSuite> RingSetup<S> {
     ///
     /// `pks` is any iterator of keys or of references to keys, for example
     /// `&ring` for a `Vec<Public<S>>`. The keys are assumed to be in the
-    /// prime-order subgroup, which the checked constructors and the checked
-    /// deserialization of [`Public`] guarantee; a key built without a check
-    /// places that check on the caller.
+    /// prime-order subgroup, which the checked deserialization of [`Public`]
+    /// guarantees; a key from unchecked deserialization places that check on
+    /// the caller.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` exceeds the max ring size,
     /// `Error::InvalidData` if a key is the identity or cannot be mapped to
@@ -1002,8 +1001,8 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by the checked constructors and checked deserialization of
-    /// the point wrappers (see [`PointWrapper`]).
+    /// guaranteed by [`Input::new`] and by the checked deserialization of the
+    /// point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         self.pedersen_batch.verify()?;
         self.ring_batch
@@ -1769,8 +1768,8 @@ pub(crate) mod testing {
 
         // Callers put the padding in the ring in place of a missing key, so
         // it must be a valid `Public`: in the subgroup and not the identity.
-        assert!(Public::<S>::from_affine(S::PADDING).is_ok());
-        assert_eq!(Public::<S>::padding().point(), S::PADDING);
+        assert!(ark_serialize::Valid::check(&Public::<S>::padding()).is_ok());
+        assert_eq!(Public::<S>::padding().into_affine(), S::PADDING);
     }
 
     #[allow(unused)]

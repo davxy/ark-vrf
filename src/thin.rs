@@ -139,15 +139,13 @@ impl<S: ThinSuite> Proof<S> {
     ///
     /// All curve points involved in verification (public key, I/O pairs, and proof
     /// points) are assumed to be in the prime-order subgroup. This is guaranteed
-    /// when points are constructed through checked constructors ([`Public::from_affine`],
-    /// [`Input::from_affine`], [`Output::from_affine`]), checked deserialization
-    /// (see [`PointWrapper`]) or through trusted operations like [`Input::new`]
-    /// (hash-to-curve) and [`Secret::vrf_io`]. Proof points are guaranteed valid
-    /// when deserialized via [`CanonicalDeserialize`] (which includes subgroup
-    /// checks) or produced by [`Proof::prove`]. Subgroup membership is not
-    /// re-checked here.
+    /// when points come from checked deserialization (see [`PointWrapper`]) or
+    /// from trusted operations like [`Input::new`] (hash-to-curve) and
+    /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
+    /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
+    /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
     ///
-    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
     /// the burden of subgroup validation on the caller. Passing points with
     /// cofactor components leads to undefined verification behavior.
     ///
@@ -299,8 +297,8 @@ impl<S: ThinSuite> BatchVerifier<S> {
     /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by the checked constructors and checked deserialization of
-    /// the point wrappers (see [`PointWrapper`]).
+    /// guaranteed by [`Input::new`] and by the checked deserialization of the
+    /// point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         use ark_ec::VariableBaseMSM;
         use ark_ff::Zero;
@@ -359,7 +357,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         }
 
         // Shared generator base.
-        bases.push(S::generator());
+        bases.push(S::GENERATOR);
         scalars.push(g_scalar);
 
         let result = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
@@ -456,14 +454,14 @@ pub(crate) mod testing {
     /// anyone can satisfy without knowing any secret: no proving is involved
     /// below, `s` is picked and `R` derived from it. Verification is handed a raw
     /// `Public` to make sure the rejection does not depend on the key having gone
-    /// through a checked constructor.
+    /// through the checked decoder.
     pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
         let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let s = ScalarField::<S>::from(0x5eed_u64);
         let forged = Proof::<S> {
-            r: (S::generator() * s).into_affine(),
+            r: (S::GENERATOR * s).into_affine(),
             s,
         };
 
@@ -802,7 +800,7 @@ pub(crate) mod testing {
         type S = crate::suites::testing::TestSuite;
         type Sc = ScalarField<S>;
 
-        let g = S::generator();
+        let g = S::GENERATOR;
 
         // Attacker's key pair.
         let sk = Sc::from(42);

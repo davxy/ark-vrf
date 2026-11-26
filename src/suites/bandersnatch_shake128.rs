@@ -103,15 +103,4 @@ pub(crate) mod tests {
             RING_SETUP.get_or_init(Self::load_ring_setup)
         }
     }
-
-    #[test]
-    fn elligator2_hash_to_curve() {
-        use crate::testing::CheckPoint;
-        let raw = crate::testing::random_vec(42, None);
-        assert!(
-            ThisSuite::data_to_point(&raw)
-                .map(|p| p.check(true).ok())
-                .is_some()
-        );
-    }
 }

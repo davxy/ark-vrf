@@ -132,7 +132,7 @@ impl<'a, S: Suite> Ios<'a, S> {
 
     fn with_schnorr(public: AffinePoint<S>, user: &'a [VrfIo<S>]) -> Self {
         let schnorr = VrfIo {
-            input: Input::from_affine_unchecked(S::generator()),
+            input: Input::from_affine_unchecked(S::GENERATOR),
             output: Output::from_affine_unchecked(public),
         };
         Self {
@@ -554,7 +554,7 @@ mod tests {
     /// equal the plain sum, on each side of the point threshold.
     #[test]
     fn schnorr_lhs_matches_the_plain_sum() {
-        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
         let s = ScalarField::<TestSuite>::from(12345u64);
         let c = ScalarField::<TestSuite>::from(678u64);
         for n in 0..=3 {
@@ -586,7 +586,7 @@ mod tests {
     fn merged_input_matches_the_plain_sum() {
         type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
 
-        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
         let plain_sum = |ios: Ios<'_, TestSuite>, zs: &[ScalarField<TestSuite>]| {
             ios.iter()
                 .zip(zs)
@@ -623,7 +623,7 @@ mod tests {
     fn schnorr_pair_scalar_is_one() {
         use ark_ff::One;
 
-        let public = (TestSuite::generator() * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
         let ios = sample_ios(2);
         let (_, zs) =
             vrf_transcript_scalars_with_schnorr::<TestSuite>(DomSep::ThinVrf, public, &ios, b"ad");

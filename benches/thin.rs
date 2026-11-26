@@ -1,8 +1,7 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret, Suite, thin::Proof};
+use ark_vrf::{Input, Secret, Suite, thin::Proof};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
@@ -43,10 +42,9 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
     let public = secret.public();
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
-    let mut rng = ark_std::test_rng();
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
-            let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(&mut rng));
+            let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
             let io = secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
             let proof = Proof::prove(io, &ad, &secret);
