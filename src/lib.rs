@@ -242,10 +242,7 @@ pub trait Suite: Copy {
     /// Generator used through all the suite.
     ///
     /// Defaults to Arkworks provided generator.
-    #[inline(always)]
-    fn generator() -> AffinePoint<Self> {
-        Self::Affine::generator()
-    }
+    const GENERATOR: AffinePoint<Self> = <Self::Affine as AffineRepr>::GENERATOR;
 
     /// Generate a nonce scalar from the secret key and transcript state.
     ///
@@ -383,7 +380,7 @@ impl<S: Suite> ark_serialize::Valid for Secret<S> {
 impl<S: Suite> Secret<S> {
     /// Construct a `Secret` from the given scalar.
     pub fn from_scalar(scalar: ScalarField<S>) -> Self {
-        let public = Public::from_affine_unchecked(smul!(S::generator(), scalar).into_affine());
+        let public = Public::from_point(smul!(S::GENERATOR, scalar).into_affine());
         Self { scalar, public }
     }
 
@@ -443,7 +440,7 @@ impl<S: Suite> Secret<S> {
 
     /// Get the VRF output point relative to input.
     pub fn output(&self, input: Input<S>) -> Output<S> {
-        Output::from_affine_unchecked(smul!(input.0, self.scalar).into_affine())
+        Output::from_point(smul!(input.0, self.scalar).into_affine())
     }
 
     /// Get the VRF input-output pair relative to input.
@@ -463,18 +460,20 @@ impl<S: Suite> Secret<S> {
 ///
 /// # Validation
 ///
-/// [`Self::from_affine`] and the checked deserialization methods (the default
-/// `deserialize_*` family, for [`Public`] and [`Output`]) accept only points
-/// in the prime-order subgroup and reject the group identity. The verifiers
-/// trust this invariant: they reject the identity, which is cheap, but they
-/// do not repeat the subgroup check. [`Self::from_affine_unchecked`] and the
+/// No public constructor takes an affine point: [`Public`] and [`Output`]
+/// come from deserialization, and [`Input`] comes from [`Input::new`].
+///
+/// The checked deserialization methods (the default `deserialize_*` family)
+/// accept only points in the prime-order subgroup and reject the group
+/// identity. The verifiers trust this invariant: they reject the identity,
+/// which is cheap, but they do not repeat the subgroup check. The
 /// `deserialize_*_unchecked` methods skip validation and leave this
 /// responsibility to the caller. Both decoding paths accept one encoding per
 /// point, but do not reject trailing bytes left in the input. Use
 /// [`CanonicalDeserializeExact`] to return an error when the input is not
 /// completely consumed.
 ///
-/// [`Self::point`] reads the affine point.
+/// [`Self::to_point`] reads the affine point.
 #[derive(Debug, Clone, Copy)]
 pub struct PointWrapper<S: Suite, K>(pub(crate) AffinePoint<S>, PhantomData<K>);
 
@@ -515,10 +514,9 @@ pub type Public<S> = PointWrapper<S, PublicKind>;
 /// VRF input point generic over the cipher suite.
 ///
 /// Elliptic curve point representing the VRF input. Construct it with
-/// [`Input::new`], which applies hash-to-curve. [`PointWrapper::from_affine`]
-/// validates subgroup membership only: the caller must still ensure the point
-/// is not in a known discrete-log relation with the suite generator, which the
-/// soundness of the schemes requires (see the crate docs).
+/// [`Input::new`], which applies hash-to-curve: the soundness of the schemes
+/// requires that nobody knows the discrete log of the input to the suite
+/// generator (see the crate docs).
 ///
 /// `Input` does not implement the serialization traits, so a verifier cannot
 /// take a prover-chosen point. Send the input data and call [`Input::new`] on
@@ -560,7 +558,7 @@ impl<S: Suite, K: Serializable> CanonicalDeserialize for PointWrapper<S, K> {
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
         let point = AffinePoint::<S>::deserialize_strict(reader, compress, validate)?;
-        let wrapper = Self::from_affine_unchecked(point);
+        let wrapper = Self::from_point(point);
         // `check()` ran on the point; the identity rule remains.
         if matches!(validate, ark_serialize::Validate::Yes) && wrapper.is_identity() {
             return Err(ark_serialize::SerializationError::InvalidData);
@@ -570,26 +568,16 @@ impl<S: Suite, K: Serializable> CanonicalDeserialize for PointWrapper<S, K> {
 }
 
 impl<S: Suite, K: Sync> PointWrapper<S, K> {
-    /// Construct from an affine point with validation.
-    ///
-    /// Returns `Error::InvalidData` if the point is not in the prime-order
-    /// subgroup or is the group identity.
-    pub fn from_affine(value: AffinePoint<S>) -> Result<Self, Error> {
-        let wrapper = Self::from_affine_unchecked(value);
-        ark_serialize::Valid::check(&wrapper).map_err(|_| Error::InvalidData)?;
-        Ok(wrapper)
-    }
-
     /// Construct from an affine point without validation.
     ///
     /// The caller must ensure `value` is in the prime-order subgroup and is not
     /// the group identity. The verifiers do not repeat these checks.
-    pub fn from_affine_unchecked(value: AffinePoint<S>) -> Self {
+    pub(crate) fn from_point(value: AffinePoint<S>) -> Self {
         Self(value, PhantomData)
     }
 
     /// Get the affine point.
-    pub fn point(&self) -> AffinePoint<S> {
+    pub fn to_point(&self) -> AffinePoint<S> {
         self.0
     }
 
@@ -598,7 +586,7 @@ impl<S: Suite, K: Sync> PointWrapper<S, K> {
     /// The identity passes the subgroup check but is never a usable point: as a
     /// key its secret scalar is zero, and an I/O pair holding it satisfies
     /// `O = x * I` for every `x`. Verifiers reject it explicitly rather than
-    /// relying on the caller having gone through a checked constructor.
+    /// relying on the caller having gone through the checked decoder.
     pub(crate) fn is_identity(&self) -> bool {
         self.0.is_zero()
     }
@@ -611,7 +599,7 @@ impl<S: Suite> Input<S> {
     /// `Error::InvalidData` if no point is found.
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         S::data_to_point(data)
-            .map(Self::from_affine_unchecked)
+            .map(Self::from_point)
             .ok_or(Error::InvalidData)
     }
 }
@@ -622,6 +610,46 @@ impl<S: Suite> Output<S> {
         S::point_to_hash(&self.0)
     }
 }
+
+/// Outside code gets a point type only from bytes, from [`Input::new`] or from
+/// the crate operations. A raw point constructor for [`Input`] lets a verifier
+/// take a prover-chosen input, and the prover can then forge outputs.
+///
+/// The first example must compile, so the others fail only at the constructor.
+///
+/// ```
+/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
+///
+/// fn wrap<S: Suite>(_point: AffinePoint<S>) -> (Public<S>, Input<S>, Output<S>) {
+///     unimplemented!()
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
+///
+/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Input<S> {
+///     Input::from_point(point)
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
+///
+/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Public<S> {
+///     Public::from_point(point)
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ark_vrf::{AffinePoint, Input, Output, Public, Suite};
+///
+/// fn wrap<S: Suite>(point: AffinePoint<S>) -> Output<S> {
+///     Output::from_point(point)
+/// }
+/// ```
+#[cfg(doctest)]
+struct PointConstructorsAreCratePrivate;
 
 /// VRF input-output pair.
 ///
@@ -715,7 +743,7 @@ mod tests {
         use ark_std::rand::SeedableRng;
         let mut rng = ark_std::rand::rngs::StdRng::from_seed([42; 32]);
         let secret = Secret::from_seed(TEST_SEED);
-        let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
+        let input = Input::from_point(random_val(Some(&mut rng)));
         let output = secret.output(input);
 
         let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
@@ -782,12 +810,12 @@ mod tests {
         );
     }
 
-    /// The wrapper does not dereference to the affine point. `point()` is the
+    /// The wrapper does not dereference to the affine point. `to_point()` is the
     /// one read path, so the role types stay distinct.
     #[test]
     fn point_wrapper_point_accessor() {
         let public = Secret::from_seed(TEST_SEED).public();
-        assert_eq!(public.point(), public.0);
+        assert_eq!(public.to_point(), public.0);
     }
 
     /// The identity is a well-formed subgroup element, so the subgroup check
@@ -799,7 +827,6 @@ mod tests {
 
         let identity = AffinePoint::<S>::zero();
         assert!(ark_serialize::Valid::check(&identity).is_ok());
-        assert!(crate::Public::<S>::from_affine(identity).is_err());
 
         let mut buf = Vec::new();
         identity.serialize_compressed(&mut buf).unwrap();
@@ -807,21 +834,18 @@ mod tests {
 
         // Unchecked paths are documented as skipping validation.
         assert!(crate::Public::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
-        assert!(crate::Public::<S>::from_affine_unchecked(identity).is_identity());
+        assert!(crate::Public::<S>::from_point(identity).is_identity());
     }
 
     /// The pair `(I, O) = (0, 0)` satisfies `O = x * I` for every secret key,
     /// so it binds a VRF output to no key at all. Like the identity public key
-    /// it passes the subgroup check, so the checked constructors must reject it
-    /// on their own.
+    /// it passes the subgroup check, so the checked decoder must reject it on
+    /// its own.
     #[test]
     fn identity_io_point_construction_rejected() {
         type S = TestSuite;
 
         let identity = AffinePoint::<S>::zero();
-
-        assert!(crate::Input::<S>::from_affine(identity).is_err());
-        assert!(crate::Output::<S>::from_affine(identity).is_err());
 
         let mut buf = Vec::new();
         identity.serialize_compressed(&mut buf).unwrap();
@@ -829,8 +853,8 @@ mod tests {
 
         // Unchecked paths are documented as skipping validation.
         assert!(crate::Output::<S>::deserialize_compressed_unchecked(&buf[..]).is_ok());
-        assert!(crate::Input::<S>::from_affine_unchecked(identity).is_identity());
-        assert!(crate::Output::<S>::from_affine_unchecked(identity).is_identity());
+        assert!(crate::Input::<S>::from_point(identity).is_identity());
+        assert!(crate::Output::<S>::from_point(identity).is_identity());
     }
 
     #[test]
@@ -856,8 +880,7 @@ mod tests {
         assert!((low_order_pt.into_group() + low_order_pt.into_group()).is_zero());
 
         // 2. Compute gamma' = gamma + L
-        let malicious_output =
-            Output::from_affine_unchecked((honest_output.0 + low_order_pt).into_affine());
+        let malicious_output = Output::from_point((honest_output.0 + low_order_pt).into_affine());
         assert_ne!(honest_output, malicious_output);
         assert_ne!(honest_output.hash::<32>(), malicious_output.hash::<32>());
 
@@ -888,7 +911,7 @@ mod tests {
             // z_1 is the delinearization scalar for the VRF pair
             if zs[1].into_bigint().is_even() {
                 // Compute merged input: I_m = z_0*G + z_1*I
-                let i_m = (S::generator() * zs[0] + input.0 * zs[1]).into_affine();
+                let i_m = (S::GENERATOR * zs[0] + input.0 * zs[1]).into_affine();
                 break (ad, t, i_m);
             }
             ad_ctr += 1;

@@ -291,7 +291,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
         let pk = sk.public().0;
 
         let h = <S as Suite>::data_to_point(alpha).unwrap();
-        let input = Input::from_affine_unchecked(h);
+        let input = Input::from_point(h);
 
         let alpha = alpha.to_vec();
         let output = sk.output(input);
@@ -358,7 +358,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         let h = S::data_to_point(&self.alpha).unwrap();
         assert_eq!(self.h, h, "hash-to-curve ('h') mismatch");
-        let input = Input::<S>::from_affine_unchecked(h);
+        let input = Input::<S>::from_point(h);
 
         let output = sk.output(input);
         assert_eq!(self.gamma, output.0, "VRF pre-output ('gamma') mismatch");
@@ -488,8 +488,7 @@ impl<C: SWCurveConfig> TorsionPoint for SWAffine<C> {
 /// A key holder can add a torsion point `T` to the honest output `O`. The
 /// verifiers accept `O + T` for about half of the additional data values,
 /// while `O` and `O + T` hash to different VRF outputs. The checked
-/// constructors and checked deserialization are the only barrier
-/// (Cure53 PAR-03-010).
+/// deserialization is the only barrier (Cure53 PAR-03-010).
 pub fn low_order_point_rejected<S: Suite>()
 where
     AffinePoint<S>: TorsionPoint,
@@ -502,7 +501,6 @@ where
     let output = secret.output(input);
 
     assert_torsion_rejected(secret.public(), torsion);
-    assert!(Input::<S>::from_affine((input.0 + torsion).into_affine()).is_err());
     let bad_output = assert_torsion_rejected(output, torsion);
     assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
 }
@@ -513,7 +511,6 @@ fn assert_torsion_rejected<S: Suite, K: Serializable>(
     torsion: AffinePoint<S>,
 ) -> PointWrapper<S, K> {
     let bad = (honest.0 + torsion).into_affine();
-    assert!(PointWrapper::<S, K>::from_affine(bad).is_err());
     let buf = point_encode::<S>(&bad);
     assert!(PointWrapper::<S, K>::deserialize_compressed(&buf[..]).is_err());
     let unchecked = PointWrapper::<S, K>::deserialize_compressed_unchecked(&buf[..]).unwrap();
@@ -611,13 +608,13 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
 
-    let point = Secret::<S>::from_seed(TEST_SEED).public().point();
+    let point = Secret::<S>::from_seed(TEST_SEED).public().to_point();
     for compress in [Compress::Yes, Compress::No] {
         let mut bytes = Vec::new();
         point.serialize_with_mode(&mut bytes, compress).unwrap();
         let decode =
             |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
-        assert_eq!(decode(&bytes).unwrap().point(), point);
+        assert_eq!(decode(&bytes).unwrap().to_point(), point);
         assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
             decode(bytes).is_ok() || decodes_inside_vec::<Public<S>>(bytes, compress)
         });
@@ -635,9 +632,13 @@ pub fn decoder_reads_one_value<S: Suite>() {
     buf.push(0xff);
 
     let mut reader = &buf[..];
-    let decode = |reader: &mut &[u8]| Public::<S>::deserialize_compressed(reader).unwrap().point();
-    assert_eq!(decode(&mut reader), first.point());
-    assert_eq!(decode(&mut reader), second.point());
+    let decode = |reader: &mut &[u8]| {
+        Public::<S>::deserialize_compressed(reader)
+            .unwrap()
+            .to_point()
+    };
+    assert_eq!(decode(&mut reader), first.to_point());
+    assert_eq!(decode(&mut reader), second.to_point());
     assert_eq!(reader, &[0xff][..]);
 }
 

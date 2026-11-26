@@ -1,9 +1,8 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_std::UniformRand;
 use ark_vrf::{
-    AffinePoint, Input, Public, Secret, VrfIo,
+    Input, Public, Secret, VrfIo,
     ring::{self, BatchItem, BatchVerifier, Proof, RingSuite},
 };
 use bench_utils::SuiteExt;
@@ -29,7 +28,7 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
 
     let prover_idx = 3;
     let mut ring: Vec<Public<S>> = (0..ring_size)
-        .map(|_| Public::from_affine_unchecked(AffinePoint::<S>::rand(&mut rng)))
+        .map(|_| Secret::<S>::from_rand(&mut rng).public())
         .collect();
     ring[prover_idx] = public;
 
@@ -180,8 +179,8 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
     let completed = std::sync::atomic::AtomicUsize::new(0);
     let batch_items: Vec<TestItem<S>> = (0..max_batch_size)
         .into_par_iter()
-        .map_init(ark_std::test_rng, |rng, i| {
-            let input = Input::<S>::from_affine_unchecked(AffinePoint::<S>::rand(rng));
+        .map(|i| {
+            let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
             let io = setup.secret.vrf_io(input);
             let ad = format!("ad-{i}").into_bytes();
             let proof = Proof::prove(io, &ad, &setup.secret, &prover);

@@ -25,7 +25,7 @@
 //! let result = proof.verify(io, b"aux data");
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (public.point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! let expected = (public.to_point() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -202,7 +202,7 @@ impl<S: PedersenSuite> Proof<S> {
         let mut kb = S::nonce(&blinding, nonce_transcript);
 
         // R = k*G + kb*B
-        let kg = smul!(S::generator(), k);
+        let kg = smul!(S::GENERATOR, k);
         let kbb = smul!(S::BLINDING_BASE, kb);
         let r = kg + kbb;
 
@@ -249,14 +249,13 @@ impl<S: PedersenSuite> Proof<S> {
     ///
     /// All curve points involved in verification (I/O pairs and proof points)
     /// are assumed to be in the prime-order subgroup. This is guaranteed when
-    /// points are constructed through checked constructors ([`Input::from_affine`],
-    /// [`Output::from_affine`]), checked deserialization (see [`PointWrapper`])
-    /// or through trusted operations like [`Input::new`] (hash-to-curve) and
+    /// points come from checked deserialization (see [`PointWrapper`]) or from
+    /// trusted operations like [`Input::new`] (hash-to-curve) and
     /// [`Secret::vrf_io`]. Proof points are guaranteed valid when deserialized
     /// via [`CanonicalDeserialize`] (which includes subgroup checks) or produced
     /// by [`Proof::prove`]. Subgroup membership is not re-checked here.
     ///
-    /// Using unchecked constructors (e.g. [`Input::from_affine_unchecked`]) places
+    /// Unchecked deserialization (the `deserialize_*_unchecked` methods) places
     /// the burden of subgroup validation on the caller. Passing points with
     /// cofactor components leads to undefined verification behavior.
     ///
@@ -304,7 +303,7 @@ impl<S: PedersenSuite> Proof<S> {
         // committed in the public key commitment Yb = x*G + b*B. Expanding
         // s = k + c*x and sb = kb + c*b gives s*G + sb*B = R + c*Yb.
         let lhs2 = short_msm(
-            &[S::generator(), S::BLINDING_BASE, *pk_com],
+            &[S::GENERATOR, S::BLINDING_BASE, *pk_com],
             &[*s, *sb, neg_c],
             2,
         );
@@ -420,8 +419,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     /// `Err(Error::VerificationFailure)` otherwise.
     ///
     /// Subgroup membership of the points is not re-checked here. It is
-    /// guaranteed by the checked constructors and checked deserialization of
-    /// the point wrappers (see [`PointWrapper`]).
+    /// guaranteed by [`Input::new`] and by the checked deserialization of the
+    /// point wrappers (see [`PointWrapper`]).
     pub fn verify(&self) -> Result<(), Error> {
         let items = &self.items;
         if items.is_empty() {
@@ -489,7 +488,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         }
 
         // Shared bases: G and B
-        bases.push(S::generator());
+        bases.push(S::GENERATOR);
         scalars.push(-g_scalar);
 
         bases.push(S::BLINDING_BASE);
@@ -511,7 +510,7 @@ pub(crate) mod testing {
 
     pub fn prove_verify<S: PedersenSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine_unchecked(random_val(None));
+        let input = Input::from_point(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof, blinding) = secret.prove_pedersen(io, b"foo");
@@ -528,7 +527,7 @@ pub(crate) mod testing {
         use pedersen::{BatchItem, BatchVerifier};
 
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine_unchecked(random_val(None));
+        let input = Input::from_point(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof1, _) = secret.prove_pedersen(io, b"foo");
@@ -566,7 +565,7 @@ pub(crate) mod testing {
     /// N=1 slice produces same proof as passing a single `VrfIo`.
     pub fn prove_verify_multi_single<S: PedersenSuite>() {
         let secret = Secret::<S>::from_seed(TEST_SEED);
-        let input = Input::from_affine_unchecked(random_val(None));
+        let input = Input::from_point(random_val(None));
         let io = secret.vrf_io(input);
 
         let (proof_single, blinding_single) = secret.prove_pedersen(io, b"foo");
@@ -597,8 +596,8 @@ pub(crate) mod testing {
             })
             .collect();
         ios.push(VrfIo {
-            input: Input::from_affine_unchecked(S::Affine::generator()),
-            output: Output::from_affine_unchecked(secret.public().0),
+            input: Input::from_point(S::Affine::generator()),
+            output: Output::from_point(secret.public().0),
         });
 
         let (proof, _) = secret.prove_pedersen(&ios[..], b"bar");
@@ -703,8 +702,8 @@ pub(crate) mod testing {
         use pedersen::BatchVerifier;
 
         let identity_io = VrfIo::<S> {
-            input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
-            output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
+            input: Input::from_point(AffinePoint::<S>::zero()),
+            output: Output::from_point(AffinePoint::<S>::zero()),
         };
 
         for seed in [TEST_SEED, [0x11; 32]] {
@@ -746,7 +745,7 @@ pub(crate) mod testing {
 
         let k = ScalarField::<S>::from(7u64);
         let kb = ScalarField::<S>::from(11u64);
-        let r = (S::generator() * k + S::BLINDING_BASE * kb).into_affine();
+        let r = (S::GENERATOR * k + S::BLINDING_BASE * kb).into_affine();
         let ok = (io.input.0 * k).into_affine();
 
         let proof = Proof {
@@ -784,7 +783,7 @@ pub(crate) mod testing {
         );
         let pair = |factor: ScalarField<S>| VrfIo {
             input,
-            output: Output::from_affine((input.0 * factor).into_affine()).unwrap(),
+            output: Output::from_point((input.0 * factor).into_affine()),
         };
         let ios = [pair(b0), pair(b1)];
 
@@ -911,8 +910,8 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
             let io = VrfIo {
-                input: Input::<S>::from_affine_unchecked(base.h),
-                output: Output::from_affine_unchecked(base.gamma),
+                input: Input::<S>::from_point(base.h),
+                output: Output::from_point(base.gamma),
             };
             let secret = Secret::from_scalar(base.sk);
             let (proof, blind) = secret.prove_pedersen(io, ad);
@@ -974,8 +973,8 @@ pub(crate) mod testing {
         fn run(&self) {
             self.base.run();
             let io = VrfIo {
-                input: Input::<S>::from_affine_unchecked(self.base.h),
-                output: Output::from_affine_unchecked(self.base.gamma),
+                input: Input::<S>::from_point(self.base.h),
+                output: Output::from_point(self.base.gamma),
             };
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove_pedersen(io, &self.base.ad);

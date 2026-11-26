@@ -46,11 +46,11 @@ where
 
 fn bench_challenge<S: Suite>(c: &mut Criterion) {
     let secret = Secret::<S>::from_seed([0; 32]);
-    let public = secret.public().point();
+    let public = secret.public().to_point();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input).point();
-    let input = input.point();
-    let generator = S::generator();
+    let output = secret.output(input).to_point();
+    let input = input.to_point();
+    let generator = S::GENERATOR;
 
     let name = format!("{}/challenge", S::SUITE_NAME);
     c.bench_function(&name, |b| {

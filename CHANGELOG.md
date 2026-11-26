@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.0] - Unreleased
 
+### Changed
+
+- `Suite::generator()` is now the constant `Suite::GENERATOR`.
+
+### Removed
+
+- `PointWrapper::from_affine` and `from_affine_unchecked`. A prover-chosen
+  `Input` lets the prover forge outputs. Use `Input::new` or deserialization.
+
 ### Security
 
 - Pedersen and Ring VRF derive the delinearization scalars after the key
