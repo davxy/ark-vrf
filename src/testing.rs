@@ -300,7 +300,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         TestVector {
             comment: comment.to_string(),
-            sk: sk.scalar,
+            sk: *sk.scalar.expose(),
             pk,
             alpha,
             ad: ad.to_vec(),

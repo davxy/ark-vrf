@@ -24,7 +24,7 @@
 //! let result = proof.verify(io, b"aux data");
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (public.into_affine() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+//! let expected = (public.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -47,7 +47,10 @@ pub trait PedersenSuite: Suite {
 
     /// Blinding factor from the secret key and the transcript. The default is
     /// deterministic.
-    fn blinding(secret: &ScalarField<Self>, mut transcript: Self::Transcript) -> ScalarField<Self> {
+    fn blinding(
+        secret: &SecretScalar<Self>,
+        mut transcript: Self::Transcript,
+    ) -> SecretScalar<Self> {
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
         Self::nonce(secret, transcript)
     }
@@ -147,19 +150,18 @@ impl<S: PedersenSuite> Proof<S> {
     /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
     ///
     /// Also returns the blinding factor `b`. It is secret: with it, anybody can
-    /// open `Yb` to the public key. The caller must keep it private and zeroize
-    /// it.
+    /// open `Yb` to the public key.
     pub fn prove(
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
         secret: &Secret<S>,
-    ) -> (Self, ScalarField<S>) {
+    ) -> (Self, SecretScalar<S>) {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
         let blinding = S::blinding(&secret.scalar, t.clone());
 
-        let bb = smul!(S::BLINDING_BASE, blinding);
+        let bb = blinding.mul_point(S::BLINDING_BASE);
         let pk_com = (secret.public.0.into_group() + bb).into_affine();
 
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
@@ -171,28 +173,19 @@ impl<S: PedersenSuite> Proof<S> {
         if ios.len() > 1 {
             nonce_transcript.absorb_raw(&[0xff]);
         }
-        let mut k = S::nonce(&secret.scalar, nonce_transcript.clone());
-        let mut kb = S::nonce(&blinding, nonce_transcript);
+        let k = S::nonce(&secret.scalar, nonce_transcript.clone());
+        let kb = S::nonce(&blinding, nonce_transcript);
 
-        let kg = smul!(S::GENERATOR, k);
-        let kbb = smul!(S::BLINDING_BASE, kb);
-        let r = kg + kbb;
-
-        let ok = smul!(input.0, k);
+        let r = k.mul_point(S::GENERATOR) + kb.mul_point(S::BLINDING_BASE);
+        let ok = k.mul_point(input.0);
 
         let norms = CurveGroup::normalize_batch(&[r, ok]);
         let (r, ok) = (norms[0], norms[1]);
 
         let c = S::challenge(&[&r, &ok], t);
 
-        let mut cx = c * secret.scalar;
-        let s = k + cx;
-        let mut cb = c * blinding;
-        let sb = kb + cb;
-        k.zeroize();
-        kb.zeroize();
-        cx.zeroize();
-        cb.zeroize();
+        let s = k.response(c, &secret.scalar);
+        let sb = kb.response(c, &blinding);
 
         let proof = Proof {
             pk_com,
@@ -257,7 +250,7 @@ impl<S: PedersenSuite> Secret<S> {
         &self,
         ios: impl AsRef<[VrfIo<S>]>,
         ad: impl AsRef<[u8]>,
-    ) -> (Proof<S>, ScalarField<S>) {
+    ) -> (Proof<S>, SecretScalar<S>) {
         Proof::prove(ios, ad, self)
     }
 }
@@ -425,7 +418,7 @@ pub(crate) mod testing {
 
         assert_eq!(
             proof.key_commitment(),
-            (secret.public().0 + S::BLINDING_BASE * blinding).into()
+            (secret.public().0 + S::BLINDING_BASE * *blinding.expose()).into()
         );
     }
 
@@ -478,7 +471,7 @@ pub(crate) mod testing {
             buf
         };
         assert_eq!(encode(&proof_single), encode(&proof_slice));
-        assert_eq!(blinding_single, blinding_slice);
+        assert_eq!(blinding_single.expose(), blinding_slice.expose());
         assert!(proof_slice.verify(io, b"foo").is_ok());
         assert!(proof_single.verify([io], b"foo").is_ok());
     }
@@ -791,6 +784,7 @@ pub(crate) mod testing {
             };
             let secret = Secret::from_scalar(base.sk);
             let (proof, blind) = secret.prove_pedersen(io, ad);
+            let blind = *blind.expose();
             Self { base, blind, proof }
         }
 
@@ -854,7 +848,7 @@ pub(crate) mod testing {
             };
             let sk = Secret::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove_pedersen(io, &self.base.ad);
-            assert_eq!(self.blind, blind, "Blinding factor mismatch");
+            assert_eq!(&self.blind, blind.expose(), "Blinding factor mismatch");
             assert_eq!(self.proof.pk_com, proof.pk_com, "Proof pkb mismatch");
             assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
             assert_eq!(self.proof.ok, proof.ok, "Proof ok mismatch");

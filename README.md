@@ -136,7 +136,7 @@ assert!(result.is_ok());
 
 // Verify the proof was created using a specific public key.
 // This requires knowledge of the blinding factor.
-let expected = (public.into_affine() + BandersnatchSha512Ell2::BLINDING_BASE * blinding).into_affine();
+let expected = (public.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
 assert_eq!(proof.key_commitment(), expected);
 ```
 

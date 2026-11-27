@@ -7,18 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.0] - Unreleased
 
+### Added
+
+- `SecretScalar` for the secret scalars: the secret key, the nonces and the
+  Pedersen blinding factor.
+
 ### Changed
 
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
-- `PointWrapper::point` is renamed to `into_affine`. Only `Public` and `Output`
-  have `from_affine`.
 
 ### Removed
 
 - `Input::from_affine`, and `from_affine_unchecked` from the public API. A
-  prover-chosen `Input` lets the prover forge outputs. Use `Input::new` for an
-  `Input`, and the `deserialize_*_unchecked` methods in place of
-  `from_affine_unchecked`.
+  prover-chosen `Input` lets the prover forge outputs. Use `Input::new`.
 
 ### Security
 
