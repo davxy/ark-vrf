@@ -7,12 +7,16 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+// The `CanonicalDeserialize` derive needs it.
+#[cfg(not(feature = "std"))]
+use ark_std::vec::Vec;
+
 /// Secret scalar: a secret key, a nonce or a blinding factor.
 ///
 /// It is zeroized on drop and redacted in `Debug`. Temporaries inside arkworks
 /// and the ring proof backend are not zeroized. [`Self::expose`] gives the value,
 /// for example to reveal a blinding factor.
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SecretScalar<S: Suite>(ScalarField<S>);
 
 impl<S: Suite> SecretScalar<S> {
@@ -100,11 +104,11 @@ impl<S: Suite> CanonicalSerialize for SecretKey<S> {
         writer: W,
         compress: ark_serialize::Compress,
     ) -> Result<(), ark_serialize::SerializationError> {
-        self.scalar.0.serialize_with_mode(writer, compress)
+        self.scalar.serialize_with_mode(writer, compress)
     }
 
     fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
-        self.scalar.0.serialized_size(compress)
+        self.scalar.serialized_size(compress)
     }
 }
 
@@ -114,16 +118,14 @@ impl<S: Suite> CanonicalDeserialize for SecretKey<S> {
         compress: ark_serialize::Compress,
         validate: ark_serialize::Validate,
     ) -> Result<Self, ark_serialize::SerializationError> {
-        let scalar = <ScalarField<S> as CanonicalDeserialize>::deserialize_with_mode(
-            reader, compress, validate,
-        )?;
-        Ok(Self::from_scalar(scalar))
+        SecretScalar::deserialize_with_mode(reader, compress, validate)
+            .map(Self::from_secret_scalar)
     }
 }
 
 impl<S: Suite> ark_serialize::Valid for SecretKey<S> {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
-        self.scalar.0.check()
+        self.scalar.check()
     }
 }
 
@@ -200,7 +202,7 @@ impl<S: Suite> SecretKey<S> {
 mod tests {
     use super::*;
     use crate::suites::testing::{Input, SecretKey, SecretScalar, TestSuite};
-    use crate::testing::{TEST_SEED, random_val};
+    use crate::testing::{TEST_SEED, random_val, scalar_encode};
 
     #[test]
     fn vrf_output_check() {
@@ -238,5 +240,25 @@ mod tests {
         let secret = SecretKey::from_seed(TEST_SEED);
         assert_eq!(secret, SecretKey::from_seed(TEST_SEED));
         assert_ne!(secret, SecretKey::from_seed([0xff; 32]));
+    }
+
+    /// A stored secret key or blinding factor must decode after an update.
+    /// Both use the plain scalar bytes, as the blinding factor before 0.7.0.
+    #[test]
+    fn secret_encodings_are_scalar_encoding() {
+        let secret = SecretKey::from_seed(TEST_SEED);
+        let scalar = *secret.scalar().expose();
+        let expected = scalar_encode::<TestSuite>(&scalar);
+
+        let mut buf = Vec::new();
+        secret.scalar().serialize_compressed(&mut buf).unwrap();
+        assert_eq!(buf, expected);
+        let decoded = SecretScalar::deserialize_compressed(&buf[..]).unwrap();
+        assert_eq!(decoded.expose(), &scalar);
+
+        buf.clear();
+        secret.serialize_compressed(&mut buf).unwrap();
+        assert_eq!(buf, expected);
+        assert_eq!(SecretKey::deserialize_compressed(&buf[..]).unwrap(), secret);
     }
 }
