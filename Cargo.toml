@@ -50,7 +50,7 @@ ark-ec = { version = "0.6", default-features = false }
 ark-ff = { version = "0.6", default-features = false }
 ark-std = { version = "0.6", default-features = false }
 ark-serialize = { version = "0.6", default-features = false }
-zeroize = { version = "1.8", default-features = false }
+zeroize = { version = "1.8", default-features = false, features = ["derive"] }
 digest = { version = "0.10", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }

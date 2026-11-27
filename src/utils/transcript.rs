@@ -212,30 +212,13 @@ impl<H: Digest + Clone> digest::ExtendableOutput for DigestXof<H> {
 }
 
 /// Counter-mode XOF reader for [`DigestXof`].
-#[derive(Clone)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct DigestXofReader<H: Digest> {
     seed: GenericArray<u8, H::OutputSize>,
     counter: u64,
     buffer: GenericArray<u8, H::OutputSize>,
     buf_offset: usize,
 }
-
-/// The seed is the preimage of every squeezed byte and the buffer holds the
-/// last squeezed block. For a nonce derivation both are key material.
-impl<H: Digest> Zeroize for DigestXofReader<H> {
-    fn zeroize(&mut self) {
-        self.seed.as_mut_slice().zeroize();
-        self.buffer.as_mut_slice().zeroize();
-    }
-}
-
-impl<H: Digest> Drop for DigestXofReader<H> {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
-impl<H: Digest> ZeroizeOnDrop for DigestXofReader<H> {}
 
 impl<H: Digest> digest::XofReader for DigestXofReader<H> {
     fn read(&mut self, buf: &mut [u8]) {
