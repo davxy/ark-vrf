@@ -213,7 +213,7 @@ impl<S: RingSuite> Proof<S> {
         ring_prover: &RingProver<S>,
     ) -> Self {
         let (pedersen_proof, secret_blinding) = PedersenProof::prove(ios, ad, secret);
-        let ring_proof = ring_prover.prove(*secret_blinding.expose());
+        let ring_proof = ring_prover.prove(*secret_blinding.expose_secret());
         Proof {
             pedersen_proof,
             ring_proof,

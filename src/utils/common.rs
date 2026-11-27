@@ -376,7 +376,7 @@ pub fn nonce<S: Suite>(sk: &SecretScalar<S>, mut transcript: S::Transcript) -> S
     // Expand sk: H(transcript_state || NonceExpand || sk)
     let mut t_exp = transcript.clone();
     t_exp.absorb_raw(&[DomSep::NonceExpand as u8]);
-    t_exp.absorb_serialize(sk.expose());
+    t_exp.absorb_serialize(sk.expose_secret());
     let mut sk_hash = [0u8; 64];
     t_exp.squeeze_raw(&mut sk_hash);
 

@@ -418,7 +418,7 @@ pub(crate) mod testing {
 
         assert_eq!(
             proof.key_commitment(),
-            (secret.public().0 + S::BLINDING_BASE * *blinding.expose()).into()
+            (secret.public().0 + S::BLINDING_BASE * *blinding.expose_secret()).into()
         );
     }
 
@@ -471,7 +471,10 @@ pub(crate) mod testing {
             buf
         };
         assert_eq!(encode(&proof_single), encode(&proof_slice));
-        assert_eq!(blinding_single.expose(), blinding_slice.expose());
+        assert_eq!(
+            blinding_single.expose_secret(),
+            blinding_slice.expose_secret()
+        );
         assert!(proof_slice.verify(io, b"foo").is_ok());
         assert!(proof_single.verify([io], b"foo").is_ok());
     }
@@ -784,7 +787,7 @@ pub(crate) mod testing {
             };
             let secret = SecretKey::from_scalar(base.sk);
             let (proof, blind) = secret.prove_pedersen(io, ad);
-            let blind = *blind.expose();
+            let blind = *blind.expose_secret();
             Self { base, blind, proof }
         }
 
@@ -848,7 +851,11 @@ pub(crate) mod testing {
             };
             let sk = SecretKey::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove_pedersen(io, &self.base.ad);
-            assert_eq!(&self.blind, blind.expose(), "Blinding factor mismatch");
+            assert_eq!(
+                &self.blind,
+                blind.expose_secret(),
+                "Blinding factor mismatch"
+            );
             assert_eq!(self.proof.pk_com, proof.pk_com, "Proof pkb mismatch");
             assert_eq!(self.proof.r, proof.r, "Proof r mismatch");
             assert_eq!(self.proof.ok, proof.ok, "Proof ok mismatch");

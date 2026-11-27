@@ -14,8 +14,8 @@ use ark_std::vec::Vec;
 /// Secret scalar: a secret key, a nonce or a blinding factor.
 ///
 /// It is zeroized on drop and redacted in `Debug`. Temporaries inside arkworks
-/// and the ring proof backend are not zeroized. [`Self::expose`] gives the value,
-/// for example to reveal a blinding factor.
+/// and the ring proof backend are not zeroized. [`Self::expose_secret`] gives
+/// the value, for example to reveal a blinding factor.
 #[derive(Clone, Zeroize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize)]
 pub struct SecretScalar<S: Suite>(ScalarField<S>);
 
@@ -26,7 +26,7 @@ impl<S: Suite> SecretScalar<S> {
     }
 
     /// The scalar value.
-    pub fn expose(&self) -> &ScalarField<S> {
+    pub fn expose_secret(&self) -> &ScalarField<S> {
         &self.0
     }
 
@@ -221,7 +221,7 @@ mod tests {
     fn secret_debug_redacts_scalar() {
         let secret = SecretKey::from_seed(TEST_SEED);
         let out = std::format!("{:?}", secret);
-        let scalar_str = std::format!("{:?}", secret.scalar().expose());
+        let scalar_str = std::format!("{:?}", secret.scalar().expose_secret());
         assert!(!out.contains(&scalar_str));
     }
 
@@ -247,14 +247,14 @@ mod tests {
     #[test]
     fn secret_encodings_are_scalar_encoding() {
         let secret = SecretKey::from_seed(TEST_SEED);
-        let scalar = *secret.scalar().expose();
+        let scalar = *secret.scalar().expose_secret();
         let expected = scalar_encode::<TestSuite>(&scalar);
 
         let mut buf = Vec::new();
         secret.scalar().serialize_compressed(&mut buf).unwrap();
         assert_eq!(buf, expected);
         let decoded = SecretScalar::deserialize_compressed(&buf[..]).unwrap();
-        assert_eq!(decoded.expose(), &scalar);
+        assert_eq!(decoded.expose_secret(), &scalar);
 
         buf.clear();
         secret.serialize_compressed(&mut buf).unwrap();
