@@ -486,6 +486,12 @@ impl<S: RingSuite> RingSetup<S> {
     /// `Vec<PublicKey<S>>`. Subgroup membership is not checked (see
     /// [`PointWrapper`]).
     ///
+    /// Each key must come with a proof of possession of its secret key, which
+    /// this function does not check. For some keys with no known secret, such
+    /// as [`RingSuite::ACCUMULATOR_BASE`], the ring backend leaves one
+    /// coordinate of its accumulator free, and the soundness argument of the
+    /// ring proof does not hold.
+    ///
     /// Returns `Error::RingCapacityExceeded` if `pks` is larger than the ring
     /// capacity, and `Error::InvalidData` if a key is the identity or has no
     /// twisted Edwards form.
