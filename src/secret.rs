@@ -81,6 +81,22 @@ impl<S: Suite> core::fmt::Debug for SecretScalar<S> {
     }
 }
 
+impl<S: Suite> PartialEq for SecretScalar<S> {
+    /// Timing does not depend on the scalars content or on where they differ.
+    fn eq(&self, other: &Self) -> bool {
+        let mut lhs = self.0.into_bigint();
+        let mut rhs = other.0.into_bigint();
+        let diff = lhs
+            .as_ref()
+            .iter()
+            .zip(rhs.as_ref())
+            .fold(0u64, |acc, (a, b)| acc | (a ^ b));
+        lhs.as_mut().zeroize();
+        rhs.as_mut().zeroize();
+        diff == 0
+    }
+}
+
 /// Secret key: the secret scalar and its public key.
 ///
 /// The scalar is a [`SecretScalar`], compared in constant time. The caller owns
@@ -103,18 +119,8 @@ impl<S: Suite> core::fmt::Debug for SecretKey<S> {
 impl<S: Suite> ZeroizeOnDrop for SecretKey<S> {}
 
 impl<S: Suite> PartialEq for SecretKey<S> {
-    /// Timing does not depend on the scalars content or on where they differ.
     fn eq(&self, other: &Self) -> bool {
-        let mut lhs = self.scalar.0.into_bigint();
-        let mut rhs = other.scalar.0.into_bigint();
-        let diff = lhs
-            .as_ref()
-            .iter()
-            .zip(rhs.as_ref())
-            .fold(0u64, |acc, (a, b)| acc | (a ^ b));
-        lhs.as_mut().zeroize();
-        rhs.as_mut().zeroize();
-        diff == 0
+        self.scalar == other.scalar
     }
 }
 
