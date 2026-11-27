@@ -248,10 +248,11 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 - `default`: `std`. The tests need it.
 - `full`: all the curves below, and `ring`.
 - `secret-split`: each secret scalar multiplication of Tiny, Thin and Pedersen VRF
-  (public key, output, nonce, blinding) uses two random shares of the scalar. This
-  protects the scalar value against side channels, at twice the cost. The timing
-  stays variable. Ring proof witness generation does not use the split.
-  The shares come from `OsRng` at each multiplication, also when a `SecretKey` is
+  (public key, output, nonce, blinding) multiplies by `k + r * n` in place of `k`,
+  with a random 128-bit `r` and the group order `n`. This protects the scalar
+  value against side channels, at about 1.5 times the cost. The timing stays
+  variable. Ring proof witness generation does not use it.
+  `r` comes from `OsRng` at each multiplication, also when a `SecretKey` is
   decoded, and `OsRng` panics when its backend fails. The feature works with
   `no_std`, but where `getrandom` has no backend, the application must select one:
   `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom` or

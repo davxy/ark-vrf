@@ -676,5 +676,11 @@ macro_rules! suite_tests {
         fn encodings_follow_the_module_doc() {
             $crate::testing::encodings_follow_the_module_doc::<$suite>();
         }
+
+        #[cfg(feature = "secret-split")]
+        #[test]
+        fn blind_largest_values() {
+            $crate::secret::tests::blind_largest_values::<$suite>();
+        }
     };
 }

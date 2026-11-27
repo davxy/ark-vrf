@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
 - `Secret` and `Public` are renamed `SecretKey` and `PublicKey`.
 - `VrfIo` and `SecretKey::vrf_io` are renamed `IoPair` and `io_pair`.
+- `secret-split` multiplies by `k + r * n`, with a random 128-bit `r` and the
+  group order `n`, in place of two random shares of `k`: one scalar
+  multiplication in place of two.
 
 ### Removed
 

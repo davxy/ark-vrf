@@ -26,15 +26,17 @@ impl<S: Suite> SecretScalar<S> {
         &self.0
     }
 
-    /// `self * point`, with the `secret-split` shares when the feature is on.
-    /// It runs in variable time.
+    /// `self * point`. With `secret-split`, the multiplier is `self + r * n`,
+    /// with a fresh random 128-bit `r` and the group order `n`, so `point` must
+    /// be in the prime-order subgroup. It runs in variable time.
     pub fn mul_point(&self, point: AffinePoint<S>) -> <AffinePoint<S> as AffineRepr>::Group {
         #[cfg(feature = "secret-split")]
         {
-            use ark_std::UniformRand;
-            let share = Self::new(ScalarField::<S>::rand(&mut rand::rngs::OsRng));
-            let rest = Self::new(self.0 - share.0);
-            point * share.0 + point * rest.0
+            use rand::Rng;
+            let mut blinded = blind::<S>(&self.0, rand::rngs::OsRng.r#gen());
+            let product = point.mul_bigint(&blinded);
+            blinded.as_mut_slice().zeroize();
+            product
         }
         #[cfg(not(feature = "secret-split"))]
         {
@@ -49,6 +51,28 @@ impl<S: Suite> SecretScalar<S> {
         cx.zeroize();
         s
     }
+}
+
+/// `k + r * n` as little-endian limbs, with `n` the scalar field modulus.
+#[cfg(feature = "secret-split")]
+fn blind<S: Suite>(k: &ScalarField<S>, r: u128) -> ark_std::vec::Vec<u64> {
+    let modulus = ScalarField::<S>::MODULUS;
+    let modulus = modulus.as_ref();
+    let mut k_limbs = k.into_bigint();
+    let mut blinded = ark_std::vec![0u64; modulus.len() + 2];
+    blinded[..modulus.len()].copy_from_slice(k_limbs.as_ref());
+    k_limbs.as_mut().zeroize();
+
+    for (shift, r_limb) in [r as u64, (r >> 64) as u64].into_iter().enumerate() {
+        let n_limbs = modulus.iter().copied().chain(core::iter::repeat(0));
+        let mut carry = 0u128;
+        for (limb, n_limb) in blinded[shift..].iter_mut().zip(n_limbs) {
+            let sum = u128::from(*limb) + u128::from(n_limb) * u128::from(r_limb) + carry;
+            *limb = sum as u64;
+            carry = sum >> 64;
+        }
+    }
+    blinded
 }
 
 impl<S: Suite> core::fmt::Debug for SecretScalar<S> {
@@ -197,7 +221,7 @@ impl<S: Suite> SecretKey<S> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::suites::testing::{Input, SecretKey, SecretScalar, TestSuite};
     use crate::testing::{TEST_SEED, random_val};
@@ -238,5 +262,20 @@ mod tests {
         let secret = SecretKey::from_seed(TEST_SEED);
         assert_eq!(secret, SecretKey::from_seed(TEST_SEED));
         assert_ne!(secret, SecretKey::from_seed([0xff; 32]));
+    }
+
+    /// The largest `k` and `r` must not overflow the limbs, and the blinded
+    /// scalar must multiply a prime-order point like `k`. With secp256r1,
+    /// `k + r * n` fills all the limbs.
+    #[cfg(feature = "secret-split")]
+    pub(crate) fn blind_largest_values<S: Suite>() {
+        let k = -ScalarField::<S>::from(1u64);
+        let blinded = blind::<S>(&k, u128::MAX);
+
+        let bytes: std::vec::Vec<u8> = blinded.iter().flat_map(|limb| limb.to_le_bytes()).collect();
+        assert_eq!(ScalarField::<S>::from_le_bytes_mod_order(&bytes), k);
+        let k_len = k.into_bigint().as_ref().len();
+        assert!(blinded[k_len..].iter().any(|&limb| limb != 0));
+        assert_eq!(S::GENERATOR.mul_bigint(&blinded), S::GENERATOR * k);
     }
 }
