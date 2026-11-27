@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SecretScalar`: a secret scalar, zeroized on drop and redacted in `Debug`.
   `mul_point` is the only multiplication by a secret, so `secret-split` covers
-  each one.
+  each one. It implements `Zeroize` and `ZeroizeOnDrop`.
+- `Secret` implements `ZeroizeOnDrop`.
 
 ### Changed
 

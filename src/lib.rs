@@ -103,7 +103,7 @@ pub use utils::canonical::CanonicalDeserializeExact;
 use utils::canonical::CanonicalDeserializeStrict;
 use utils::smul;
 use utils::transcript::Transcript;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub mod pedersen;
 pub mod suites;
@@ -257,7 +257,7 @@ pub trait Suite: Copy {
 /// It is zeroized on drop and redacted in `Debug`. Temporaries inside arkworks
 /// and the ring proof backend are not zeroized. [`Self::expose`] gives the value,
 /// for example to reveal a blinding factor.
-#[derive(Clone)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct SecretScalar<S: Suite>(ScalarField<S>);
 
 impl<S: Suite> SecretScalar<S> {
@@ -286,12 +286,6 @@ impl<S: Suite> SecretScalar<S> {
     }
 }
 
-impl<S: Suite> Drop for SecretScalar<S> {
-    fn drop(&mut self) {
-        self.0.zeroize()
-    }
-}
-
 impl<S: Suite> core::fmt::Debug for SecretScalar<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("SecretScalar(<redacted>)")
@@ -316,6 +310,8 @@ impl<S: Suite> core::fmt::Debug for Secret<S> {
             .finish()
     }
 }
+
+impl<S: Suite> ZeroizeOnDrop for Secret<S> {}
 
 impl<S: Suite> PartialEq for Secret<S> {
     /// Timing does not depend on the scalars content or on where they differ.
