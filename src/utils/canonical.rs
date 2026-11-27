@@ -201,8 +201,8 @@ mod tests {
         type Proof = crate::thin::Proof<TestSuite>;
         type Decode = fn(&[u8]) -> Result<Proof, SerializationError>;
 
-        let secret = Secret::<TestSuite>::from_seed(TEST_SEED);
-        let io = secret.vrf_io(Input::from_affine_unchecked(random_val(None)));
+        let secret = SecretKey::<TestSuite>::from_seed(TEST_SEED);
+        let io = secret.io_pair(Input::from_affine_unchecked(random_val(None)));
         let proof = secret.prove_thin(io, b"ad");
         let mut compressed = Vec::new();
         proof.serialize_compressed(&mut compressed).unwrap();

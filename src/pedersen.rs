@@ -12,10 +12,10 @@
 //! use ark_vrf::pedersen::{PedersenSuite, Proof};
 //! use ark_vrf::suites::bandersnatch::*;
 //!
-//! let secret = Secret::from_seed([0; 32]);
+//! let secret = SecretKey::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
-//! let io = secret.vrf_io(input);
+//! let io = secret.io_pair(input);
 //!
 //! // Proving (`secret.prove_pedersen(io, b"aux data")` is the same)
 //! let (proof, blinding) = Proof::prove(io, b"aux data", &secret);
@@ -57,7 +57,7 @@ pub trait PedersenSuite: Suite {
 }
 
 #[inline(always)]
-fn vrf_transcript<S: PedersenSuite>(ios: &[VrfIo<S>], ad: &[u8]) -> S::Transcript {
+fn vrf_transcript<S: PedersenSuite>(ios: &[IoPair<S>], ad: &[u8]) -> S::Transcript {
     utils::vrf_transcript_plain(DomSep::PedersenVrf, ios, ad)
 }
 
@@ -69,8 +69,8 @@ fn vrf_transcript<S: PedersenSuite>(ios: &[VrfIo<S>], ad: &[u8]) -> S::Transcrip
 fn merge_with_key_commitment<S: PedersenSuite>(
     t: &mut S::Transcript,
     key_commitment: &AffinePoint<S>,
-    ios: &[VrfIo<S>],
-) -> VrfIo<S> {
+    ios: &[IoPair<S>],
+) -> IoPair<S> {
     t.absorb_serialize(key_commitment);
     utils::delinearize_pairs(t, ios)
 }
@@ -79,7 +79,7 @@ fn merge_with_key_commitment<S: PedersenSuite>(
 fn merge_inputs_with_key_commitment<S: PedersenSuite>(
     t: &mut S::Transcript,
     key_commitment: &AffinePoint<S>,
-    ios: &[VrfIo<S>],
+    ios: &[IoPair<S>],
 ) -> Input<S> {
     t.absorb_serialize(key_commitment);
     utils::delinearize_inputs(t, ios)
@@ -152,9 +152,9 @@ impl<S: PedersenSuite> Proof<S> {
     /// Also returns the blinding factor `b`. It is secret: with it, anybody can
     /// open `Yb` to the public key.
     pub fn prove(
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
-        secret: &Secret<S>,
+        secret: &SecretKey<S>,
     ) -> (Self, SecretScalar<S>) {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
@@ -202,7 +202,7 @@ impl<S: PedersenSuite> Proof<S> {
     /// Returns `Error::InvalidData` if the key commitment or a point of `ios` is
     /// the identity, and `Error::VerificationFailure` if the proof is not valid.
     /// Subgroup membership is not checked (see [`PointWrapper`]).
-    pub fn verify(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Result<(), Error> {
+    pub fn verify(&self, ios: impl AsRef<[IoPair<S>]>, ad: impl AsRef<[u8]>) -> Result<(), Error> {
         let Proof {
             pk_com,
             r,
@@ -244,11 +244,11 @@ impl<S: PedersenSuite> Proof<S> {
     }
 }
 
-impl<S: PedersenSuite> Secret<S> {
+impl<S: PedersenSuite> SecretKey<S> {
     /// Generate a Pedersen VRF proof. Same as [`Proof::prove`].
     pub fn prove_pedersen(
         &self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
     ) -> (Proof<S>, SecretScalar<S>) {
         Proof::prove(ios, ad, self)
@@ -273,7 +273,7 @@ pub struct BatchItem<S: PedersenSuite> {
 impl<S: PedersenSuite> BatchItem<S> {
     /// Prepare a proof for batch verification. With one I/O pair this only
     /// hashes. It can run in parallel.
-    pub fn new(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
+    pub fn new(ios: impl AsRef<[IoPair<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) -> Self {
         let ios = ios.as_ref();
         let identity = utils::has_identity(proof.pk_com, ios);
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
@@ -316,7 +316,7 @@ impl<S: PedersenSuite> BatchVerifier<S> {
     }
 
     /// Prepare and push a proof in one step.
-    pub fn push(&mut self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
+    pub fn push(&mut self, ios: impl AsRef<[IoPair<S>]>, ad: impl AsRef<[u8]>, proof: &Proof<S>) {
         self.push_prepared(BatchItem::new(ios, ad, proof));
     }
 
@@ -408,9 +408,9 @@ pub(crate) mod testing {
     use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: PedersenSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let (proof, blinding) = secret.prove_pedersen(io, b"foo");
         let result = proof.verify(io, b"foo");
@@ -425,9 +425,9 @@ pub(crate) mod testing {
     pub fn batch_verify<S: PedersenSuite>() {
         use pedersen::{BatchItem, BatchVerifier};
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let (proof1, _) = secret.prove_pedersen(io, b"foo");
         let (proof2, _) = secret.prove_pedersen(io, b"bar");
@@ -456,11 +456,11 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
-    /// N=1 slice produces same proof as passing a single `VrfIo`.
+    /// N=1 slice produces same proof as passing a single `IoPair`.
     pub fn prove_verify_multi_single<S: PedersenSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let (proof_single, blinding_single) = secret.prove_pedersen(io, b"foo");
         let (proof_slice, blinding_slice) = secret.prove_pedersen([io], b"foo");
@@ -478,15 +478,15 @@ pub(crate) mod testing {
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: PedersenSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
 
-        let mut ios: Vec<VrfIo<S>> = (0..3u8)
+        let mut ios: Vec<IoPair<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                secret.vrf_io(input)
+                secret.io_pair(input)
             })
             .collect();
-        ios.push(VrfIo {
+        ios.push(IoPair {
             input: Input::from_affine_unchecked(S::Affine::generator()),
             output: Output::from_affine_unchecked(secret.public().0),
         });
@@ -507,9 +507,9 @@ pub(crate) mod testing {
 
     /// With no VRF pairs, the proof is a Schnorr signature over `ad`.
     pub fn prove_verify_multi_empty<S: PedersenSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
 
-        let ios: [VrfIo<S>; 0] = [];
+        let ios: [IoPair<S>; 0] = [];
         let (proof, _) = secret.prove_pedersen(ios, b"bar");
 
         assert!(proof.verify(ios, b"bar").is_ok());
@@ -522,8 +522,8 @@ pub(crate) mod testing {
     pub fn proof_encoding_is_canonical<S: PedersenSuite>() {
         use ark_serialize::Compress;
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
-        let ios: [VrfIo<S>; 0] = [];
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let ios: [IoPair<S>; 0] = [];
         let (proof, _) = secret.prove_pedersen(ios, b"foo");
         assert!(proof.ok.is_zero());
 
@@ -555,9 +555,9 @@ pub(crate) mod testing {
         use crate::utils::common::MSM_THRESHOLD;
         use pedersen::BatchVerifier;
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
-        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
-            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let ios: Vec<IoPair<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.io_pair(Input::new(&[i]).unwrap()))
             .collect();
 
         let (proof, _) = secret.prove_pedersen(&ios[..], b"msm");
@@ -580,13 +580,13 @@ pub(crate) mod testing {
     pub fn identity_io_pair_rejected<S: PedersenSuite>() {
         use pedersen::BatchVerifier;
 
-        let identity_io = VrfIo::<S> {
+        let identity_io = IoPair::<S> {
             input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
             output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [TEST_SEED, [0x11; 32]] {
-            let secret = Secret::<S>::from_seed(seed);
+            let secret = SecretKey::<S>::from_seed(seed);
 
             let (proof, _) = secret.prove_pedersen([identity_io], b"forgery");
             assert!(proof.verify([identity_io], b"forgery").is_err());
@@ -595,7 +595,7 @@ pub(crate) mod testing {
             batch.push([identity_io], b"forgery", &proof);
             assert!(batch.verify().is_err());
 
-            let good_io = secret.vrf_io(Input::new(b"good").unwrap());
+            let good_io = secret.io_pair(Input::new(b"good").unwrap());
             let ios = [good_io, identity_io];
             let (proof, _) = secret.prove_pedersen(ios, b"forgery");
             assert!(proof.verify(ios, b"forgery").is_err());
@@ -611,7 +611,7 @@ pub(crate) mod testing {
     pub fn identity_key_commitment_rejected<S: PedersenSuite>() {
         use pedersen::BatchVerifier;
 
-        let ios: [VrfIo<S>; 0] = [];
+        let ios: [IoPair<S>; 0] = [];
         let ad = b"forgery";
 
         let pk_com = AffinePoint::<S>::zero();
@@ -652,7 +652,7 @@ pub(crate) mod testing {
             ScalarField::<S>::from(1111u64),
             ScalarField::<S>::from(2222u64),
         );
-        let pair = |factor: ScalarField<S>| VrfIo {
+        let pair = |factor: ScalarField<S>| IoPair {
             input,
             output: Output::from_affine_unchecked((input.0 * factor).into_affine()),
         };
@@ -662,7 +662,7 @@ pub(crate) mod testing {
         let z = DelinearizeScalars::<S>::new(t).take(2);
 
         let x = (z[0] * b0 + z[1] * b1) / (z[0] + z[1]);
-        let (proof, _) = Secret::<S>::from_scalar(x).prove_pedersen(ios, ad);
+        let (proof, _) = SecretKey::<S>::from_scalar(x).prove_pedersen(ios, ad);
 
         assert!(proof.verify(ios, ad).is_err());
 
@@ -778,11 +778,11 @@ pub(crate) mod testing {
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(base.h),
                 output: Output::from_affine_unchecked(base.gamma),
             };
-            let secret = Secret::from_scalar(base.sk);
+            let secret = SecretKey::from_scalar(base.sk);
             let (proof, blind) = secret.prove_pedersen(io, ad);
             let blind = *blind.expose();
             Self { base, blind, proof }
@@ -842,11 +842,11 @@ pub(crate) mod testing {
 
         fn run(&self) {
             self.base.run();
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(self.base.h),
                 output: Output::from_affine_unchecked(self.base.gamma),
             };
-            let sk = Secret::from_scalar(self.base.sk);
+            let sk = SecretKey::from_scalar(self.base.sk);
             let (proof, blind) = sk.prove_pedersen(io, &self.base.ad);
             assert_eq!(&self.blind, blind.expose(), "Blinding factor mismatch");
             assert_eq!(self.proof.pk_com, proof.pk_com, "Proof pkb mismatch");

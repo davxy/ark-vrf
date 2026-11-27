@@ -5,7 +5,7 @@
 //!
 //! - `cLen` = 16 (128-bit security level).
 //! - Key pair: `PK = sk * G`, and the secret scalar `x` is `sk`. A seed gives a
-//!   secret with [`crate::Secret::from_seed`], with no clamping.
+//!   secret with [`crate::SecretKey::from_seed`], with no clamping.
 //! - Nonce: deterministic through the suite transcript (see
 //!   [`crate::Suite::nonce`]), after RFC 9381 section 5.4.2.2.
 //! - `int_to_string` and `string_to_int`: 32 bytes, little-endian. The challenge

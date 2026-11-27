@@ -2,12 +2,12 @@
 mod bench_utils;
 
 use ark_std::UniformRand;
-use ark_vrf::{AffinePoint, Input, Secret, Suite, utils::Transcript};
+use ark_vrf::{AffinePoint, Input, SecretKey, Suite, utils::Transcript};
 use bench_utils::SuiteExt;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_vrf_output<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let name = format!("{}/vrf_output", S::SUITE_NAME);
     c.bench_function(&name, |b| {
@@ -45,7 +45,7 @@ where
 }
 
 fn bench_challenge<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let public = secret.public().into_affine();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input).into_affine();
@@ -74,7 +74,7 @@ fn bench_point_to_hash<S: Suite>(c: &mut Criterion) {
 }
 
 fn bench_nonce<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
 
     let name = format!("{}/nonce", S::SUITE_NAME);
     c.bench_function(&name, |b| {

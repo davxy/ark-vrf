@@ -10,10 +10,10 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //! use ark_vrf::thin::Proof;
 //!
-//! let secret = Secret::from_seed([0; 32]);
+//! let secret = SecretKey::from_seed([0; 32]);
 //! let public = secret.public();
 //! let input = Input::new(b"example input").unwrap();
-//! let io = secret.vrf_io(input);
+//! let io = secret.io_pair(input);
 //!
 //! // Proving
 //! let proof = Proof::prove(io, b"aux data", &secret);
@@ -72,7 +72,7 @@ impl<S: ThinSuite> ark_serialize::Valid for Proof<S> {
 #[inline(always)]
 fn vrf_transcript_input<S: ThinSuite>(
     public: AffinePoint<S>,
-    ios: impl AsRef<[VrfIo<S>]>,
+    ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Input<S>) {
     utils::vrf_transcript_input_with_schnorr(DomSep::ThinVrf, public, ios, ad)
@@ -81,7 +81,7 @@ fn vrf_transcript_input<S: ThinSuite>(
 #[inline(always)]
 fn vrf_transcript_scalars<S: ThinSuite>(
     public: AffinePoint<S>,
-    ios: impl AsRef<[VrfIo<S>]>,
+    ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
     utils::vrf_transcript_scalars_with_schnorr(DomSep::ThinVrf, public, ios, ad)
@@ -89,7 +89,11 @@ fn vrf_transcript_scalars<S: ThinSuite>(
 
 impl<S: ThinSuite> Proof<S> {
     /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
-    pub fn prove(ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>, secret: &Secret<S>) -> Self {
+    pub fn prove(
+        ios: impl AsRef<[IoPair<S>]>,
+        ad: impl AsRef<[u8]>,
+        secret: &SecretKey<S>,
+    ) -> Self {
         let (t, input) = vrf_transcript_input::<S>(secret.public.0, ios, ad);
 
         let k = S::nonce(&secret.scalar, t.clone());
@@ -108,9 +112,9 @@ impl<S: ThinSuite> Proof<S> {
     /// Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
-        public: &Public<S>,
+        public: &PublicKey<S>,
     ) -> Result<(), Error> {
         let ios = ios.as_ref();
         if utils::has_identity(public.0, ios) {
@@ -131,18 +135,18 @@ impl<S: ThinSuite> Proof<S> {
     }
 }
 
-impl<S: ThinSuite> Secret<S> {
+impl<S: ThinSuite> SecretKey<S> {
     /// Generate a Thin VRF proof. Same as [`Proof::prove`].
-    pub fn prove_thin(&self, ios: impl AsRef<[VrfIo<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
+    pub fn prove_thin(&self, ios: impl AsRef<[IoPair<S>]>, ad: impl AsRef<[u8]>) -> Proof<S> {
         Proof::prove(ios, ad, self)
     }
 }
 
-impl<S: ThinSuite> Public<S> {
+impl<S: ThinSuite> PublicKey<S> {
     /// Verify a Thin VRF proof. Same as [`Proof::verify`].
     pub fn verify_thin(
         &self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
     ) -> Result<(), Error> {
@@ -153,8 +157,8 @@ impl<S: ThinSuite> Public<S> {
 /// Thin VRF proof prepared for [`BatchVerifier`].
 pub struct BatchItem<S: ThinSuite> {
     c: ScalarField<S>,
-    pk: Public<S>,
-    ios: Vec<VrfIo<S>>,
+    pk: PublicKey<S>,
+    ios: Vec<IoPair<S>>,
     zs: Vec<ScalarField<S>>,
     r: AffinePoint<S>,
     s: ScalarField<S>,
@@ -164,10 +168,10 @@ impl<S: ThinSuite> BatchItem<S> {
     /// Prepare a proof for batch verification. This only hashes, so it is cheap
     /// and can run in parallel.
     pub fn new(
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-        public: &Public<S>,
+        public: &PublicKey<S>,
     ) -> Self {
         let ios = ios.as_ref();
         let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
@@ -208,10 +212,10 @@ impl<S: ThinSuite> BatchVerifier<S> {
     /// Prepare and push a proof in one step.
     pub fn push(
         &mut self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
-        public: &Public<S>,
+        public: &PublicKey<S>,
     ) {
         self.push_prepared(BatchItem::new(ios, ad, proof, public));
     }
@@ -294,10 +298,10 @@ pub(crate) mod testing {
     use crate::testing::{self as common, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: ThinSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let proof = secret.prove_thin(io, b"foo");
         let result = public.verify_thin(io, b"foo", &proof);
@@ -307,10 +311,10 @@ pub(crate) mod testing {
     pub fn batch_verify<S: ThinSuite>() {
         use thin::{BatchItem, BatchVerifier};
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let proof1 = secret.prove_thin(io, b"foo");
         let proof2 = secret.prove_thin(io, b"bar");
@@ -339,12 +343,12 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
-    /// N=1 slice produces same proof as passing a single `VrfIo`.
+    /// N=1 slice produces same proof as passing a single `IoPair`.
     pub fn prove_verify_multi_single<S: ThinSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let proof_single = secret.prove_thin(io, b"foo");
         let proof_slice = secret.prove_thin([io], b"foo");
@@ -364,7 +368,7 @@ pub(crate) mod testing {
     pub fn identity_public_key_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
-        let identity = Public::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
+        let identity = PublicKey::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
         let s = ScalarField::<S>::from(0x5eed_u64);
         let forged = Proof::<S> {
             r: (S::GENERATOR * s).into_affine(),
@@ -382,16 +386,16 @@ pub(crate) mod testing {
     /// gives `s * I_m - c * O_m = (0, 0, 0, 0)`, which arkworks finds equal to
     /// every point. Verify must reject it, as the batch verifier does.
     pub fn off_curve_point_rejected<S: ThinSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
-        let io = secret.vrf_io(Input::new(b"foo").unwrap());
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let io = secret.io_pair(Input::new(b"foo").unwrap());
         let proof = secret.prove_thin(io, b"bar");
         let off_curve = common::off_curve_point::<S>();
 
-        let public = Public::<S>::from_affine_unchecked(off_curve);
+        let public = PublicKey::<S>::from_affine_unchecked(off_curve);
         assert!(public.verify_thin(io, b"bar", &proof).is_err());
 
         let input = Input::from_affine_unchecked(off_curve);
-        let io = VrfIo { input, ..io };
+        let io = IoPair { input, ..io };
         assert!(secret.public().verify_thin(io, b"bar", &proof).is_err());
     }
 
@@ -401,13 +405,13 @@ pub(crate) mod testing {
     pub fn identity_io_pair_rejected<S: ThinSuite>() {
         use thin::BatchVerifier;
 
-        let identity_io = VrfIo::<S> {
+        let identity_io = IoPair::<S> {
             input: Input::from_affine_unchecked(AffinePoint::<S>::zero()),
             output: Output::from_affine_unchecked(AffinePoint::<S>::zero()),
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
-            let secret = Secret::<S>::from_seed(seed);
+            let secret = SecretKey::<S>::from_seed(seed);
             let public = secret.public();
 
             let proof = secret.prove_thin([identity_io], b"forgery");
@@ -421,7 +425,7 @@ pub(crate) mod testing {
             batch.push([identity_io], b"forgery", &proof, &public);
             assert!(batch.verify().is_err());
 
-            let good_io = secret.vrf_io(Input::new(b"good").unwrap());
+            let good_io = secret.io_pair(Input::new(b"good").unwrap());
             let ios = [good_io, identity_io];
             let proof = secret.prove_thin(ios, b"forgery");
             assert!(public.verify_thin(ios, b"forgery", &proof).is_err());
@@ -434,13 +438,13 @@ pub(crate) mod testing {
 
     /// N=3 VRF pairs: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: ThinSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
-        let ios: Vec<VrfIo<S>> = (0..3u8)
+        let ios: Vec<IoPair<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                secret.vrf_io(input)
+                secret.io_pair(input)
             })
             .collect();
 
@@ -460,7 +464,7 @@ pub(crate) mod testing {
 
     /// With no VRF pairs, the proof is a Schnorr signature over `ad`.
     pub fn prove_verify_multi_empty<S: ThinSuite>() {
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
         let proof = secret.prove_thin([], b"bar");
@@ -474,10 +478,10 @@ pub(crate) mod testing {
     pub fn proof_encoding_is_canonical<S: ThinSuite>() {
         use ark_serialize::Compress;
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
         let proof = secret.prove_thin(io, b"foo");
 
         let mut bytes = Vec::new();
@@ -513,10 +517,10 @@ pub(crate) mod testing {
         use crate::utils::common::MSM_THRESHOLD;
         use thin::BatchVerifier;
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
-        let ios: Vec<VrfIo<S>> = (0..MSM_THRESHOLD as u8)
-            .map(|i| secret.vrf_io(Input::new(&[i]).unwrap()))
+        let ios: Vec<IoPair<S>> = (0..MSM_THRESHOLD as u8)
+            .map(|i| secret.io_pair(Input::new(&[i]).unwrap()))
             .collect();
 
         let proof = secret.prove_thin(&ios[..], b"msm");
@@ -622,11 +626,11 @@ pub(crate) mod testing {
 
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let base = common::TestVector::new(comment, seed, alpha, ad);
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(base.h),
                 output: Output::from_affine_unchecked(base.gamma),
             };
-            let secret = Secret::from_scalar(base.sk);
+            let secret = SecretKey::from_scalar(base.sk);
             let proof: Proof<S> = secret.prove_thin(io, ad);
             Self {
                 base,
@@ -666,16 +670,16 @@ pub(crate) mod testing {
 
         fn run(&self) {
             self.base.run();
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(self.base.h),
                 output: Output::from_affine_unchecked(self.base.gamma),
             };
-            let sk = Secret::from_scalar(self.base.sk);
+            let sk = SecretKey::from_scalar(self.base.sk);
             let proof = sk.prove_thin(io, &self.base.ad);
             assert_eq!(self.proof_r, proof.r, "Thin VRF proof R mismatch");
             assert_eq!(self.proof_s, proof.s, "Thin VRF proof s mismatch");
 
-            let pk = Public::<S>::from_affine_unchecked(self.base.pk);
+            let pk = PublicKey::<S>::from_affine_unchecked(self.base.pk);
             assert!(pk.verify_thin(io, &self.base.ad, &proof).is_ok());
         }
     }
@@ -706,12 +710,12 @@ pub(crate) mod testing {
         let fake_output = Output::<S>::from_affine_unchecked(fake_output_pt);
 
         let ad: &[u8] = b"attack";
-        let fake_io = VrfIo {
+        let fake_io = IoPair {
             input,
             output: fake_output,
         };
 
-        let fake_ios: &[VrfIo<S>] = &[fake_io];
+        let fake_ios: &[IoPair<S>] = &[fake_io];
         let (transcript, zs) = vrf_transcript_scalars::<S>(pk, fake_ios, ad);
         let (z0, z1) = (zs[0], zs[1]);
 
@@ -727,7 +731,7 @@ pub(crate) mod testing {
 
         let forged_proof = Proof::<S> { r, s };
 
-        let public = Public::<S>::from_affine_unchecked(pk);
+        let public = PublicKey::<S>::from_affine_unchecked(pk);
         assert!(
             public.verify_thin(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"

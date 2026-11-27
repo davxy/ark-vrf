@@ -102,20 +102,20 @@ pub(crate) enum DomSep {
 /// VRF, if any, and then the user pairs.
 #[derive(Clone, Copy)]
 struct Ios<'a, S: Suite> {
-    schnorr: Option<VrfIo<S>>,
-    user: &'a [VrfIo<S>],
+    schnorr: Option<IoPair<S>>,
+    user: &'a [IoPair<S>],
 }
 
 impl<'a, S: Suite> Ios<'a, S> {
-    fn plain(user: &'a [VrfIo<S>]) -> Self {
+    fn plain(user: &'a [IoPair<S>]) -> Self {
         Self {
             schnorr: None,
             user,
         }
     }
 
-    fn with_schnorr(public: AffinePoint<S>, user: &'a [VrfIo<S>]) -> Self {
-        let schnorr = VrfIo {
+    fn with_schnorr(public: AffinePoint<S>, user: &'a [IoPair<S>]) -> Self {
+        let schnorr = IoPair {
             input: Input::from_affine_unchecked(S::GENERATOR),
             output: Output::from_affine_unchecked(public),
         };
@@ -129,7 +129,7 @@ impl<'a, S: Suite> Ios<'a, S> {
         self.schnorr.is_some() as usize + self.user.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = VrfIo<S>> + '_ {
+    fn iter(&self) -> impl Iterator<Item = IoPair<S>> + '_ {
         self.schnorr.iter().chain(self.user).copied()
     }
 }
@@ -160,11 +160,11 @@ fn vrf_transcript_base<S: Suite>(
 }
 
 /// Merge the I/O pairs into a single pair with scalars from `scalars`.
-fn merged_pair<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> VrfIo<S> {
+fn merged_pair<S: Suite>(ios: Ios<'_, S>, mut scalars: DelinearizeScalars<S>) -> IoPair<S> {
     match ios.len() {
         0 => {
             let zero = AffinePoint::<S>::zero();
-            VrfIo {
+            IoPair {
                 input: Input::from_affine_unchecked(zero),
                 output: Output::from_affine_unchecked(zero),
             }
@@ -211,19 +211,19 @@ fn vrf_transcript_scalars<S: Suite>(
 /// fork. Pedersen VRF absorbs its key commitment before it forks the scalars.
 pub(crate) fn vrf_transcript_plain<S: Suite>(
     scheme: DomSep,
-    ios: &[VrfIo<S>],
+    ios: &[IoPair<S>],
     ad: &[u8],
 ) -> S::Transcript {
     vrf_transcript(scheme, Ios::plain(ios), ad)
 }
 
 /// Merge plain I/O pairs with scalars forked from `t`.
-pub(crate) fn delinearize_pairs<S: Suite>(t: &S::Transcript, ios: &[VrfIo<S>]) -> VrfIo<S> {
+pub(crate) fn delinearize_pairs<S: Suite>(t: &S::Transcript, ios: &[IoPair<S>]) -> IoPair<S> {
     merged_pair(Ios::plain(ios), DelinearizeScalars::new(t.clone()))
 }
 
 /// Same as [`delinearize_pairs`], but merges the inputs only.
-pub(crate) fn delinearize_inputs<S: Suite>(t: &S::Transcript, ios: &[VrfIo<S>]) -> Input<S> {
+pub(crate) fn delinearize_inputs<S: Suite>(t: &S::Transcript, ios: &[IoPair<S>]) -> Input<S> {
     merged_input(Ios::plain(ios), DelinearizeScalars::new(t.clone()))
 }
 
@@ -232,7 +232,7 @@ pub(crate) fn delinearize_inputs<S: Suite>(t: &S::Transcript, ios: &[VrfIo<S>]) 
 pub(crate) fn vrf_transcript_input_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
-    ios: impl AsRef<[VrfIo<S>]>,
+    ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Input<S>) {
     vrf_transcript_merged_input(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
@@ -243,7 +243,7 @@ pub(crate) fn vrf_transcript_input_with_schnorr<S: Suite>(
 pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     scheme: DomSep,
     public: AffinePoint<S>,
-    ios: impl AsRef<[VrfIo<S>]>,
+    ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
     vrf_transcript_scalars(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
@@ -259,8 +259,8 @@ pub(crate) fn batch_transcript<S: Suite>(scheme: DomSep) -> S::Transcript {
 
 /// Whether the key point (`Y` of Tiny and Thin, `Yb` of Pedersen) or a point of
 /// an I/O pair is the identity.
-pub(crate) fn has_identity<S: Suite>(key: AffinePoint<S>, ios: &[VrfIo<S>]) -> bool {
-    key.is_zero() || ios.iter().any(VrfIo::has_identity)
+pub(crate) fn has_identity<S: Suite>(key: AffinePoint<S>, ios: &[IoPair<S>]) -> bool {
+    key.is_zero() || ios.iter().any(IoPair::has_identity)
 }
 
 /// Point count up to which the Tiny and Thin verifiers expand their equation
@@ -275,7 +275,7 @@ const EXPANDED_MAX_POINTS: usize = 5;
 /// runs as one Straus pass over the raw points.
 pub(crate) fn schnorr_lhs<S: Suite>(
     public: AffinePoint<S>,
-    ios: &[VrfIo<S>],
+    ios: &[IoPair<S>],
     zs: &[ScalarField<S>],
     s: ScalarField<S>,
     c: ScalarField<S>,
@@ -455,11 +455,11 @@ fn merge_points<S: Suite>(
 
 /// Merge the I/O pairs with the scalars `zs`. Needs `ios.len() >= 2` and
 /// `zs.len() == ios.len()`.
-fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> VrfIo<S> {
+fn merge_ios<S: Suite>(ios: Ios<'_, S>, zs: &[ScalarField<S>]) -> IoPair<S> {
     let input = merge_points::<S>(ios.iter().map(|io| io.input.0), zs);
     let output = merge_points::<S>(ios.iter().map(|io| io.output.0), zs);
     let norms = CurveGroup::normalize_batch(&[input, output]);
-    VrfIo {
+    IoPair {
         input: Input::from_affine_unchecked(norms[0]),
         output: Output::from_affine_unchecked(norms[1]),
     }
@@ -476,13 +476,13 @@ mod tests {
     use super::*;
     use suites::testing::TestSuite;
 
-    fn sample_ios(n: usize) -> Vec<VrfIo<TestSuite>> {
+    fn sample_ios(n: usize) -> Vec<IoPair<TestSuite>> {
         let sk = ScalarField::<TestSuite>::from(42u64);
         (0..n as u8)
             .map(|i| {
                 let input = TestSuite::data_to_point(&[i]).unwrap();
                 let output = (input * sk).into_affine();
-                VrfIo {
+                IoPair {
                     input: Input::from_affine_unchecked(input),
                     output: Output::from_affine_unchecked(output),
                 }
@@ -585,14 +585,14 @@ mod tests {
     /// Verify that the scheme tag produces distinct transcripts.
     #[test]
     fn scheme_tag_domain_separation() {
-        use crate::{Input, Output, VrfIo};
+        use crate::{Input, IoPair, Output};
 
         let sk = ScalarField::<TestSuite>::from(42u64);
-        let ios: Vec<VrfIo<TestSuite>> = (0..3u8)
+        let ios: Vec<IoPair<TestSuite>> = (0..3u8)
             .map(|i| {
                 let input = TestSuite::data_to_point(&[i]).unwrap();
                 let output = (input * sk).into_affine();
-                VrfIo {
+                IoPair {
                     input: Input::from_affine_unchecked(input),
                     output: Output::from_affine_unchecked(output),
                 }
@@ -620,10 +620,10 @@ mod tests {
 
         let sk = ScalarField::<TestSuite>::from(42u64);
         for n in [MSM_THRESHOLD - 1, MSM_THRESHOLD] {
-            let ios: Vec<VrfIo<TestSuite>> = (0..n as u8)
+            let ios: Vec<IoPair<TestSuite>> = (0..n as u8)
                 .map(|i| {
                     let input = TestSuite::data_to_point(&[i]).unwrap();
-                    VrfIo {
+                    IoPair {
                         input: Input::from_affine_unchecked(input),
                         output: Output::from_affine_unchecked((input * sk).into_affine()),
                     }

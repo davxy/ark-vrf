@@ -287,7 +287,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     }
 
     fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
-        let sk = Secret::<S>::from_seed(*seed);
+        let sk = SecretKey::<S>::from_seed(*seed);
         let pk = sk.public().0;
 
         let h = <S as Suite>::data_to_point(alpha).unwrap();
@@ -351,7 +351,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
     fn run(&self) {
         println!("Run test vector: {}", self.comment);
 
-        let sk = Secret::<S>::from_scalar(self.sk);
+        let sk = SecretKey::<S>::from_scalar(self.sk);
 
         let pk = sk.public();
         assert_eq!(self.pk, pk.0, "public key ('pk') mismatch");
@@ -493,7 +493,7 @@ where
     let Some(torsion) = AffinePoint::<S>::torsion_point() else {
         return;
     };
-    let secret = Secret::<S>::from_seed(TEST_SEED);
+    let secret = SecretKey::<S>::from_seed(TEST_SEED);
     let input = Input::<S>::new(b"low order").unwrap();
     let output = secret.output(input);
 
@@ -594,7 +594,7 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
     for alias in &aliases {
-        assert!(Public::<S>::deserialize_compressed_unchecked(&alias[..]).is_err());
+        assert!(PublicKey::<S>::deserialize_compressed_unchecked(&alias[..]).is_err());
     }
 
     // A value longer than the stack buffer spills to the heap: a vector of
@@ -615,15 +615,15 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
 
-    let point = Secret::<S>::from_seed(TEST_SEED).public().into_affine();
+    let point = SecretKey::<S>::from_seed(TEST_SEED).public().into_affine();
     for compress in [Compress::Yes, Compress::No] {
         let mut bytes = Vec::new();
         point.serialize_with_mode(&mut bytes, compress).unwrap();
         let decode =
-            |bytes: &[u8]| Public::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
+            |bytes: &[u8]| PublicKey::<S>::deserialize_with_mode(bytes, compress, Validate::Yes);
         assert_eq!(decode(&bytes).unwrap().into_affine(), point);
         assert_aliases_rejected::<AffinePoint<S>>(&bytes, 0..bytes.len(), compress, |bytes| {
-            decode(bytes).is_ok() || decodes_inside_vec::<Public<S>>(bytes, compress)
+            decode(bytes).is_ok() || decodes_inside_vec::<PublicKey<S>>(bytes, compress)
         });
     }
 }
@@ -631,8 +631,8 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
 /// The decoder reads one value and leaves trailing bytes unread, as the docs
 /// state.
 pub fn decoder_reads_one_value<S: Suite>() {
-    let first = Secret::<S>::from_seed(TEST_SEED).public();
-    let second = Secret::<S>::from_seed([1; 32]).public();
+    let first = SecretKey::<S>::from_seed(TEST_SEED).public();
+    let second = SecretKey::<S>::from_seed([1; 32]).public();
     let mut buf = Vec::new();
     first.serialize_compressed(&mut buf).unwrap();
     second.serialize_compressed(&mut buf).unwrap();
@@ -640,7 +640,7 @@ pub fn decoder_reads_one_value<S: Suite>() {
 
     let mut reader = &buf[..];
     let decode = |reader: &mut &[u8]| {
-        Public::<S>::deserialize_compressed(reader)
+        PublicKey::<S>::deserialize_compressed(reader)
             .unwrap()
             .into_affine()
     };

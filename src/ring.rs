@@ -29,7 +29,7 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         Secret::from_seed(seed).public()
+//!         SecretKey::from_seed(seed).public()
 //!     })
 //!     .collect::<Vec<_>>();
 //! ring[prover_key_index] = public;
@@ -41,7 +41,7 @@
 //! // Proving
 //! let prover_key = ring_setup.prover_key(&ring).unwrap();
 //! let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
-//! let io = secret.vrf_io(input);
+//! let io = secret.io_pair(input);
 //! let proof = Proof::prove(io, b"aux data", &secret, &prover);
 //!
 //! // Verification
@@ -207,9 +207,9 @@ impl<S: RingSuite> Proof<S> {
     /// `ring_prover` must be built for the ring and for the position of the key
     /// of `secret` in it (see [`RingContext::ring_prover`]).
     pub fn prove(
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
-        secret: &Secret<S>,
+        secret: &SecretKey<S>,
         ring_prover: &RingProver<S>,
     ) -> Self {
         let (pedersen_proof, secret_blinding) = PedersenProof::prove(ios, ad, secret);
@@ -229,7 +229,7 @@ impl<S: RingSuite> Proof<S> {
     /// membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
@@ -246,11 +246,11 @@ impl<S: RingSuite> Proof<S> {
     }
 }
 
-impl<S: RingSuite> Secret<S> {
+impl<S: RingSuite> SecretKey<S> {
     /// Generate a Ring VRF proof. Same as [`Proof::prove`].
     pub fn prove_ring(
         &self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         ring_prover: &RingProver<S>,
     ) -> Proof<S> {
@@ -375,7 +375,7 @@ pub struct RingSetup<S: RingSuite> {
 
 /// At most `capacity` ring members as twisted Edwards points. The backend
 /// asserts on the identity, so this rejects it.
-fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
+fn ring_members_te<S: RingSuite, P: Borrow<PublicKey<S>>>(
     pks: impl IntoIterator<Item = P>,
     capacity: usize,
 ) -> Result<Vec<TEAffine<CurveConfig<S>>>, Error> {
@@ -394,7 +394,7 @@ fn ring_members_te<S: RingSuite, P: Borrow<Public<S>>>(
     Ok(members)
 }
 
-impl<S: RingSuite> Public<S> {
+impl<S: RingSuite> PublicKey<S> {
     /// [`RingSuite::PADDING`] as a ring member, for example in place of a
     /// removed key.
     pub fn padding() -> Self {
@@ -463,13 +463,13 @@ impl<S: RingSuite> RingSetup<S> {
     /// [`Self::prover_key`] and [`Self::verifier_key`] costs twice as much.
     ///
     /// `pks` iterates over keys or key references, for example `&ring` for a
-    /// `Vec<Public<S>>`. Subgroup membership is not checked (see
+    /// `Vec<PublicKey<S>>`. Subgroup membership is not checked (see
     /// [`PointWrapper`]).
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` is larger than the ring
     /// capacity, and `Error::InvalidData` if a key is the identity or has no
     /// twisted Edwards form.
-    pub fn keys<P: Borrow<Public<S>>>(
+    pub fn keys<P: Borrow<PublicKey<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
     ) -> Result<(RingProverKey<S>, RingVerifierKey<S>), Error> {
@@ -482,7 +482,7 @@ impl<S: RingSuite> RingSetup<S> {
     }
 
     /// Prover key for the ring `pks`. Same inputs and errors as [`Self::keys`].
-    pub fn prover_key<P: Borrow<Public<S>>>(
+    pub fn prover_key<P: Borrow<PublicKey<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
     ) -> Result<RingProverKey<S>, Error> {
@@ -490,7 +490,7 @@ impl<S: RingSuite> RingSetup<S> {
     }
 
     /// Verifier key for the ring `pks`. Same inputs and errors as [`Self::keys`].
-    pub fn verifier_key<P: Borrow<Public<S>>>(
+    pub fn verifier_key<P: Borrow<PublicKey<S>>>(
         &self,
         pks: impl IntoIterator<Item = P>,
     ) -> Result<RingVerifierKey<S>, Error> {
@@ -745,7 +745,7 @@ impl<S: RingSuite> VerifierKeyBuilder<S> {
     /// [`Self::free_slots`], `Error::SrsLookupFailed` if the SRS lookup fails, and
     /// `Error::InvalidData` if a key is the identity or has no twisted Edwards
     /// form.
-    pub fn append<P: Borrow<Public<S>>>(
+    pub fn append<P: Borrow<PublicKey<S>>>(
         &mut self,
         pks: impl IntoIterator<Item = P>,
         lookup: impl SrsLookup<S>,
@@ -781,7 +781,7 @@ impl<S: RingSuite> BatchItem<S> {
     /// Returns `Error::InvalidData` if the key commitment has no twisted Edwards
     /// form (for example the identity on a short Weierstrass suite).
     pub fn new(
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
         verifier: &RingVerifier<S>,
@@ -827,7 +827,7 @@ impl<S: RingSuite> BatchVerifier<S> {
     /// [`BatchItem::new`].
     pub fn push(
         &mut self,
-        ios: impl AsRef<[VrfIo<S>]>,
+        ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
         verifier: &RingVerifier<S>,
@@ -1088,19 +1088,19 @@ pub(crate) mod testing {
     }
 
     struct TestItem<S: RingSuite> {
-        io: VrfIo<S>,
+        io: IoPair<S>,
         ad: Vec<u8>,
         proof: Proof<S>,
     }
 
     impl<S: RingSuite> TestItem<S> {
         fn new(
-            secret: &Secret<S>,
+            secret: &SecretKey<S>,
             prover: &RingProver<S>,
             rng: &mut dyn ark_std::rand::RngCore,
         ) -> Self {
             let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
-            let io = secret.vrf_io(input);
+            let io = secret.io_pair(input);
             let ad_len = common::random_val::<usize>(Some(rng)) % (MAX_AD_LEN + 1);
             let ad = common::random_vec(ad_len, Some(rng));
             let proof = secret.prove_ring(io, &ad, prover);
@@ -1111,10 +1111,10 @@ pub(crate) mod testing {
     fn random_ring<S: RingSuite>(
         size: usize,
         rng: &mut dyn ark_std::rand::RngCore,
-    ) -> Vec<Public<S>> {
+    ) -> Vec<PublicKey<S>> {
         common::random_vec::<AffinePoint<S>>(size, Some(rng))
             .into_iter()
-            .map(Public::from_affine_unchecked)
+            .map(PublicKey::from_affine_unchecked)
             .collect()
     }
 
@@ -1123,7 +1123,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
@@ -1148,7 +1148,7 @@ pub(crate) mod testing {
 
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
         pks[prover_idx] = secret.public();
@@ -1157,7 +1157,7 @@ pub(crate) mod testing {
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
-        let ios: [VrfIo<S>; 0] = [];
+        let ios: [IoPair<S>; 0] = [];
         let proof = secret.prove_ring(ios, b"foo", &prover);
         assert!(proof.pedersen_proof.ok.is_zero());
 
@@ -1206,7 +1206,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
@@ -1219,13 +1219,13 @@ pub(crate) mod testing {
 
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
-        let mut ios: Vec<VrfIo<S>> = (0..3u8)
+        let mut ios: Vec<IoPair<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                secret.vrf_io(input)
+                secret.io_pair(input)
             })
             .collect();
-        ios.push(VrfIo {
+        ios.push(IoPair {
             input: Input::from_affine_unchecked(S::Affine::generator()),
             output: Output::from_affine_unchecked(public.0),
         });
@@ -1249,7 +1249,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
@@ -1354,7 +1354,7 @@ pub(crate) mod testing {
         ));
 
         // An endless iterator must end with an error, not fill the memory.
-        let endless = core::iter::repeat(Public::<S>::padding());
+        let endless = core::iter::repeat(PublicKey::<S>::padding());
         assert!(matches!(
             ring_setup.keys(endless),
             Err(Error::RingCapacityExceeded)
@@ -1383,7 +1383,7 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
-        pks[0] = Public::from_affine_unchecked(AffinePoint::<S>::zero());
+        pks[0] = PublicKey::from_affine_unchecked(AffinePoint::<S>::zero());
 
         assert!(matches!(
             ring_setup.prover_key(&pks),
@@ -1430,14 +1430,14 @@ pub(crate) mod testing {
     {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
         pks[prover_idx] = secret.public();
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
-        let proof = secret.prove_ring(secret.vrf_io(input), b"foo", &prover);
+        let proof = secret.prove_ring(secret.io_pair(input), b"foo", &prover);
 
         let point_len = G1Affine::<S>::zero().uncompressed_size();
         let replace_with_alias = |bytes: &mut [u8], start: usize| {
@@ -1558,9 +1558,9 @@ pub(crate) mod testing {
         assert_eq!(S::PADDING, S::data_to_point(PADDING_SEED).unwrap());
         assert!(S::PADDING.check(true).is_ok());
 
-        // The padding replaces keys, so it must be a valid `Public`.
-        assert!(ark_serialize::Valid::check(&Public::<S>::padding()).is_ok());
-        assert_eq!(Public::<S>::padding().into_affine(), S::PADDING);
+        // The padding replaces keys, so it must be a valid `PublicKey`.
+        assert!(ark_serialize::Valid::check(&PublicKey::<S>::padding()).is_ok());
+        assert_eq!(PublicKey::<S>::padding().into_affine(), S::PADDING);
     }
 
     #[allow(unused)]
@@ -1583,7 +1583,7 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
@@ -1619,10 +1619,10 @@ pub(crate) mod testing {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
-        let secret = Secret::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let public = secret.public();
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
-        let io = secret.vrf_io(input);
+        let io = secret.io_pair(input);
 
         let ring_ctx = ring_setup.ring_context();
         let ring_size = ring_ctx.max_ring_size();
@@ -1638,7 +1638,7 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), pks.len());
 
         // An endless iterator must end with an error and add nothing.
-        let endless = core::iter::repeat(Public::<S>::padding());
+        let endless = core::iter::repeat(PublicKey::<S>::padding());
         assert_eq!(
             vk_builder.append(endless, &lookup).unwrap_err(),
             Error::RingCapacityExceeded
@@ -1649,7 +1649,7 @@ pub(crate) mod testing {
             ring_setup.pcs_verifier_params()
         );
 
-        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
+        let extra_pk = PublicKey::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
             vk_builder.append([extra_pk], |_| None).unwrap_err(),
             Error::SrsLookupFailed
@@ -1661,7 +1661,7 @@ pub(crate) mod testing {
             vk_builder.append(&chunk[..], &lookup).unwrap();
             assert_eq!(vk_builder.free_slots(), pks.len());
         }
-        let extra_pk = Public::<S>::from_affine_unchecked(random_val(Some(rng)));
+        let extra_pk = PublicKey::<S>::from_affine_unchecked(random_val(Some(rng)));
         assert_eq!(
             vk_builder.append([extra_pk], &lookup).unwrap_err(),
             Error::RingCapacityExceeded
@@ -1880,7 +1880,7 @@ pub(crate) mod testing {
 
     pub struct TestVector<S: RingSuite> {
         pub pedersen: pedersen::testing::TestVector<S>,
-        pub ring_pks: [Public<S>; TEST_RING_SIZE],
+        pub ring_pks: [PublicKey<S>; TEST_RING_SIZE],
         pub ring_pks_com: RingCommitment<S>,
         pub ring_proof: RingBareProof<S>,
     }
@@ -1905,10 +1905,10 @@ pub(crate) mod testing {
         fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
-            let secret = Secret::<S>::from_scalar(pedersen.base.sk);
+            let secret = SecretKey::<S>::from_scalar(pedersen.base.sk);
             let public = secret.public();
 
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(pedersen.base.h),
                 output: Output::from_affine_unchecked(pedersen.base.gamma),
             };
@@ -1952,7 +1952,7 @@ pub(crate) mod testing {
         fn from_map(map: &common::TestVectorMap) -> Self {
             let pedersen = pedersen::testing::TestVector::from_map(map);
 
-            let ring_pks = map.get::<[Public<S>; TEST_RING_SIZE]>("ring_pks");
+            let ring_pks = map.get::<[PublicKey<S>; TEST_RING_SIZE]>("ring_pks");
             let ring_pks_com = map.get::<RingCommitment<S>>("ring_pks_com");
             let ring_proof = map.get::<RingBareProof<S>>("ring_proof");
 
@@ -1975,11 +1975,11 @@ pub(crate) mod testing {
         fn run(&self) {
             self.pedersen.run();
 
-            let io = VrfIo {
+            let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(self.pedersen.base.h),
                 output: Output::from_affine_unchecked(self.pedersen.base.gamma),
             };
-            let secret = Secret::from_scalar(self.pedersen.base.sk);
+            let secret = SecretKey::from_scalar(self.pedersen.base.sk);
             let public = secret.public();
             assert_eq!(public.0, self.pedersen.base.pk);
 

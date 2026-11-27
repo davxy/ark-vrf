@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
+- `Secret` and `Public` are renamed `SecretKey` and `PublicKey`.
+- `VrfIo` and `SecretKey::vrf_io` are renamed `IoPair` and `io_pair`.
 
 ### Removed
 

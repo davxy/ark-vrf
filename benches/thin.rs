@@ -1,14 +1,14 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_vrf::{Input, Secret, Suite, thin::Proof};
+use ark_vrf::{Input, SecretKey, Suite, thin::Proof};
 use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.vrf_io(input);
+    let io = secret.io_pair(input);
 
     let name = format!("{}/thin_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
@@ -17,10 +17,10 @@ fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
 }
 
 fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.vrf_io(input);
+    let io = secret.io_pair(input);
     let proof = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/thin_verify", S::SUITE_NAME);
@@ -38,14 +38,14 @@ const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{BatchItem, BatchVerifier};
 
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let public = secret.public();
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
             let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
-            let io = secret.vrf_io(input);
+            let io = secret.io_pair(input);
             let ad = format!("ad-{i}").into_bytes();
             let proof = Proof::prove(io, &ad, &secret);
             (io, ad, proof)

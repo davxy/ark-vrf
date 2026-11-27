@@ -2,7 +2,7 @@
 mod bench_utils;
 
 use ark_vrf::{
-    Input, Public, Secret, VrfIo,
+    Input, IoPair, PublicKey, SecretKey,
     ring::{self, BatchItem, BatchVerifier, Proof, RingSuite},
 };
 use bench_utils::SuiteExt;
@@ -12,23 +12,23 @@ use rayon::prelude::*;
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
 
 struct BenchSetup<S: RingSuite> {
-    secret: Secret<S>,
-    io: VrfIo<S>,
-    ring: Vec<Public<S>>,
+    secret: SecretKey<S>,
+    io: IoPair<S>,
+    ring: Vec<PublicKey<S>>,
     prover_idx: usize,
     ring_setup: ring::RingSetup<S>,
 }
 
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let mut rng = ark_std::test_rng();
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.vrf_io(input);
+    let io = secret.io_pair(input);
 
     let prover_idx = 3;
-    let mut ring: Vec<Public<S>> = (0..ring_size)
-        .map(|_| Secret::<S>::from_rand(&mut rng).public())
+    let mut ring: Vec<PublicKey<S>> = (0..ring_size)
+        .map(|_| SecretKey::<S>::from_rand(&mut rng).public())
         .collect();
     ring[prover_idx] = public;
 
@@ -161,7 +161,7 @@ fn ring_benches<S: RingSuite>(c: &mut Criterion) {
 const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 
 struct TestItem<S: RingSuite> {
-    io: VrfIo<S>,
+    io: IoPair<S>,
     ad: Vec<u8>,
     proof: ring::Proof<S>,
 }
@@ -181,7 +181,7 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
         .into_par_iter()
         .map(|i| {
             let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
-            let io = setup.secret.vrf_io(input);
+            let io = setup.secret.io_pair(input);
             let ad = format!("ad-{i}").into_bytes();
             let proof = Proof::prove(io, &ad, &setup.secret, &prover);
             let prev = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

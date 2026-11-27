@@ -1,14 +1,14 @@
 #[macro_use]
 mod bench_utils;
 
-use ark_vrf::{Input, Secret, Suite, tiny::Proof};
+use ark_vrf::{Input, SecretKey, Suite, tiny::Proof};
 use bench_utils::SuiteExt;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_tiny_prove<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.vrf_io(input);
+    let io = secret.io_pair(input);
 
     let name = format!("{}/tiny_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
@@ -17,10 +17,10 @@ fn bench_tiny_prove<S: Suite>(c: &mut Criterion) {
 }
 
 fn bench_tiny_verify<S: Suite>(c: &mut Criterion) {
-    let secret = Secret::<S>::from_seed([0; 32]);
+    let secret = SecretKey::<S>::from_seed([0; 32]);
     let public = secret.public();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.vrf_io(input);
+    let io = secret.io_pair(input);
     let proof = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/tiny_verify", S::SUITE_NAME);

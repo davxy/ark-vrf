@@ -41,7 +41,7 @@ vectors are in `data/`; see [`data/README.md`](data/README.md).
 use ark_vrf::suites::bandersnatch::*;
 
 // Create a secret key from a seed
-let secret = Secret::from_seed([0; 32]);
+let secret = SecretKey::from_seed([0; 32]);
 
 // Derive the corresponding public key
 let public = secret.public();
@@ -62,7 +62,7 @@ Compact VRF-AD producing a short `(c, s)` proof.
 
 _Prove_
 ```rust,ignore
-let io = secret.vrf_io(input);
+let io = secret.io_pair(input);
 
 // Generate a proof that binds the input-output pair and auxiliary data
 let proof = TinyProof::prove(io, b"aux data", &secret);
@@ -84,7 +84,7 @@ VRF-AD with an `(R, s)` proof, which supports batch verification.
 
 _Prove_
 ```rust,ignore
-let io = secret.vrf_io(input);
+let io = secret.io_pair(input);
 let proof = ThinProof::prove(io, b"aux data", &secret);
 ```
 
@@ -114,7 +114,7 @@ The proof holds a Pedersen commitment to the secret key instead of the public ke
 
 _Prove_
 ```rust,ignore
-let io = secret.vrf_io(input);
+let io = secret.io_pair(input);
 
 // Generate a proof with a blinding factor
 let (proof, blinding) = PedersenProof::prove(io, b"aux data", &secret);
@@ -141,7 +141,7 @@ assert_eq!(proof.key_commitment(), expected);
 ```
 
 The secret key has the same operation as a method: `secret.prove_pedersen`.
-Verification needs no public key, so `Public` has no Pedersen method.
+Verification needs no public key, so `PublicKey` has no Pedersen method.
 
 ### Ring-VRF
 
@@ -157,7 +157,7 @@ let mut ring = (0..RING_SIZE)
     .map(|i| {
         let mut seed = [0u8; 32];
         seed[..8].copy_from_slice(&i.to_le_bytes());
-        Secret::from_seed(seed).public()
+        SecretKey::from_seed(seed).public()
     })
     .collect::<Vec<_>>();
 
@@ -165,7 +165,7 @@ let mut ring = (0..RING_SIZE)
 ring[prover_key_index] = public;
 
 // Any key can be replaced with the padding point
-ring[0] = Public::padding();
+ring[0] = PublicKey::padding();
 
 // Create parameters for the ring proof system.
 // These parameters are reusable across multiple proofs.
@@ -200,7 +200,7 @@ let ring_ctx = ring_setup.ring_context();
 // Create a prover instance for the specific position in the ring
 let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
 
-let io = secret.vrf_io(input);
+let io = secret.io_pair(input);
 
 // Generate a zero-knowledge proof that:
 // 1. The prover knows a secret key for one of the public keys in the ring
@@ -251,7 +251,7 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
   (public key, output, nonce, blinding) uses two random shares of the scalar. This
   protects the scalar value against side channels, at twice the cost. The timing
   stays variable. Ring proof witness generation does not use the split.
-  The shares come from `OsRng` at each multiplication, also when a `Secret` is
+  The shares come from `OsRng` at each multiplication, also when a `SecretKey` is
   decoded, and `OsRng` panics when its backend fails. The feature works with
   `no_std`, but where `getrandom` has no backend, the application must select one:
   `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom` or

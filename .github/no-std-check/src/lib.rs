@@ -5,6 +5,6 @@
 
 use ark_vrf::suites::bandersnatch::*;
 
-pub fn public_key(seed: [u8; 32]) -> Public {
-    Secret::from_seed(seed).public()
+pub fn public_key(seed: [u8; 32]) -> PublicKey {
+    SecretKey::from_seed(seed).public()
 }
