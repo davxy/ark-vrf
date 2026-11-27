@@ -138,4 +138,37 @@ mod tests {
         assert!(te_to_sw::<BandersnatchConfig>(&te_identity).is_none());
         assert!(<EdwardsAffine as SWMapping<BandersnatchConfig>>::into_sw(te_identity).is_none());
     }
+
+    /// The accumulator seed of this suite is outside the prime-order subgroup,
+    /// so a key commitment that passes checked decoding can still make the
+    /// sum of the ring backend have no affine form.
+    #[cfg(feature = "ring")]
+    #[test]
+    fn exceptional_key_commitment_in_subgroup_rejected() {
+        use crate::ring::RingSuite;
+        use ark_ec::twisted_edwards::TECurveConfig;
+        use ark_ed_on_bls12_381_bandersnatch::{EdwardsAffine, Fq};
+        use ark_ff::{Field, One};
+        use ark_serialize::Valid;
+
+        let seed = ThisSuite::ACCUMULATOR_BASE.into_te().unwrap();
+        let (a, d) = (BandersnatchConfig::COEFF_A, BandersnatchConfig::COEFF_D);
+        // The sum has no affine form for x * y = k. With y = k / x, the curve
+        // equation a * x^2 + y^2 = 1 + d * x^2 * y^2 is a quadratic in x^2.
+        let k = (d * seed.x * seed.y).inverse().unwrap();
+        let b = Fq::one() + d * k.square();
+        let root = (b.square() - Fq::from(4u8) * a * k.square())
+            .sqrt()
+            .unwrap();
+        let point = [b + root, b - root]
+            .into_iter()
+            .filter_map(|x_square| (x_square / (a + a)).sqrt())
+            .flat_map(|x| [x, -x])
+            .map(|x| EdwardsAffine::new_unchecked(x, k / x))
+            .find(|p| p.is_on_curve() && p.is_in_correct_subgroup_assuming_on_curve())
+            .unwrap();
+        let key_commitment = te_to_sw::<BandersnatchConfig>(&point).unwrap();
+        assert!(key_commitment.check().is_ok());
+        crate::ring::testing::batch_rejects_key_commitment::<ThisSuite>(key_commitment);
+    }
 }

@@ -9,6 +9,14 @@ description = "Elliptic curve VRF with additional data"
 repository = "https://github.com/davxy/ark-vrf"
 keywords = ["cryptography", "ec-vrf", "ring-vrf", "vrf", "zk"]
 categories = ["cryptography", "no-std"]
+include = [
+  "/src/**",
+  "/benches/**",
+  "/data/**",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/LICENSE",
+]
 autobenches = false
 
 [package.metadata.docs.rs]

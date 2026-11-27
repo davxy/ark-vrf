@@ -69,6 +69,7 @@ use ark_std::{borrow::Borrow, ops::Range};
 use core::cell::Cell;
 use pedersen::{PedersenSuite, Proof as PedersenProof};
 use utils::canonical::CanonicalDeserializeStrict;
+use utils::common::ProjectiveZ;
 use utils::te_sw_map::TEMapping;
 use w3f_ring_proof as ring_proof;
 
@@ -224,9 +225,9 @@ impl<S: RingSuite> Proof<S> {
     /// `verifier` must be built for the ring (see [`RingContext::ring_verifier`]).
     ///
     /// Returns `Error::InvalidData` if the key commitment or a point of `ios` is
-    /// the identity, or if the key commitment has no twisted Edwards form, and
-    /// `Error::VerificationFailure` if the proof is not valid. Subgroup
-    /// membership is not checked (see [`PointWrapper`]).
+    /// the identity, or if the ring backend cannot take the key commitment (see
+    /// [`BatchItem::new`]), and `Error::VerificationFailure` if the proof is not
+    /// valid. Subgroup membership is not checked (see [`PointWrapper`]).
     pub fn verify(
         &self,
         ios: impl AsRef<[IoPair<S>]>,
@@ -234,15 +235,34 @@ impl<S: RingSuite> Proof<S> {
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
         self.pedersen_proof.verify(ios, ad)?;
+        let key_commitment = self.backend_key_commitment()?;
+        if !verifier.verify(self.ring_proof.clone(), key_commitment) {
+            return Err(Error::VerificationFailure);
+        }
+        Ok(())
+    }
+
+    /// The ring backend adds the key commitment to the accumulator seed with
+    /// an incomplete formula, and panics if the sum has no affine form.
+    ///
+    /// The backend checks this itself after
+    /// <https://github.com/paritytech/ring-proof/pull/104>. After that release,
+    /// remove the check here and map the `None` of the backend `BatchItem::new`
+    /// to `Error::InvalidData`. Single verify then returns
+    /// `Error::VerificationFailure`, so update the docs of `verify`.
+    fn backend_key_commitment(&self) -> Result<TEAffine<CurveConfig<S>>, Error> {
         let key_commitment = self
             .pedersen_proof
             .key_commitment()
             .into_te()
             .ok_or(Error::InvalidData)?;
-        if !verifier.verify(self.ring_proof.clone(), key_commitment) {
-            return Err(Error::VerificationFailure);
+        let seed = S::ACCUMULATOR_BASE
+            .into_te()
+            .expect("ACCUMULATOR_BASE must not be identity");
+        if !(seed + key_commitment).has_affine_form() {
+            return Err(Error::InvalidData);
         }
-        Ok(())
+        Ok(key_commitment)
     }
 }
 
@@ -465,6 +485,12 @@ impl<S: RingSuite> RingSetup<S> {
     /// `pks` iterates over keys or key references, for example `&ring` for a
     /// `Vec<PublicKey<S>>`. Subgroup membership is not checked (see
     /// [`PointWrapper`]).
+    ///
+    /// Each key must come with a proof of possession of its secret key, which
+    /// this function does not check. For some keys with no known secret, such
+    /// as [`RingSuite::ACCUMULATOR_BASE`], the ring backend leaves one
+    /// coordinate of its accumulator free, and the soundness argument of the
+    /// ring proof does not hold.
     ///
     /// Returns `Error::RingCapacityExceeded` if `pks` is larger than the ring
     /// capacity, and `Error::InvalidData` if a key is the identity or has no
@@ -778,19 +804,17 @@ impl<S: RingSuite> BatchItem<S> {
     /// Prepare a proof for batch verification. This is cheap and can run in
     /// parallel. `verifier` must be built for the ring of the proof.
     ///
-    /// Returns `Error::InvalidData` if the key commitment has no twisted Edwards
-    /// form (for example the identity on a short Weierstrass suite).
+    /// Returns `Error::InvalidData` if the ring backend cannot take the key
+    /// commitment: it has no twisted Edwards form (for example the identity on
+    /// a short Weierstrass suite), or its sum with
+    /// [`RingSuite::ACCUMULATOR_BASE`] has no affine form.
     pub fn new(
         ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
         proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<Self, Error> {
-        let key_commitment = proof
-            .pedersen_proof
-            .key_commitment()
-            .into_te()
-            .ok_or(Error::InvalidData)?;
+        let key_commitment = proof.backend_key_commitment()?;
         let pedersen = pedersen::BatchItem::new(ios, ad, &proof.pedersen_proof);
         let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
         Ok(Self { ring, pedersen })
@@ -1404,6 +1428,51 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), free_slots);
     }
 
+    /// The ring backend adds the key commitment to the accumulator seed with
+    /// an incomplete formula, and panics if the sum has no affine form. A proof
+    /// with such a key commitment must give an error.
+    pub fn batch_rejects_key_commitment<S: RingSuite>(key_commitment: AffinePoint<S>) {
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
+        let prover_idx = 3;
+        pks[prover_idx] = secret.public();
+        let ring_ctx = ring_setup.ring_context();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
+        let prover = ring_ctx.ring_prover(prover_key, prover_idx);
+        let verifier = ring_ctx.ring_verifier(verifier_key);
+
+        let ios: [IoPair<S>; 0] = [];
+        let mut proof = secret.prove_ring(ios, b"foo", &prover);
+        proof.pedersen_proof.pk_com = key_commitment;
+
+        assert!(matches!(
+            BatchItem::new(ios, b"foo", &proof, &verifier),
+            Err(Error::InvalidData)
+        ));
+        let mut batch_verifier = BatchVerifier::new(&verifier);
+        assert_eq!(
+            batch_verifier.push(ios, b"foo", &proof, &verifier),
+            Err(Error::InvalidData)
+        );
+        assert!(proof.verify(ios, b"foo", &verifier).is_err());
+    }
+
+    /// With the seed `(xs, ys)`, the Z of the backend sum is
+    /// `1 - (d * xs * ys * x * y)^2`. The point `(1, 1 / (d * xs * ys))` is off
+    /// the curve, so only an unchecked decoder gives it, but it gives Z = 0 on
+    /// every suite.
+    pub fn exceptional_key_commitment_rejected<S: RingSuite>() {
+        use ark_ff::{Field, One};
+
+        let seed = S::ACCUMULATOR_BASE.into_te().unwrap();
+        let d = <CurveConfig<S> as TECurveConfig>::COEFF_D;
+        let y = (d * seed.x * seed.y).inverse().unwrap();
+        let point = TEAffine::new_unchecked(BaseField::<S>::one(), y);
+        batch_rejects_key_commitment::<S>(AffinePoint::<S>::from_te(point).unwrap());
+    }
+
     /// Map `(x, y)` to `(u^2 x, u^3 y)`: off the curve, but the group law of an
     /// `a = 0` curve never reads `b`, so the subgroup test still passes.
     pub trait OffCurveAlias: Sized {
@@ -1806,6 +1875,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_in_ring_rejected() {
                     $crate::ring::testing::identity_in_ring_rejected::<$suite>()
+                }
+
+                #[test]
+                fn exceptional_key_commitment_rejected() {
+                    $crate::ring::testing::exceptional_key_commitment_rejected::<$suite>()
                 }
 
                 #[test]
