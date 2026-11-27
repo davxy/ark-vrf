@@ -101,7 +101,6 @@ use core::marker::PhantomData;
 
 pub use utils::canonical::CanonicalDeserializeExact;
 use utils::canonical::CanonicalDeserializeStrict;
-use utils::smul;
 use utils::transcript::Transcript;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -274,7 +273,17 @@ impl<S: Suite> SecretScalar<S> {
     /// `self * point`, with the `secret-split` shares when the feature is on.
     /// It runs in variable time.
     pub fn mul_point(&self, point: AffinePoint<S>) -> <AffinePoint<S> as AffineRepr>::Group {
-        smul!(point, self.0)
+        #[cfg(feature = "secret-split")]
+        {
+            use ark_std::UniformRand;
+            let share = Self::new(ScalarField::<S>::rand(&mut rand::rngs::OsRng));
+            let rest = Self::new(self.0 - share.0);
+            point * share.0 + point * rest.0
+        }
+        #[cfg(not(feature = "secret-split"))]
+        {
+            point * self.0
+        }
     }
 
     /// The response `self + c * x`, which is public.
@@ -623,6 +632,9 @@ macro_rules! suite_types {
         /// Public key.
         #[allow(dead_code)]
         pub type Public = $crate::Public<$suite>;
+        /// Secret scalar.
+        #[allow(dead_code)]
+        pub type SecretScalar = $crate::SecretScalar<$suite>;
         /// VRF input point.
         #[allow(dead_code)]
         pub type Input = $crate::Input<$suite>;
@@ -669,7 +681,7 @@ macro_rules! suite_types {
 mod tests {
     use super::*;
     use ark_ec::AffineRepr;
-    use suites::testing::{Input, Secret, TestSuite};
+    use suites::testing::{Input, Secret, SecretScalar, TestSuite};
     use testing::{TEST_SEED, random_val};
 
     #[test]
@@ -698,7 +710,7 @@ mod tests {
     #[test]
     fn secret_scalar_debug_redacts_scalar() {
         let scalar = ScalarField::<TestSuite>::from(0x5eed_u64);
-        let out = std::format!("{:?}", crate::SecretScalar::<TestSuite>::new(scalar));
+        let out = std::format!("{:?}", SecretScalar::new(scalar));
         assert!(!out.contains(&std::format!("{scalar:?}")));
     }
 
