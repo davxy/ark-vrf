@@ -237,13 +237,6 @@ impl<S: ThinSuite> BatchVerifier<S> {
             return Err(Error::InvalidData);
         }
 
-        // The weights depend on all the (c, s) pairs of the batch.
-        let mut t = utils::batch_transcript::<S>(DomSep::ThinVrf);
-        for e in items {
-            t.absorb_serialize(&e.c);
-            t.absorb_serialize(&e.s);
-        }
-
         // Proof j, weighted by w_j:
         //   R_j + c_j * Y_j + sum_i(c_j * z_i * O_i) - s_j * G - sum_i(s_j * z_i * I_i) = 0
         // with z_0 = 1 for the Schnorr pair (G, Y_j). All proofs share the G base.
@@ -252,10 +245,7 @@ impl<S: ThinSuite> BatchVerifier<S> {
         let mut scalars = Vec::with_capacity(total_points);
         let mut g_scalar = ScalarField::<S>::zero();
 
-        for item in items.iter() {
-            // Random weights of SECURITY_PARAMETER bits for Schwartz-Zippel soundness.
-            let w = weight_scalar::<S>(&mut t);
-
+        for (item, w) in with_weights(items) {
             let wc = w * item.c;
             let ws = w * item.s;
 
@@ -286,6 +276,30 @@ impl<S: ThinSuite> BatchVerifier<S> {
 
         Ok(())
     }
+}
+
+/// Each proof with its weight of SECURITY_PARAMETER bits, for Schwartz-Zippel
+/// soundness. The weights depend on every value of the batch equation: `c`
+/// binds the other values only at the collision level of its length.
+fn with_weights<S: ThinSuite>(
+    items: &[BatchItem<S>],
+) -> impl Iterator<Item = (&BatchItem<S>, ScalarField<S>)> {
+    let mut t = utils::batch_transcript::<S>(DomSep::ThinVrf);
+    for item in items {
+        t.absorb_serialize(&item.c);
+        t.absorb_serialize(&item.s);
+        t.absorb_serialize(&item.r);
+        t.absorb_serialize(&item.pk.0);
+        t.absorb_serialize(&(item.ios.len() as u64));
+        for (io, z) in item.ios.iter().zip(&item.zs[1..]) {
+            t.absorb_serialize(z);
+            t.absorb_serialize(&io.input.0);
+            t.absorb_serialize(&io.output.0);
+        }
+    }
+    items
+        .iter()
+        .map(move |item| (item, weight_scalar::<S>(&mut t)))
 }
 
 #[cfg(test)]
@@ -337,6 +351,39 @@ pub(crate) mod testing {
         batch.push(io, b"foo", &proof1, &pk);
         batch.push(io, b"wrong", &proof2, &pk);
         assert!(batch.verify().is_err());
+    }
+
+    /// If a prover can change a value of the batch equation and keep the
+    /// weights, the errors of invalid proofs can cancel in the weighted sum.
+    pub fn batch_weights_depend_on_every_value<S: ThinSuite>() {
+        use ark_std::One;
+
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
+        let pk = sk.public_key();
+        let ios = [b"a", b"b"].map(|data| sk.io_pair(Input::new(data).unwrap()));
+        let proof = sk.prove_thin(ios, b"ad");
+        let item = || BatchItem::new(ios, b"ad", &proof, &pk);
+        let weights = |item| -> Vec<_> { super::with_weights(&[item]).map(|(_, w)| w).collect() };
+        let base = weights(item());
+
+        let one = ScalarField::<S>::one();
+        let point: AffinePoint<S> = random_val(None);
+        let check = |name: &str, change: &dyn Fn(&mut BatchItem<S>)| {
+            let mut changed = item();
+            change(&mut changed);
+            assert_ne!(weights(changed), base, "{name}");
+        };
+        check("c", &|e| e.c += one);
+        check("s", &|e| e.s += one);
+        check("R", &|e| e.r = point);
+        check("Y", &|e| e.pk = PublicKey::from_affine_unchecked(point));
+        let input = Input::from_affine_unchecked(point);
+        let output = Output::from_affine_unchecked(point);
+        for i in 0..ios.len() {
+            check("z", &|e| e.zs[i + 1] += one);
+            check("I", &|e| e.ios[i].input = input);
+            check("O", &|e| e.ios[i].output = output);
+        }
     }
 
     /// N=1 slice produces same proof as passing a single `IoPair`.
@@ -585,6 +632,11 @@ pub(crate) mod testing {
                 #[test]
                 fn batch_verify() {
                     $crate::thin::testing::batch_verify::<$suite>();
+                }
+
+                #[test]
+                fn batch_weights_depend_on_every_value() {
+                    $crate::thin::testing::batch_weights_depend_on_every_value::<$suite>();
                 }
 
                 #[test]

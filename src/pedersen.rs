@@ -336,25 +336,6 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 
         let n = items.len();
 
-        // The weights depend on all the proofs. `c` commits to the points and
-        // `ad`, so the responses complete the proof.
-        let mut t = utils::batch_transcript::<S>(DomSep::PedersenVrf);
-        for e in items {
-            t.absorb_serialize(&e.c);
-            t.absorb_serialize(&e.s);
-            t.absorb_serialize(&e.sb);
-        }
-        // Weights of SECURITY_PARAMETER bits are enough for Schwartz-Zippel and
-        // make the MSM shorter than full-width scalars.
-        let random_scalars: Vec<(ScalarField<S>, ScalarField<S>)> = (0..n)
-            .map(|_| {
-                (
-                    utils::weight_scalar::<S>(&mut t),
-                    utils::weight_scalar::<S>(&mut t),
-                )
-            })
-            .collect();
-
         // Proof i, weighted by t_i and u_i:
         //   t_i * (c_i * O_i + Ok_i - s_i * I_i) = 0
         //   u_i * (c_i * Yb_i + R_i - s_i * G - sb_i * B) = 0
@@ -365,24 +346,24 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         let mut g_scalar = ScalarField::<S>::zero();
         let mut b_scalar = ScalarField::<S>::zero();
 
-        for (e, (t, u)) in items.iter().zip(random_scalars.iter()) {
+        for (e, (t, u)) in with_weights(items) {
             bases.push(e.output);
-            scalars.push(*t * e.c);
+            scalars.push(t * e.c);
 
             bases.push(e.ok);
-            scalars.push(*t);
+            scalars.push(t);
 
             bases.push(e.input);
-            scalars.push(-(*t * e.s));
+            scalars.push(-(t * e.s));
 
             bases.push(e.pk_com);
-            scalars.push(*u * e.c);
+            scalars.push(u * e.c);
 
             bases.push(e.r);
-            scalars.push(*u);
+            scalars.push(u);
 
-            g_scalar += *u * e.s;
-            b_scalar += *u * e.sb;
+            g_scalar += u * e.s;
+            b_scalar += u * e.sb;
         }
 
         bases.push(S::GENERATOR);
@@ -398,6 +379,33 @@ impl<S: PedersenSuite> BatchVerifier<S> {
 
         Ok(())
     }
+}
+
+/// Each proof with its two weights `(t, u)`. Weights of SECURITY_PARAMETER bits
+/// are enough for Schwartz-Zippel and make the MSM shorter than full-width
+/// scalars. The weights depend on every value of the batch equation: `c` binds
+/// the other values only at the collision level of its length.
+fn with_weights<S: PedersenSuite>(
+    items: &[BatchItem<S>],
+) -> impl Iterator<Item = (&BatchItem<S>, (ScalarField<S>, ScalarField<S>))> {
+    let mut t = utils::batch_transcript::<S>(DomSep::PedersenVrf);
+    for item in items {
+        t.absorb_serialize(&item.c);
+        t.absorb_serialize(&item.s);
+        t.absorb_serialize(&item.sb);
+        t.absorb_serialize(&item.pk_com);
+        t.absorb_serialize(&item.r);
+        t.absorb_serialize(&item.ok);
+        t.absorb_serialize(&item.input);
+        t.absorb_serialize(&item.output);
+    }
+    items.iter().map(move |item| {
+        let weights = (
+            utils::weight_scalar::<S>(&mut t),
+            utils::weight_scalar::<S>(&mut t),
+        );
+        (item, weights)
+    })
 }
 
 #[cfg(test)]
@@ -452,6 +460,35 @@ pub(crate) mod testing {
         batch.push(io, b"foo", &proof1);
         batch.push(io, b"wrong", &proof2);
         assert!(batch.verify().is_err());
+    }
+
+    /// If a prover can change a value of the batch equation and keep the
+    /// weights, the errors of invalid proofs can cancel in the weighted sum.
+    pub fn batch_weights_depend_on_every_value<S: PedersenSuite>() {
+        use ark_std::One;
+
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
+        let io = sk.io_pair(Input::new(b"a").unwrap());
+        let (proof, _) = sk.prove_pedersen(io, b"ad");
+        let item = || BatchItem::new(io, b"ad", &proof);
+        let weights = |item| -> Vec<_> { super::with_weights(&[item]).map(|(_, w)| w).collect() };
+        let base = weights(item());
+
+        let one = ScalarField::<S>::one();
+        let point: AffinePoint<S> = random_val(None);
+        let check = |name: &str, change: &dyn Fn(&mut BatchItem<S>)| {
+            let mut changed = item();
+            change(&mut changed);
+            assert_ne!(weights(changed), base, "{name}");
+        };
+        check("c", &|e| e.c += one);
+        check("s", &|e| e.s += one);
+        check("sb", &|e| e.sb += one);
+        check("Yb", &|e| e.pk_com = point);
+        check("R", &|e| e.r = point);
+        check("Ok", &|e| e.ok = point);
+        check("I", &|e| e.input = point);
+        check("O", &|e| e.output = point);
     }
 
     /// N=1 slice produces same proof as passing a single `IoPair`.
@@ -774,6 +811,11 @@ pub(crate) mod testing {
                 #[test]
                 fn batch_verify() {
                     $crate::pedersen::testing::batch_verify::<$suite>();
+                }
+
+                #[test]
+                fn batch_weights_depend_on_every_value() {
+                    $crate::pedersen::testing::batch_weights_depend_on_every_value::<$suite>();
                 }
 
                 #[test]
