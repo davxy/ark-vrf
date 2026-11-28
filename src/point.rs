@@ -230,8 +230,8 @@ mod tests {
     /// the only way to read the point.
     #[test]
     fn point_wrapper_point_accessor() {
-        let public = SecretKey::from_seed(TEST_SEED).public();
-        assert_eq!(public.into_affine(), public.0);
+        let pk = SecretKey::from_seed(TEST_SEED).public_key();
+        assert_eq!(pk.into_affine(), pk.0);
     }
 
     /// The subgroup check accepts the identity. Its secret key is zero, so the
@@ -283,7 +283,7 @@ mod tests {
         type Sc = ScalarField<S>;
 
         let secret = crate::SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
         let input = Input::new(b"uniqueness attack").unwrap();
         let honest_output = secret.output(input);
 
@@ -311,7 +311,7 @@ mod tests {
             let ad = format!("ad-{ad_ctr}");
             let (t, zs) = utils::vrf_transcript_scalars_with_schnorr(
                 DomSep::TinyVrf,
-                public,
+                pk,
                 mal_ios,
                 ad.as_bytes(),
             );
@@ -341,11 +341,7 @@ mod tests {
             assert!(ctr <= 1000, "Grinding failed");
         };
 
-        assert!(
-            public
-                .verify_tiny(malicious_io, ad.as_bytes(), &proof)
-                .is_ok()
-        );
+        assert!(pk.verify_tiny(malicious_io, ad.as_bytes(), &proof).is_ok());
 
         let honest_io = IoPair {
             input,
@@ -353,8 +349,7 @@ mod tests {
         };
         let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
         assert!(
-            public
-                .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
+            pk.verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
                 .is_ok()
         );
 

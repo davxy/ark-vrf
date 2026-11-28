@@ -18,18 +18,14 @@ fn bench_thin_prove<S: Suite>(c: &mut Criterion) {
 
 fn bench_thin_verify<S: Suite>(c: &mut Criterion) {
     let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public();
+    let pk = secret.public_key();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.io_pair(input);
     let proof = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/thin_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            black_box(&proof)
-                .verify(black_box(io), b"ad", &public)
-                .unwrap()
-        });
+        b.iter(|| black_box(&proof).verify(black_box(io), b"ad", &pk).unwrap());
     });
 }
 
@@ -39,7 +35,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
     use ark_vrf::thin::{BatchItem, BatchVerifier};
 
     let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public();
+    let pk = secret.public_key();
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
     let batch_items: Vec<_> = (0..max_batch_size)
@@ -64,7 +60,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
                 b.iter(|| {
                     let _: Vec<_> = batch_items[..batch_size]
                         .iter()
-                        .map(|(io, ad, proof)| BatchItem::<S>::new(*io, ad, proof, &public))
+                        .map(|(io, ad, proof)| BatchItem::<S>::new(*io, ad, proof, &pk))
                         .collect();
                 });
             });
@@ -72,7 +68,7 @@ fn bench_thin_batch<S: Suite>(c: &mut Criterion) {
         {
             let mut bv = BatchVerifier::<S>::new();
             for (io, ad, proof) in &batch_items[..batch_size] {
-                bv.push(*io, ad, proof, &public);
+                bv.push(*io, ad, proof, &pk);
             }
 
             c.benchmark_group(&verify_group)

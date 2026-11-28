@@ -22,15 +22,15 @@ struct BenchSetup<S: RingSuite> {
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let mut rng = ark_std::test_rng();
     let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public();
+    let pk = secret.public_key();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.io_pair(input);
 
     let prover_idx = 3;
     let mut ring: Vec<PublicKey<S>> = (0..ring_size)
-        .map(|_| SecretKey::<S>::from_rand(&mut rng).public())
+        .map(|_| SecretKey::<S>::from_rand(&mut rng).public_key())
         .collect();
-    ring[prover_idx] = public;
+    ring[prover_idx] = pk;
 
     let ring_setup = ring::RingSetup::<S>::from_rand_insecure(ring_size, &mut rng);
 

@@ -213,7 +213,7 @@ impl<S: Suite> SecretKey<S> {
     }
 
     /// Get the associated public key.
-    pub fn public(&self) -> PublicKey<S> {
+    pub fn public_key(&self) -> PublicKey<S> {
         self.public
     }
 

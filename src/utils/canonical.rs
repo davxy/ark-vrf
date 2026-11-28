@@ -216,7 +216,7 @@ mod tests {
         assert!(Proof::deserialize_with_mode_exact(&longer, Compress::Yes, Validate::Yes).is_err());
 
         let exact = Proof::deserialize_compressed_exact(&compressed).unwrap();
-        assert!(secret.public().verify_thin(io, b"ad", &exact).is_ok());
+        assert!(secret.public_key().verify_thin(io, b"ad", &exact).is_ok());
 
         let decoders: [(&[u8], Decode); 4] = [
             (&compressed, Proof::deserialize_compressed_exact),

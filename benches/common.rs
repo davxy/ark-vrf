@@ -46,7 +46,7 @@ where
 
 fn bench_challenge<S: Suite>(c: &mut Criterion) {
     let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public().into_affine();
+    let pk = secret.public_key().into_affine();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let output = secret.output(input).into_affine();
     let input = input.into_affine();
@@ -56,7 +56,7 @@ fn bench_challenge<S: Suite>(c: &mut Criterion) {
     c.bench_function(&name, |b| {
         b.iter(|| {
             S::challenge(
-                black_box(&[&public, &input, &output, &generator, &generator]),
+                black_box(&[&pk, &input, &output, &generator, &generator]),
                 S::Transcript::new(S::SUITE_ID),
             )
         });

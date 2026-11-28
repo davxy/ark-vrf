@@ -13,7 +13,7 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //!
 //! let secret = SecretKey::from_seed([0; 32]);
-//! let public = secret.public();
+//! let pk = secret.public_key();
 //! let input = Input::new(b"example input").unwrap();
 //! let io = secret.io_pair(input);
 //!
@@ -21,10 +21,10 @@
 //! let (proof, blinding) = Proof::prove(io, b"aux data", &secret);
 //!
 //! // Verification
-//! let result = proof.verify(io, b"aux data");
+//! let res = proof.verify(io, b"aux data");
 //!
 //! // Unblinding: verify the proof was created using a specific public key
-//! let expected = (public.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
+//! let expected = (pk.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
 //! assert_eq!(proof.key_commitment(), expected);
 //! ```
 
@@ -163,7 +163,7 @@ impl<S: PedersenSuite> Proof<S> {
         let blinding = S::blinding(secret.scalar(), secret.nonce_transcript(&t));
 
         let bb = blinding.mul_point(S::BLINDING_BASE);
-        let pk_com = (secret.public().0.into_group() + bb).into_affine();
+        let pk_com = (secret.public_key().0.into_group() + bb).into_affine();
 
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
@@ -394,8 +394,8 @@ impl<S: PedersenSuite> BatchVerifier<S> {
         bases.push(S::BLINDING_BASE);
         scalars.push(-b_scalar);
 
-        let result = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
-        if !result.is_zero() {
+        let res = <S::Affine as AffineRepr>::Group::msm_unchecked(&bases, &scalars);
+        if !res.is_zero() {
             return Err(Error::VerificationFailure);
         }
 
@@ -414,12 +414,12 @@ pub(crate) mod testing {
         let io = secret.io_pair(input);
 
         let (proof, blinding) = secret.prove_pedersen(io, b"foo");
-        let result = proof.verify(io, b"foo");
-        assert!(result.is_ok());
+        let res = proof.verify(io, b"foo");
+        assert!(res.is_ok());
 
         assert_eq!(
             proof.key_commitment(),
-            (secret.public().0 + S::BLINDING_BASE * *blinding.expose_secret()).into()
+            (secret.public_key().0 + S::BLINDING_BASE * *blinding.expose_secret()).into()
         );
     }
 
@@ -492,7 +492,7 @@ pub(crate) mod testing {
             .collect();
         ios.push(IoPair {
             input: Input::from_affine_unchecked(S::Affine::generator()),
-            output: Output::from_affine_unchecked(secret.public().0),
+            output: Output::from_affine_unchecked(secret.public_key().0),
         });
 
         let (proof, _) = secret.prove_pedersen(&ios[..], b"bar");

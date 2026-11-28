@@ -29,10 +29,10 @@
 //!     .map(|i| {
 //!         let mut seed = [0u8; 32];
 //!         seed[..8].copy_from_slice(&i.to_le_bytes());
-//!         SecretKey::from_seed(seed).public()
+//!         SecretKey::from_seed(seed).public_key()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = public;
+//! ring[prover_key_index] = pk;
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
@@ -47,7 +47,7 @@
 //! // Verification
 //! let verifier_key = ring_setup.verifier_key(&ring).unwrap();
 //! let verifier = ring_ctx.ring_verifier(verifier_key);
-//! let result = proof.verify(io, b"aux data", &verifier);
+//! let res = proof.verify(io, b"aux data", &verifier);
 //!
 //! // Efficient verification with commitment
 //! let ring_commitment = verifier_key.commitment();
@@ -1149,11 +1149,11 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public;
+        pks[prover_idx] = pk;
 
         let ring_ctx = ring_setup.ring_context();
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
@@ -1162,8 +1162,8 @@ pub(crate) mod testing {
         let item = TestItem::<S>::new(&secret, &prover, rng);
 
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = item.proof.verify(item.io, &item.ad, &verifier);
-        assert!(result.is_ok());
+        let res = item.proof.verify(item.io, &item.ad, &verifier);
+        assert!(res.is_ok());
     }
 
     /// One proof must have one encoding. With no I/O pairs, `Ok` is the
@@ -1176,7 +1176,7 @@ pub(crate) mod testing {
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public();
+        pks[prover_idx] = secret.public_key();
         let ring_ctx = ring_setup.ring_context();
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
@@ -1232,11 +1232,11 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public;
+        pks[prover_idx] = pk;
 
         let ring_ctx = ring_setup.ring_context();
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
@@ -1252,7 +1252,7 @@ pub(crate) mod testing {
             .collect();
         ios.push(IoPair {
             input: Input::from_affine_unchecked(S::Affine::generator()),
-            output: Output::from_affine_unchecked(public.0),
+            output: Output::from_affine_unchecked(pk.0),
         });
 
         let proof = secret.prove_ring(&ios[..], b"bar", &prover);
@@ -1275,11 +1275,11 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public;
+        pks[prover_idx] = pk;
 
         let ring_ctx = ring_setup.ring_context();
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
@@ -1319,7 +1319,7 @@ pub(crate) mod testing {
         // A second ring with the same SRS, in the same batch.
         let mut pks_b = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx_b = 1;
-        pks_b[prover_idx_b] = public;
+        pks_b[prover_idx_b] = pk;
         let (prover_key_b, verifier_key_b) = ring_setup.keys(&pks_b).unwrap();
         let prover_b = ring_ctx.ring_prover(prover_key_b, prover_idx_b);
         let verifier_b = ring_ctx.ring_verifier(verifier_key_b);
@@ -1438,7 +1438,7 @@ pub(crate) mod testing {
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public();
+        pks[prover_idx] = secret.public_key();
         let ring_ctx = ring_setup.ring_context();
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
@@ -1503,7 +1503,7 @@ pub(crate) mod testing {
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = secret.public();
+        pks[prover_idx] = secret.public_key();
         let ring_ctx = ring_setup.ring_context();
         let prover = ring_ctx.ring_prover(ring_setup.prover_key(&pks).unwrap(), prover_idx);
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
@@ -1654,11 +1654,11 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
 
         let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
         let prover_idx = 3;
-        pks[prover_idx] = public;
+        pks[prover_idx] = pk;
 
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_setup
@@ -1690,7 +1690,7 @@ pub(crate) mod testing {
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
 
         let secret = SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let pk = secret.public_key();
         let input = Input::from_affine_unchecked(common::random_val(Some(rng)));
         let io = secret.io_pair(input);
 
@@ -1698,7 +1698,7 @@ pub(crate) mod testing {
         let ring_size = ring_ctx.max_ring_size();
         let prover_idx = random_val::<usize>(Some(rng)) % ring_size;
         let mut pks = random_ring::<S>(ring_size, rng);
-        pks[prover_idx] = public;
+        pks[prover_idx] = pk;
 
         let prover_key = ring_setup.prover_key(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
@@ -1739,8 +1739,8 @@ pub(crate) mod testing {
         assert_eq!(vk_builder.free_slots(), 0);
         let verifier_key = vk_builder.finalize();
         let verifier = ring_ctx.ring_verifier(verifier_key);
-        let result = proof.verify(io, b"foo", &verifier);
-        assert!(result.is_ok());
+        let res = proof.verify(io, b"foo", &verifier);
+        assert!(res.is_ok());
     }
 
     /// Downstream types that derive `Debug` need `Proof<S>: Debug`. The impl is
@@ -1981,7 +1981,7 @@ pub(crate) mod testing {
             let pedersen = pedersen::testing::TestVector::new(comment, seed, alpha, ad);
 
             let secret = SecretKey::<S>::from_scalar(pedersen.base.sk);
-            let public = secret.public();
+            let pk = secret.public_key();
 
             let io = IoPair {
                 input: Input::<S>::from_affine_unchecked(pedersen.base.h),
@@ -1999,7 +1999,7 @@ pub(crate) mod testing {
             let rng = &mut ark_std::rand::rngs::StdRng::from_seed([42; 32]);
             let prover_idx = 3;
             let mut ring_pks = random_ring::<S>(TEST_RING_SIZE, rng);
-            ring_pks[prover_idx] = public;
+            ring_pks[prover_idx] = pk;
 
             // No blinding, so the proof is reproducible.
             let ring_ctx = RingContext::<S>::new_without_blinding(max_ring_size);
@@ -2055,12 +2055,12 @@ pub(crate) mod testing {
                 output: Output::from_affine_unchecked(self.pedersen.base.gamma),
             };
             let secret = SecretKey::from_scalar(self.pedersen.base.sk);
-            let public = secret.public();
-            assert_eq!(public.0, self.pedersen.base.pk);
+            let pk = secret.public_key();
+            assert_eq!(pk.0, self.pedersen.base.pk);
 
             let ring_setup = <S as RingSuiteExt>::ring_setup();
 
-            let prover_idx = self.ring_pks.iter().position(|pk| *pk == public).unwrap();
+            let prover_idx = self.ring_pks.iter().position(|key| *key == pk).unwrap();
 
             // No blinding, so the proof is reproducible.
             let ring_ctx =

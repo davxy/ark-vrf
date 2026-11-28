@@ -288,7 +288,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
     fn new(comment: &str, seed: &[u8; 32], alpha: &[u8], ad: &[u8]) -> Self {
         let sk = SecretKey::<S>::from_seed(*seed);
-        let pk = sk.public().0;
+        let pk = sk.public_key().0;
 
         let h = <S as Suite>::data_to_point(alpha).unwrap();
         let input = Input::from_affine_unchecked(h);
@@ -353,7 +353,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         let sk = SecretKey::<S>::from_scalar(self.sk);
 
-        let pk = sk.public();
+        let pk = sk.public_key();
         assert_eq!(self.pk, pk.0, "public key ('pk') mismatch");
 
         let h = S::data_to_point(&self.alpha).unwrap();
@@ -497,7 +497,7 @@ where
     let input = Input::<S>::new(b"low order").unwrap();
     let output = secret.output(input);
 
-    assert_torsion_rejected(secret.public(), torsion);
+    assert_torsion_rejected(secret.public_key(), torsion);
     let bad_output = assert_torsion_rejected(output, torsion);
     assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
 }
@@ -615,7 +615,9 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
     );
     assert!(!aliases.is_empty());
 
-    let point = SecretKey::<S>::from_seed(TEST_SEED).public().into_affine();
+    let point = SecretKey::<S>::from_seed(TEST_SEED)
+        .public_key()
+        .into_affine();
     for compress in [Compress::Yes, Compress::No] {
         let mut bytes = Vec::new();
         point.serialize_with_mode(&mut bytes, compress).unwrap();
@@ -631,8 +633,8 @@ pub fn non_canonical_encoding_rejected<S: Suite>() {
 /// The decoder reads one value and leaves trailing bytes unread, as the docs
 /// state.
 pub fn decoder_reads_one_value<S: Suite>() {
-    let first = SecretKey::<S>::from_seed(TEST_SEED).public();
-    let second = SecretKey::<S>::from_seed([1; 32]).public();
+    let first = SecretKey::<S>::from_seed(TEST_SEED).public_key();
+    let second = SecretKey::<S>::from_seed([1; 32]).public_key();
     let mut buf = Vec::new();
     first.serialize_compressed(&mut buf).unwrap();
     second.serialize_compressed(&mut buf).unwrap();

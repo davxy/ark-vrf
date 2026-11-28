@@ -49,7 +49,7 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //!
 //! let secret = SecretKey::from_seed([0; 32]);
-//! let public = secret.public();
+//! let pk = secret.public_key();
 //! let input = Input::new(b"example input").unwrap();
 //! let output = secret.output(input);
 //! let hash_bytes: [u8; 32] = output.hash();

@@ -18,18 +18,14 @@ fn bench_tiny_prove<S: Suite>(c: &mut Criterion) {
 
 fn bench_tiny_verify<S: Suite>(c: &mut Criterion) {
     let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public();
+    let pk = secret.public_key();
     let input = Input::<S>::new(b"bench input data").unwrap();
     let io = secret.io_pair(input);
     let proof = Proof::prove(io, b"ad", &secret);
 
     let name = format!("{}/tiny_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            black_box(&proof)
-                .verify(black_box(io), b"ad", &public)
-                .unwrap()
-        });
+        b.iter(|| black_box(&proof).verify(black_box(io), b"ad", &pk).unwrap());
     });
 }
 
