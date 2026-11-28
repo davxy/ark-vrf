@@ -64,12 +64,15 @@
 //!   variable. The ring proof backend does not use the split.
 //! - `hedged-nonce`: the default nonce ([`Suite::nonce`]) also absorbs 32
 //!   random bytes. Then two Pedersen or Ring proofs with no I/O pairs on the
-//!   same additional data are not linkable.
+//!   same additional data are not linkable. Cargo turns it on for every user of
+//!   `ark-vrf` in the build, and then no built-in suite makes deterministic
+//!   proofs.
 //! - `ring`: Ring VRF for the curves that support it.
 //! - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
 //!
 //! `secret-split` and `hedged-nonce` panic when the system random source fails.
-//! On some `no_std` targets, the application must select a `getrandom` backend.
+//! On some targets (`wasm32-unknown-unknown`, bare metal), the application must
+//! select a `getrandom` backend.
 //!
 //! ### Curves
 //!

@@ -308,7 +308,8 @@ impl<S: RingSuite> RingContext<S> {
     }
 
     /// Context whose provers make proofs with no blinding. Without the
-    /// `hedged-nonce` feature, the proofs are deterministic.
+    /// `hedged-nonce` feature, which any crate in the build can turn on, the
+    /// proofs are deterministic.
     ///
     /// The proofs are not zero knowledge, but verifiers with a regular context
     /// of the same ring size accept them. Use it for test vectors.

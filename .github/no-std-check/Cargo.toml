@@ -5,5 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
-ark-vrf = { path = "../..", default-features = false, features = ["full", "secret-split"] }
+ark-vrf = { path = "../..", default-features = false, features = ["full", "secret-split", "hedged-nonce"] }
 getrandom = { version = "0.2", features = ["js", "rdrand"] }
