@@ -311,7 +311,7 @@ mod tests {
             let ad = format!("ad-{ad_ctr}");
             let (t, zs) = utils::vrf_transcript_scalars_with_schnorr(
                 DomSep::TinyVrf,
-                public.0,
+                public,
                 mal_ios,
                 ad.as_bytes(),
             );

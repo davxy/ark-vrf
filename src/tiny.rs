@@ -36,7 +36,7 @@ impl<T> TinySuite for T where T: Suite {}
 
 #[inline(always)]
 fn vrf_transcript_input<S: TinySuite>(
-    public: AffinePoint<S>,
+    public: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Input<S>) {
@@ -45,7 +45,7 @@ fn vrf_transcript_input<S: TinySuite>(
 
 #[inline(always)]
 fn vrf_transcript_scalars<S: TinySuite>(
-    public: AffinePoint<S>,
+    public: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
@@ -137,7 +137,7 @@ impl<S: TinySuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         secret: &SecretKey<S>,
     ) -> Self {
-        let (t, input) = vrf_transcript_input::<S>(secret.public().0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(secret.public(), ios, ad);
 
         let k = S::nonce(secret.scalar(), secret.nonce_transcript(&t));
         let r = k.mul_point(input.0).into_affine();
@@ -164,12 +164,12 @@ impl<S: TinySuite> Proof<S> {
             return Err(Error::InvalidData);
         }
 
-        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(*public, ios, ad);
 
         let Proof { c, s } = self;
 
         // R = s * I_m - c * O_m
-        let r = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, *c)
+        let r = utils::schnorr_lhs::<S>(*public, ios, &zs, *s, *c)
             .into_affine_checked()
             .ok_or(Error::VerificationFailure)?;
 

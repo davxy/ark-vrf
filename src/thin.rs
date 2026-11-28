@@ -71,7 +71,7 @@ impl<S: ThinSuite> ark_serialize::Valid for Proof<S> {
 
 #[inline(always)]
 fn vrf_transcript_input<S: ThinSuite>(
-    public: AffinePoint<S>,
+    public: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Input<S>) {
@@ -80,7 +80,7 @@ fn vrf_transcript_input<S: ThinSuite>(
 
 #[inline(always)]
 fn vrf_transcript_scalars<S: ThinSuite>(
-    public: AffinePoint<S>,
+    public: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
@@ -94,7 +94,7 @@ impl<S: ThinSuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         secret: &SecretKey<S>,
     ) -> Self {
-        let (t, input) = vrf_transcript_input::<S>(secret.public().0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(secret.public(), ios, ad);
 
         let k = S::nonce(secret.scalar(), secret.nonce_transcript(&t));
         let r = k.mul_point(input.0).into_affine();
@@ -122,11 +122,11 @@ impl<S: ThinSuite> Proof<S> {
         }
 
         let Proof { r, s } = self;
-        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(*public, ios, ad);
         let c = S::challenge(&[r], t);
 
         // s * I_m - c * O_m == R
-        let lhs = utils::schnorr_lhs::<S>(public.0, ios, &zs, *s, c);
+        let lhs = utils::schnorr_lhs::<S>(*public, ios, &zs, *s, c);
         if !lhs.has_affine_form() || lhs != r.into_group() {
             return Err(Error::VerificationFailure);
         }
@@ -174,7 +174,7 @@ impl<S: ThinSuite> BatchItem<S> {
         public: &PublicKey<S>,
     ) -> Self {
         let ios = ios.as_ref();
-        let (t, zs) = vrf_transcript_scalars::<S>(public.0, ios, ad);
+        let (t, zs) = vrf_transcript_scalars::<S>(*public, ios, ad);
         let c = S::challenge(&[&proof.r], t);
         Self {
             c,
@@ -713,7 +713,7 @@ pub(crate) mod testing {
         let g = S::GENERATOR;
 
         let sk = Sc::from(42);
-        let pk = (g * sk).into_affine();
+        let public = PublicKey::<S>::from_affine_unchecked((g * sk).into_affine());
 
         let d = Sc::from(7);
         let input_pt = (g * d).into_affine();
@@ -733,7 +733,7 @@ pub(crate) mod testing {
         };
 
         let fake_ios: &[IoPair<S>] = &[fake_io];
-        let (transcript, zs) = vrf_transcript_scalars::<S>(pk, fake_ios, ad);
+        let (transcript, zs) = vrf_transcript_scalars::<S>(public, fake_ios, ad);
         let (z0, z1) = (zs[0], zs[1]);
 
         let merged_input = (g * z0 + input_pt * z1).into_affine();
@@ -748,7 +748,6 @@ pub(crate) mod testing {
 
         let forged_proof = Proof::<S> { r, s };
 
-        let public = PublicKey::<S>::from_affine_unchecked(pk);
         assert!(
             public.verify_thin(fake_io, ad, &forged_proof).is_ok(),
             "Forged proof must verify when input discrete log is known"
