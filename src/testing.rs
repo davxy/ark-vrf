@@ -300,7 +300,7 @@ impl<S: SuiteExt + std::fmt::Debug> TestVectorTrait for TestVector<S> {
 
         TestVector {
             comment: comment.to_string(),
-            sk: *sk.scalar.expose_secret(),
+            sk: *sk.scalar().expose_secret(),
             pk,
             alpha,
             ad: ad.to_vec(),
@@ -434,10 +434,6 @@ macro_rules! test_vectors {
         }
 
         #[test]
-        #[cfg_attr(
-            feature = "hedged-nonce",
-            ignore = "hedged nonces make new proof bytes on each run"
-        )]
         fn vectors_process() {
             $crate::testing::test_vectors_process::<$vector_type>($vector_name);
         }

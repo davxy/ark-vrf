@@ -250,14 +250,13 @@ let verifier_key = ring_setup.verifier_key_from_commitment(ring_commitment);
 - `secret-split`: each secret scalar multiplication uses two random shares of the scalar,
   against side channels, at twice the cost. The timing stays variable. The ring proof
   backend does not use the split.
-- `hedged-nonce`: the default nonce (`Suite::nonce`) also absorbs 32 random bytes. Then two
-  Pedersen or Ring proofs with no I/O pairs on the same additional data are not linkable.
-  Cargo turns it on for every user of `ark-vrf` in the build, and then no built-in suite
-  makes deterministic proofs.
+- `hedged-nonce`: `SecretKey::with_hedged_nonce`. The nonces of such a key also absorb 32
+  random bytes. Then two Pedersen or Ring proofs with no I/O pairs on the same additional
+  data are not linkable. Other keys stay deterministic.
 - `ring`: Ring VRF for the curves that support it.
 - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
 
-`secret-split` and `hedged-nonce` panic when the system random source fails. On some targets
+`secret-split` and hedged keys panic when the system random source fails. On some targets
 (`wasm32-unknown-unknown`, bare metal), the application must select a `getrandom` backend.
 
 ### Curves

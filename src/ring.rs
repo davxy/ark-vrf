@@ -307,9 +307,8 @@ impl<S: RingSuite> RingContext<S> {
         Self::construct(min_ring_size, true)
     }
 
-    /// Context whose provers make proofs with no blinding. Without the
-    /// `hedged-nonce` feature, which any crate in the build can turn on, the
-    /// proofs are deterministic.
+    /// Context whose provers make proofs with no blinding. The proofs of a key
+    /// that is not hedged are deterministic.
     ///
     /// The proofs are not zero knowledge, but verifiers with a regular context
     /// of the same ring size accept them. Use it for test vectors.

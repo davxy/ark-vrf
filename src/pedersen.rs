@@ -159,10 +159,11 @@ impl<S: PedersenSuite> Proof<S> {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
-        let blinding = S::blinding(&secret.scalar, t.clone());
+        // `k` and `kb` absorb `Yb`, so a hedged `b` also hedges them.
+        let blinding = S::blinding(secret.scalar(), secret.nonce_transcript(&t));
 
         let bb = blinding.mul_point(S::BLINDING_BASE);
-        let pk_com = (secret.public.0.into_group() + bb).into_affine();
+        let pk_com = (secret.public().0.into_group() + bb).into_affine();
 
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
@@ -173,7 +174,7 @@ impl<S: PedersenSuite> Proof<S> {
         if ios.len() > 1 {
             nonce_transcript.absorb_raw(&[0xff]);
         }
-        let k = S::nonce(&secret.scalar, nonce_transcript.clone());
+        let k = S::nonce(secret.scalar(), nonce_transcript.clone());
         let kb = S::nonce(&blinding, nonce_transcript);
 
         let r = k.mul_point(S::GENERATOR) + kb.mul_point(S::BLINDING_BASE);
@@ -184,7 +185,7 @@ impl<S: PedersenSuite> Proof<S> {
 
         let c = S::challenge(&[&r, &ok], t);
 
-        let s = k.response(c, &secret.scalar);
+        let s = k.response(c, secret.scalar());
         let sb = kb.response(c, &blinding);
 
         let proof = Proof {
@@ -470,13 +471,11 @@ pub(crate) mod testing {
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
-        if cfg!(not(feature = "hedged-nonce")) {
-            assert_eq!(encode(&proof_single), encode(&proof_slice));
-            assert_eq!(
-                blinding_single.expose_secret(),
-                blinding_slice.expose_secret()
-            );
-        }
+        assert_eq!(encode(&proof_single), encode(&proof_slice));
+        assert_eq!(
+            blinding_single.expose_secret(),
+            blinding_slice.expose_secret()
+        );
         assert!(proof_slice.verify(io, b"foo").is_ok());
         assert!(proof_single.verify([io], b"foo").is_ok());
     }
@@ -681,7 +680,7 @@ pub(crate) mod testing {
     /// and names the signer of two such ring proofs in two different rings.
     #[cfg(feature = "hedged-nonce")]
     pub fn key_commitment_unlinkable<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let secret = SecretKey::<S>::from_seed(TEST_SEED).with_hedged_nonce();
         let ios: [IoPair<S>; 0] = [];
         let (first, _) = secret.prove_pedersen(ios, b"ad");
         let (second, _) = secret.prove_pedersen(ios, b"ad");
