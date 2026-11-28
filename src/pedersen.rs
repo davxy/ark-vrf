@@ -45,8 +45,8 @@ pub trait PedersenSuite: Suite {
     /// built-in suites hash [`PEDERSEN_BLINDING_BASE_SEED`] to the curve.
     const BLINDING_BASE: AffinePoint<Self>;
 
-    /// Blinding factor from the secret key and the transcript. The default is
-    /// deterministic.
+    /// Blinding factor from the secret key and the transcript. The default
+    /// derives it with [`Suite::nonce`].
     fn blinding(
         secret: &SecretScalar<Self>,
         mut transcript: Self::Transcript,
@@ -159,10 +159,11 @@ impl<S: PedersenSuite> Proof<S> {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
-        let blinding = S::blinding(&secret.scalar, t.clone());
+        // `k` and `kb` absorb `Yb`, so a hedged `b` also hedges them.
+        let blinding = S::blinding(secret.scalar(), secret.nonce_transcript(&t));
 
         let bb = blinding.mul_point(S::BLINDING_BASE);
-        let pk_com = (secret.public.0.into_group() + bb).into_affine();
+        let pk_com = (secret.public().0.into_group() + bb).into_affine();
 
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
@@ -173,7 +174,7 @@ impl<S: PedersenSuite> Proof<S> {
         if ios.len() > 1 {
             nonce_transcript.absorb_raw(&[0xff]);
         }
-        let k = S::nonce(&secret.scalar, nonce_transcript.clone());
+        let k = S::nonce(secret.scalar(), nonce_transcript.clone());
         let kb = S::nonce(&blinding, nonce_transcript);
 
         let r = k.mul_point(S::GENERATOR) + kb.mul_point(S::BLINDING_BASE);
@@ -184,7 +185,7 @@ impl<S: PedersenSuite> Proof<S> {
 
         let c = S::challenge(&[&r, &ok], t);
 
-        let s = k.response(c, &secret.scalar);
+        let s = k.response(c, secret.scalar());
         let sb = kb.response(c, &blinding);
 
         let proof = Proof {
@@ -674,6 +675,20 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// Two proofs of one signer with no I/O pairs on the same `ad` must have
+    /// different key commitments. An observer links proofs with the same `Yb`,
+    /// and names the signer of two such ring proofs in two different rings.
+    #[cfg(feature = "hedged-nonce")]
+    pub fn key_commitment_unlinkable<S: PedersenSuite>() {
+        let secret = SecretKey::<S>::from_seed(TEST_SEED).with_hedged_nonce();
+        let ios: [IoPair<S>; 0] = [];
+        let (first, _) = secret.prove_pedersen(ios, b"ad");
+        let (second, _) = secret.prove_pedersen(ios, b"ad");
+        assert!(first.verify(ios, b"ad").is_ok());
+        assert!(second.verify(ios, b"ad").is_ok());
+        assert_ne!(first.key_commitment(), second.key_commitment());
+    }
+
     pub fn blinding_base_check<S: PedersenSuite>()
     where
         AffinePoint<S>: CheckPoint,
@@ -739,6 +754,12 @@ pub(crate) mod testing {
                 #[test]
                 fn key_chosen_after_weights_rejected() {
                     $crate::pedersen::testing::key_chosen_after_weights_rejected::<$suite>();
+                }
+
+                #[cfg(feature = "hedged-nonce")]
+                #[test]
+                fn key_commitment_unlinkable() {
+                    $crate::pedersen::testing::key_commitment_unlinkable::<$suite>();
                 }
 
                 #[test]

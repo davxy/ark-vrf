@@ -334,7 +334,7 @@ mod tests {
             let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
-                let s = k + c * secret.scalar.expose_secret();
+                let s = k + c * secret.scalar().expose_secret();
                 break crate::tiny::Proof { c, s };
             }
             ctr += 1;

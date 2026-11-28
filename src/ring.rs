@@ -6,7 +6,7 @@
 //!
 //! The ring prover draws its blinding from the OS random source, and `prove`
 //! panics where `getrandom` has no source. [`RingContext::new_without_blinding`]
-//! does not draw, and its proofs are not zero knowledge.
+//! does not draw for the ring proof, and its proofs are not zero knowledge.
 //!
 //! ## Setup
 //!
@@ -307,7 +307,8 @@ impl<S: RingSuite> RingContext<S> {
         Self::construct(min_ring_size, true)
     }
 
-    /// Context whose provers make deterministic proofs, with no blinding.
+    /// Context whose provers make proofs with no blinding. The proofs of a key
+    /// that is not hedged are deterministic.
     ///
     /// The proofs are not zero knowledge, but verifiers with a regular context
     /// of the same ring size accept them. Use it for test vectors.

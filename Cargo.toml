@@ -63,7 +63,7 @@ digest = { version = "0.10", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
 rayon = { version = "1.10", default-features = false, optional = true }
-rand = { version = "0.8", default-features = false, optional = true }
+getrandom_or_panic = { version = "0.0.3", default-features = false, optional = true }
 w3f-ring-proof = { version = "0.0.11", default-features = false, optional = true }
 # Curves
 ark-secp256r1 = { version = "0.6", default-features = false, optional = true }
@@ -92,6 +92,7 @@ default = ["std"]
 std = [
   "ark-ec/std",
   "ark-std/std",
+  "getrandom_or_panic?/std",
   "w3f-ring-proof?/std",
 ]
 full = [
@@ -111,7 +112,8 @@ secp256r1 = ["ark-secp256r1"]
 # Miscellanea
 ring = ["w3f-ring-proof"]
 shake128 = ["sha3"]
-secret-split = ["rand/getrandom"]
+secret-split = ["getrandom_or_panic/getrandom"]
+hedged-nonce = ["getrandom_or_panic/getrandom"]
 # Optimizations
 parallel = [
   "ark-ec/parallel",

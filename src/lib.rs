@@ -59,18 +59,19 @@
 //!
 //! - `default`: `std`
 //! - `full`: all the curves below, and `ring`.
-//! - `secret-split`: each secret scalar multiplication of Tiny, Thin and
-//!   Pedersen VRF (public key, output, nonce, blinding) uses two random shares
-//!   of the scalar. This protects the scalar value against side channels, at
-//!   twice the cost. The timing stays variable. Ring proof witness generation
-//!   does not use the split.
-//!   The shares come from `OsRng` at each multiplication, also when a `SecretKey`
-//!   is decoded, and `OsRng` panics when its backend fails. The feature works
-//!   with `no_std`, but where `getrandom` has no backend, the application must
-//!   select one: `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom`
-//!   or `getrandom/rdrand` on bare metal.
+//! - `secret-split`: each secret scalar multiplication uses two random shares
+//!   of the scalar, against side channels, at twice the cost. The timing stays
+//!   variable. The ring proof backend does not use the split.
+//! - `hedged-nonce`: `SecretKey::with_hedged_nonce`. The nonces of such a key
+//!   also absorb 32 random bytes. Then two Pedersen or Ring proofs with no I/O
+//!   pairs on the same additional data are not linkable. Other keys stay
+//!   deterministic.
 //! - `ring`: Ring VRF for the curves that support it.
 //! - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
+//!
+//! `secret-split` and hedged keys panic when the system random source fails.
+//! On some targets (`wasm32-unknown-unknown`, bare metal), the application must
+//! select a `getrandom` backend.
 //!
 //! ### Curves
 //!

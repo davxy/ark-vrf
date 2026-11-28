@@ -86,6 +86,9 @@ pub(crate) enum DomSep {
     Nonce = 0x11,
     /// Pedersen blinding scalar derivation.
     PedersenBlinding = 0x12,
+    /// System randomness in a hedged nonce.
+    #[cfg(feature = "hedged-nonce")]
+    NonceHedge = 0x13,
     /// Point-to-hash output derivation.
     PointToHash = 0x20,
     /// Per-I/O delinearization scalar stream for multi-input proofs.
@@ -387,6 +390,21 @@ pub fn nonce<S: Suite>(sk: &SecretScalar<S>, mut transcript: S::Transcript) -> S
     SecretScalar::new(nonce_scalar::<S>(&mut transcript))
 }
 
+/// Absorb 32 bytes from the system random source into a nonce transcript. A
+/// weak source gives the deterministic nonce again.
+///
+/// Panics when the source fails.
+#[cfg(feature = "hedged-nonce")]
+pub(crate) fn hedge<T: Transcript>(mut transcript: T) -> T {
+    use getrandom_or_panic::RngCore;
+    let mut entropy = [0u8; 32];
+    getrandom_or_panic::getrandom_or_panic().fill_bytes(&mut entropy);
+    transcript.absorb_raw(&[DomSep::NonceHedge as u8]);
+    transcript.absorb_raw(&entropy);
+    entropy.zeroize();
+    transcript
+}
+
 /// Delinearization scalars from a transcript. The first is `z_0 = 1`, the next
 /// ones have [`Suite::SECURITY_PARAMETER`] bits.
 pub(crate) struct DelinearizeScalars<S: Suite> {
@@ -488,6 +506,18 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    /// Two hedges of one transcript must give two different nonces for one key.
+    /// Else the hedge adds nothing, and proofs on the same data stay linkable.
+    #[cfg(feature = "hedged-nonce")]
+    #[test]
+    fn hedge_changes_the_nonce_on_each_call() {
+        let secret = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
+        let transcript = <TestSuite as Suite>::Transcript::new(b"test");
+        let first = nonce::<TestSuite>(&secret, hedge(transcript.clone()));
+        let second = nonce::<TestSuite>(&secret, hedge(transcript));
+        assert_ne!(first.expose_secret(), second.expose_secret());
     }
 
     /// Both paths of `schnorr_lhs` (raw pairs and merged pair) must equal the

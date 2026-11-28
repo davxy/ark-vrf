@@ -36,7 +36,8 @@ impl<S: Suite> SecretScalar<S> {
         #[cfg(feature = "secret-split")]
         {
             use ark_std::UniformRand;
-            let share = Self::new(ScalarField::<S>::rand(&mut rand::rngs::OsRng));
+            let mut rng = getrandom_or_panic::getrandom_or_panic();
+            let share = Self::new(ScalarField::<S>::rand(&mut rng));
             let rest = Self::new(self.0 - share.0);
             point * share.0 + point * rest.0
         }
@@ -67,8 +68,10 @@ impl<S: Suite> core::fmt::Debug for SecretScalar<S> {
 /// the Pedersen blinding factor (see [`pedersen::Proof::prove`](crate::pedersen::Proof::prove)).
 #[derive(Clone)]
 pub struct SecretKey<S: Suite> {
-    pub(crate) scalar: SecretScalar<S>,
-    pub(crate) public: PublicKey<S>,
+    scalar: SecretScalar<S>,
+    public: PublicKey<S>,
+    #[cfg(feature = "hedged-nonce")]
+    hedged: bool,
 }
 
 impl<S: Suite> core::fmt::Debug for SecretKey<S> {
@@ -137,7 +140,37 @@ impl<S: Suite> SecretKey<S> {
 
     fn from_secret_scalar(scalar: SecretScalar<S>) -> Self {
         let public = PublicKey::from_affine_unchecked(scalar.mul_point(S::GENERATOR).into_affine());
-        Self { scalar, public }
+        Self {
+            scalar,
+            public,
+            #[cfg(feature = "hedged-nonce")]
+            hedged: false,
+        }
+    }
+
+    /// Hedge the nonces of this key: each nonce also absorbs 32 bytes from the
+    /// system random source, so each proof is new. Then two Pedersen or Ring
+    /// proofs with no I/O pairs on the same additional data are not linkable.
+    /// Keys and VRF outputs do not change. It follows the idea of
+    /// [hedged EdDSA], with no padding to the hash block size.
+    ///
+    /// The flag is not part of the encoding, so a decoded key is not hedged.
+    /// Equality ignores it. Proving panics when the source fails.
+    ///
+    /// [hedged EdDSA]: https://www.ietf.org/archive/id/draft-irtf-cfrg-det-sigs-with-noise-03.html#name-hedged-eddsa
+    #[cfg(feature = "hedged-nonce")]
+    pub fn with_hedged_nonce(mut self) -> Self {
+        self.hedged = true;
+        self
+    }
+
+    /// A clone of `transcript` for a nonce of this key, hedged if the key is.
+    pub(crate) fn nonce_transcript(&self, transcript: &S::Transcript) -> S::Transcript {
+        #[cfg(feature = "hedged-nonce")]
+        if self.hedged {
+            return utils::common::hedge(transcript.clone());
+        }
+        transcript.clone()
     }
 
     /// Derive a `SecretKey` from a seed with the suite transcript.

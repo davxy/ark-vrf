@@ -137,13 +137,13 @@ impl<S: TinySuite> Proof<S> {
         ad: impl AsRef<[u8]>,
         secret: &SecretKey<S>,
     ) -> Self {
-        let (t, input) = vrf_transcript_input::<S>(secret.public.0, ios, ad);
+        let (t, input) = vrf_transcript_input::<S>(secret.public().0, ios, ad);
 
-        let k = S::nonce(&secret.scalar, t.clone());
+        let k = S::nonce(secret.scalar(), secret.nonce_transcript(&t));
         let r = k.mul_point(input.0).into_affine();
 
         let c = S::challenge(&[&r], t);
-        let s = k.response(c, &secret.scalar);
+        let s = k.response(c, secret.scalar());
         Proof { c, s }
     }
 
@@ -347,6 +347,23 @@ pub mod testing {
         let mut bad_ios = ios.clone();
         bad_ios[MSM_THRESHOLD - 1].output = ios[0].output;
         assert!(public.verify_tiny(&bad_ios[..], b"msm", &proof).is_err());
+    }
+
+    /// A hedged key must use a new nonce in each proof on the same data. With
+    /// the same nonce, a fault in one challenge discloses the secret key.
+    #[cfg(feature = "hedged-nonce")]
+    #[test]
+    fn hedged_key_uses_new_nonces() {
+        use crate::suites::testing::TestSuite as S;
+
+        let secret = SecretKey::<S>::from_seed(common::TEST_SEED).with_hedged_nonce();
+        let public = secret.public();
+        let io = secret.io_pair(Input::new(b"input").unwrap());
+        let first = secret.prove_tiny(io, b"ad");
+        let second = secret.prove_tiny(io, b"ad");
+        assert!(public.verify_tiny(io, b"ad", &first).is_ok());
+        assert!(public.verify_tiny(io, b"ad", &second).is_ok());
+        assert_ne!(first.s, second.s);
     }
 
     #[macro_export]

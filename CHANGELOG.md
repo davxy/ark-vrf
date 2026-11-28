@@ -11,12 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SecretScalar` for the secret scalars: the secret key, the nonces and the
   Pedersen blinding factor.
+- `hedged-nonce` feature and `SecretKey::with_hedged_nonce`: the nonces of a
+  hedged key also absorb 32 bytes of system randomness. Pedersen and Ring proofs
+  of that key with no I/O pairs on the same additional data are then not
+  linkable. Other keys stay deterministic.
 
 ### Changed
 
 - `Suite::generator()` is now the constant `Suite::GENERATOR`.
 - `Secret` and `Public` are renamed `SecretKey` and `PublicKey`.
 - `VrfIo` and `SecretKey::vrf_io` are renamed `IoPair` and `io_pair`.
+- `secret-split` draws its shares from `getrandom_or_panic`, the source of the
+  ring backend: `thread_rng` with `std`, `OsRng` without it. `rand` is no
+  longer a dependency.
 
 ### Removed
 
