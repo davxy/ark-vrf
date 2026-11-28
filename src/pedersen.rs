@@ -167,12 +167,12 @@ impl<S: PedersenSuite> Proof<S> {
         // Nonces from T.fork(). The extra byte is temporary. Releases before
         // 0.7.0 get the same nonces without it, and a different challenge, which
         // discloses the secret key. Remove it at the next major release.
-        let mut nonce_transcript = t.clone();
+        let mut fork = t.clone();
         if ios.len() > 1 {
-            nonce_transcript.absorb_raw(&[0xff]);
+            fork.absorb_raw(&[0xff]);
         }
-        let k = S::nonce(sk.scalar(), nonce_transcript.clone());
-        let kb = S::nonce(&blinding, nonce_transcript);
+        let k = S::nonce(sk.scalar(), fork.clone());
+        let kb = S::nonce(&blinding, fork);
 
         let r = k.mul_point(S::GENERATOR) + kb.mul_point(S::BLINDING_BASE);
         let ok = k.mul_point(input.0);

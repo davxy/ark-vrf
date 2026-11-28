@@ -22,7 +22,7 @@
 //! use ark_vrf::ring::Proof;
 //!
 //! const RING_SIZE: usize = 100;
-//! let prover_key_index = 3;
+//! let prover_idx = 3;
 //!
 //! // Create a ring of public keys
 //! let mut ring = (0..RING_SIZE)
@@ -32,7 +32,7 @@
 //!         SecretKey::from_seed(seed).public_key()
 //!     })
 //!     .collect::<Vec<_>>();
-//! ring[prover_key_index] = pk;
+//! ring[prover_idx] = pk;
 //!
 //! // Initialize ring parameters
 //! let ring_setup = RingSetup::from_seed_insecure(RING_SIZE, [0x42; 32]);
@@ -40,7 +40,7 @@
 //!
 //! // Proving
 //! let prover_key = ring_setup.prover_key(&ring).unwrap();
-//! let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
+//! let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 //! let io = sk.io_pair(input);
 //! let proof = Proof::prove(io, b"aux data", &sk, &prover);
 //!
@@ -213,8 +213,8 @@ impl<S: RingSuite> Proof<S> {
         sk: &SecretKey<S>,
         ring_prover: &RingProver<S>,
     ) -> Self {
-        let (pedersen_proof, secret_blinding) = PedersenProof::prove(ios, ad, sk);
-        let ring_proof = ring_prover.prove(*secret_blinding.expose_secret());
+        let (pedersen_proof, blinding) = PedersenProof::prove(ios, ad, sk);
+        let ring_proof = ring_prover.prove(*blinding.expose_secret());
         Proof {
             pedersen_proof,
             ring_proof,

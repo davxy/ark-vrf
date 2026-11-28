@@ -346,7 +346,7 @@ pub mod testing {
     #[cfg(feature = "hedged-nonce")]
     #[test]
     fn hedged_key_uses_new_nonces() {
-        use crate::suites::testing::TestSuite as S;
+        type S = crate::suites::testing::TestSuite;
 
         let sk = SecretKey::<S>::from_seed(common::TEST_SEED).with_hedged_nonce();
         let pk = sk.public_key();

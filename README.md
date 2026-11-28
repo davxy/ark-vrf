@@ -150,7 +150,7 @@ The proof shows that the key is in a ring of public keys, but not which key it i
 _Ring construction_
 ```rust,ignore
 const RING_SIZE: usize = 100;
-let prover_key_index = 3;
+let prover_idx = 3;
 
 // Construct an example ring with dummy keys
 let mut ring = (0..RING_SIZE)
@@ -162,7 +162,7 @@ let mut ring = (0..RING_SIZE)
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover
-ring[prover_key_index] = pk;
+ring[prover_idx] = pk;
 
 // Any key can be replaced with the padding point
 ring[0] = PublicKey::padding();
@@ -198,7 +198,7 @@ let prover_key = ring_setup.prover_key(&ring).unwrap();
 let ring_ctx = ring_setup.ring_context();
 
 // Create a prover instance for the specific position in the ring
-let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
+let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
 let io = sk.io_pair(input);
 
