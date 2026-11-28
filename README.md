@@ -44,7 +44,7 @@ use ark_vrf::suites::bandersnatch::*;
 let secret = SecretKey::from_seed([0; 32]);
 
 // Derive the corresponding public key
-let public = secret.public();
+let pk = secret.public_key();
 
 // Create an input by hashing data to a curve point
 let input = Input::new(b"example input").unwrap();
@@ -71,12 +71,12 @@ let proof = TinyProof::prove(io, b"aux data", &secret);
 _Verify_
 ```rust,ignore
 // Verify the proof against the public key
-let result = proof.verify(io, b"aux data", &public);
-assert!(result.is_ok());
+let res = proof.verify(io, b"aux data", &pk);
+assert!(res.is_ok());
 ```
 
 The keys have the same operations as methods: `secret.prove_tiny(io, ad)` and
-`public.verify_tiny(io, ad, &proof)`.
+`pk.verify_tiny(io, ad, &proof)`.
 
 ### Thin-VRF
 
@@ -90,12 +90,12 @@ let proof = ThinProof::prove(io, b"aux data", &secret);
 
 _Verify_
 ```rust,ignore
-let result = proof.verify(io, b"aux data", &public);
-assert!(result.is_ok());
+let res = proof.verify(io, b"aux data", &pk);
+assert!(res.is_ok());
 ```
 
 As for Tiny, the keys have the same operations as methods: `secret.prove_thin`
-and `public.verify_thin`.
+and `pk.verify_thin`.
 
 _Batch verify_
 ```rust,ignore
@@ -103,8 +103,8 @@ let proof1 = ThinProof::prove(io, b"data1", &secret);
 let proof2 = ThinProof::prove(io, b"data2", &secret);
 
 let mut batch = ThinBatchVerifier::new();
-batch.push(io, b"data1", &proof1, &public);
-batch.push(io, b"data2", &proof2, &public);
+batch.push(io, b"data1", &proof1, &pk);
+batch.push(io, b"data2", &proof2, &pk);
 assert!(batch.verify().is_ok());
 ```
 
@@ -131,12 +131,12 @@ use ark_vrf::pedersen::PedersenSuite;
 // Verify without knowing which specific public key was used.
 // Verifies that the secret key used to generate `output` is the same as
 // the secret key used to generate `proof.key_commitment()`.
-let result = proof.verify(io, b"aux data");
-assert!(result.is_ok());
+let res = proof.verify(io, b"aux data");
+assert!(res.is_ok());
 
 // Verify the proof was created using a specific public key.
 // This requires knowledge of the blinding factor.
-let expected = (public.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
+let expected = (pk.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BLINDING_BASE)).into_affine();
 assert_eq!(proof.key_commitment(), expected);
 ```
 
@@ -157,12 +157,12 @@ let mut ring = (0..RING_SIZE)
     .map(|i| {
         let mut seed = [0u8; 32];
         seed[..8].copy_from_slice(&i.to_le_bytes());
-        SecretKey::from_seed(seed).public()
+        SecretKey::from_seed(seed).public_key()
     })
     .collect::<Vec<_>>();
 
 // Patch the ring with the public key of the prover
-ring[prover_key_index] = public;
+ring[prover_key_index] = pk;
 
 // Any key can be replaced with the padding point
 ring[0] = PublicKey::padding();
@@ -221,7 +221,7 @@ let verifier = ring_ctx.ring_verifier(verifier_key);
 // 1. The proof was created by someone who knows a secret key in the ring
 // 2. The VRF output is correct for the given input
 // But it does NOT reveal which ring member created the proof
-let result = proof.verify(io, b"aux data", &verifier);
+let res = proof.verify(io, b"aux data", &verifier);
 ```
 
 The secret key has the same operation as a method: `secret.prove_ring`.
