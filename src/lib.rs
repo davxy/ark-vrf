@@ -226,9 +226,13 @@ pub trait Suite: Copy {
     #[inline(always)]
     fn nonce(sk: &SecretScalar<Self>, transcript: Self::Transcript) -> SecretScalar<Self> {
         #[cfg(feature = "hedged-nonce")]
-        return utils::hedged_nonce::<Self>(sk, transcript);
+        {
+            utils::hedged_nonce::<Self>(sk, transcript)
+        }
         #[cfg(not(feature = "hedged-nonce"))]
-        utils::nonce::<Self>(sk, transcript)
+        {
+            utils::nonce::<Self>(sk, transcript)
+        }
     }
 
     /// Challenge from curve points and the transcript.
