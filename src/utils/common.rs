@@ -86,6 +86,9 @@ pub(crate) enum DomSep {
     Nonce = 0x11,
     /// Pedersen blinding scalar derivation.
     PedersenBlinding = 0x12,
+    /// System randomness in a hedged nonce.
+    #[cfg(feature = "hedged-nonce")]
+    NonceHedge = 0x13,
     /// Point-to-hash output derivation.
     PointToHash = 0x20,
     /// Per-I/O delinearization scalar stream for multi-input proofs.
@@ -387,6 +390,29 @@ pub fn nonce<S: Suite>(sk: &SecretScalar<S>, mut transcript: S::Transcript) -> S
     SecretScalar::new(nonce_scalar::<S>(&mut transcript))
 }
 
+/// Hedged nonce: [`nonce`] on the transcript plus 32 bytes from the system
+/// random source. A weak source gives the security of [`nonce`] again.
+///
+/// It follows the idea of [hedged EdDSA], not its byte layout: there is no
+/// padding to the hash block size.
+///
+/// Panics when the source fails.
+///
+/// [hedged EdDSA]: https://www.ietf.org/archive/id/draft-irtf-cfrg-det-sigs-with-noise-03.html#name-hedged-eddsa
+#[cfg(feature = "hedged-nonce")]
+pub fn hedged_nonce<S: Suite>(
+    sk: &SecretScalar<S>,
+    mut transcript: S::Transcript,
+) -> SecretScalar<S> {
+    use getrandom_or_panic::RngCore;
+    let mut entropy = [0u8; 32];
+    getrandom_or_panic::getrandom_or_panic().fill_bytes(&mut entropy);
+    transcript.absorb_raw(&[DomSep::NonceHedge as u8]);
+    transcript.absorb_raw(&entropy);
+    entropy.zeroize();
+    nonce::<S>(sk, transcript)
+}
+
 /// Delinearization scalars from a transcript. The first is `z_0 = 1`, the next
 /// ones have [`Suite::SECURITY_PARAMETER`] bits.
 pub(crate) struct DelinearizeScalars<S: Suite> {
@@ -488,6 +514,18 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    /// The nonce must change between two calls on the same key and transcript.
+    /// Else the hedge adds nothing, and proofs on the same data stay linkable.
+    #[cfg(feature = "hedged-nonce")]
+    #[test]
+    fn hedged_nonce_changes_on_each_call() {
+        let secret = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
+        let transcript = <TestSuite as Suite>::Transcript::new(b"test");
+        let first = hedged_nonce::<TestSuite>(&secret, transcript.clone());
+        let second = hedged_nonce::<TestSuite>(&secret, transcript);
+        assert_ne!(first.expose_secret(), second.expose_secret());
     }
 
     /// Both paths of `schnorr_lhs` (raw pairs and merged pair) must equal the

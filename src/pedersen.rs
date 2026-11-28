@@ -45,8 +45,8 @@ pub trait PedersenSuite: Suite {
     /// built-in suites hash [`PEDERSEN_BLINDING_BASE_SEED`] to the curve.
     const BLINDING_BASE: AffinePoint<Self>;
 
-    /// Blinding factor from the secret key and the transcript. The default is
-    /// deterministic.
+    /// Blinding factor from the secret key and the transcript. The default
+    /// derives it with [`Suite::nonce`].
     fn blinding(
         secret: &SecretScalar<Self>,
         mut transcript: Self::Transcript,
@@ -470,11 +470,13 @@ pub(crate) mod testing {
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
-        assert_eq!(encode(&proof_single), encode(&proof_slice));
-        assert_eq!(
-            blinding_single.expose_secret(),
-            blinding_slice.expose_secret()
-        );
+        if cfg!(not(feature = "hedged-nonce")) {
+            assert_eq!(encode(&proof_single), encode(&proof_slice));
+            assert_eq!(
+                blinding_single.expose_secret(),
+                blinding_slice.expose_secret()
+            );
+        }
         assert!(proof_slice.verify(io, b"foo").is_ok());
         assert!(proof_single.verify([io], b"foo").is_ok());
     }
@@ -674,6 +676,20 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// Two proofs of one signer with no I/O pairs on the same `ad` must have
+    /// different key commitments. An observer links proofs with the same `Yb`,
+    /// and names the signer of two such ring proofs in two different rings.
+    #[cfg(feature = "hedged-nonce")]
+    pub fn key_commitment_unlinkable<S: PedersenSuite>() {
+        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let ios: [IoPair<S>; 0] = [];
+        let (first, _) = secret.prove_pedersen(ios, b"ad");
+        let (second, _) = secret.prove_pedersen(ios, b"ad");
+        assert!(first.verify(ios, b"ad").is_ok());
+        assert!(second.verify(ios, b"ad").is_ok());
+        assert_ne!(first.key_commitment(), second.key_commitment());
+    }
+
     pub fn blinding_base_check<S: PedersenSuite>()
     where
         AffinePoint<S>: CheckPoint,
@@ -739,6 +755,12 @@ pub(crate) mod testing {
                 #[test]
                 fn key_chosen_after_weights_rejected() {
                     $crate::pedersen::testing::key_chosen_after_weights_rejected::<$suite>();
+                }
+
+                #[cfg(feature = "hedged-nonce")]
+                #[test]
+                fn key_commitment_unlinkable() {
+                    $crate::pedersen::testing::key_commitment_unlinkable::<$suite>();
                 }
 
                 #[test]

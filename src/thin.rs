@@ -358,7 +358,9 @@ pub(crate) mod testing {
             p.serialize_compressed(&mut buf).unwrap();
             buf
         };
-        assert_eq!(encode(&proof_single), encode(&proof_slice));
+        if cfg!(not(feature = "hedged-nonce")) {
+            assert_eq!(encode(&proof_single), encode(&proof_slice));
+        }
         assert!(public.verify_thin(io, b"foo", &proof_slice).is_ok());
         assert!(public.verify_thin([io], b"foo", &proof_single).is_ok());
     }

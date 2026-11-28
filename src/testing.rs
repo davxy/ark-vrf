@@ -426,13 +426,17 @@ macro_rules! test_vectors {
         use $crate::testing::TestVectorTrait as _;
         $crate::test_vectors!($vector_type, &<$vector_type>::name());
     };
+    // Hedged nonces make new proof bytes on each run, so the proofs cannot
+    // match the vectors.
     ($vector_type:ty, $vector_name:expr) => {
+        #[cfg(not(feature = "hedged-nonce"))]
         #[test]
         #[ignore = "test vectors generator"]
         fn vectors_generate() {
             $crate::testing::test_vectors_generate::<$vector_type>($vector_name);
         }
 
+        #[cfg(not(feature = "hedged-nonce"))]
         #[test]
         fn vectors_process() {
             $crate::testing::test_vectors_process::<$vector_type>($vector_name);

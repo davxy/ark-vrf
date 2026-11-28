@@ -36,7 +36,8 @@ impl<S: Suite> SecretScalar<S> {
         #[cfg(feature = "secret-split")]
         {
             use ark_std::UniformRand;
-            let share = Self::new(ScalarField::<S>::rand(&mut rand::rngs::OsRng));
+            let mut rng = getrandom_or_panic::getrandom_or_panic();
+            let share = Self::new(ScalarField::<S>::rand(&mut rng));
             let rest = Self::new(self.0 - share.0);
             point * share.0 + point * rest.0
         }

@@ -59,18 +59,17 @@
 //!
 //! - `default`: `std`
 //! - `full`: all the curves below, and `ring`.
-//! - `secret-split`: each secret scalar multiplication of Tiny, Thin and
-//!   Pedersen VRF (public key, output, nonce, blinding) uses two random shares
-//!   of the scalar. This protects the scalar value against side channels, at
-//!   twice the cost. The timing stays variable. Ring proof witness generation
-//!   does not use the split.
-//!   The shares come from `OsRng` at each multiplication, also when a `SecretKey`
-//!   is decoded, and `OsRng` panics when its backend fails. The feature works
-//!   with `no_std`, but where `getrandom` has no backend, the application must
-//!   select one: `getrandom/js` on `wasm32-unknown-unknown`, `getrandom/custom`
-//!   or `getrandom/rdrand` on bare metal.
+//! - `secret-split`: each secret scalar multiplication uses two random shares
+//!   of the scalar, against side channels, at twice the cost. The timing stays
+//!   variable. The ring proof backend does not use the split.
+//! - `hedged-nonce`: the default nonce ([`Suite::nonce`]) also absorbs 32
+//!   random bytes. Then two Pedersen or Ring proofs with no I/O pairs on the
+//!   same additional data are not linkable.
 //! - `ring`: Ring VRF for the curves that support it.
 //! - `shake128`: `Shake128Transcript` and the `bandersnatch_shake128` suite.
+//!
+//! `secret-split` and `hedged-nonce` panic when the system random source fails.
+//! On some `no_std` targets, the application must select a `getrandom` backend.
 //!
 //! ### Curves
 //!
@@ -222,9 +221,13 @@ pub trait Suite: Copy {
 
     /// Nonce from the secret key and the transcript.
     ///
-    /// Defaults to [`utils::nonce`] (deterministic, after RFC 8032 section 5.1.6).
+    /// Defaults to [`utils::nonce`] (deterministic, after RFC 8032 section 5.1.6),
+    /// or to `utils::hedged_nonce` with the `hedged-nonce` feature.
     #[inline(always)]
     fn nonce(sk: &SecretScalar<Self>, transcript: Self::Transcript) -> SecretScalar<Self> {
+        #[cfg(feature = "hedged-nonce")]
+        return utils::hedged_nonce::<Self>(sk, transcript);
+        #[cfg(not(feature = "hedged-nonce"))]
         utils::nonce::<Self>(sk, transcript)
     }
 
