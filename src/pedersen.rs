@@ -31,7 +31,7 @@
 use crate::Suite;
 use crate::utils;
 use crate::utils::canonical::CanonicalDeserializeStrict;
-use crate::utils::common::DomSep;
+use crate::utils::common::{DomSep, ProjectiveZ};
 use crate::utils::straus::short_msm;
 use crate::*;
 use ark_ec::VariableBaseMSM;
@@ -224,7 +224,7 @@ impl<S: PedersenSuite> Proof<S> {
 
         // s * I_m - c * O_m == Ok
         let lhs1 = short_msm(&[io.input.0, io.output.0], &[*s, neg_c], 2);
-        if lhs1 != ok.into_group() {
+        if !lhs1.has_affine_form() || lhs1 != ok.into_group() {
             return Err(Error::VerificationFailure);
         }
 
@@ -234,7 +234,7 @@ impl<S: PedersenSuite> Proof<S> {
             &[*s, *sb, neg_c],
             2,
         );
-        if lhs2 != r.into_group() {
+        if !lhs2.has_affine_form() || lhs2 != r.into_group() {
             return Err(Error::VerificationFailure);
         }
 
@@ -639,6 +639,44 @@ pub(crate) mod testing {
         assert!(batch.verify().is_err());
     }
 
+    /// An off-curve `(0, 0)` key commitment or output, which only the unchecked
+    /// path lets through, gives a side of an equation `(0, 0, 0, 0)` on a
+    /// twisted Edwards suite, which arkworks finds equal to every point. If
+    /// single verify accepts it, anybody proves with no key, a signer gets a
+    /// second output for each input, and single and batch verify disagree.
+    pub fn off_curve_point_rejected<S: PedersenSuite>() {
+        use ark_ff::One;
+        use pedersen::BatchVerifier;
+
+        let assert_rejected = |ios: &[IoPair<S>], proof: &Proof<S>| {
+            assert!(proof.verify(ios, b"bar").is_err());
+            let mut batch = BatchVerifier::new();
+            batch.push(ios, b"bar", proof);
+            assert!(batch.verify().is_err());
+        };
+        let off_curve = common::off_curve_point::<S>();
+
+        let keyless = Proof::<S> {
+            pk_com: off_curve,
+            r: S::GENERATOR,
+            ok: AffinePoint::<S>::zero(),
+            s: ScalarField::<S>::one(),
+            sb: ScalarField::<S>::one(),
+        };
+        assert_rejected(&[], &keyless);
+
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
+        let off_curve_io = IoPair {
+            input: Input::new(b"foo").unwrap(),
+            output: Output::from_affine_unchecked(off_curve),
+        };
+        let good_io = sk.io_pair(Input::new(b"good").unwrap());
+        for ios in [&[off_curve_io][..], &[good_io, off_curve_io][..]] {
+            let (proof, _) = sk.prove_pedersen(ios, b"bar");
+            assert_rejected(ios, &proof);
+        }
+    }
+
     /// A key chosen after the delinearization weights must not prove pairs that
     /// it did not produce. The attacker gives one input two outputs, takes the
     /// weights from the pairs and `ad`, and solves for the key. If a verifier
@@ -746,6 +784,11 @@ pub(crate) mod testing {
                 #[test]
                 fn identity_key_commitment_rejected() {
                     $crate::pedersen::testing::identity_key_commitment_rejected::<$suite>();
+                }
+
+                #[test]
+                fn off_curve_point_rejected() {
+                    $crate::pedersen::testing::off_curve_point_rejected::<$suite>();
                 }
 
                 #[test]

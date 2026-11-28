@@ -1472,6 +1472,33 @@ pub(crate) mod testing {
         batch_rejects_key_commitment::<S>(AffinePoint::<S>::from_te(point).unwrap());
     }
 
+    /// A member proves the off-curve output `(0, 0)`, which only the unchecked
+    /// path lets through. If single verify accepts it, the member has a second
+    /// output for each input, and single and batch verify disagree.
+    pub fn off_curve_output_rejected<S: RingSuite>() {
+        let rng = &mut ark_std::test_rng();
+        let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
+        let mut pks = random_ring::<S>(TEST_RING_SIZE, rng);
+        let prover_idx = 3;
+        pks[prover_idx] = sk.public_key();
+        let ring_ctx = ring_setup.ring_context();
+        let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
+        let prover = ring_ctx.ring_prover(prover_key, prover_idx);
+        let verifier = ring_ctx.ring_verifier(verifier_key);
+
+        let io = IoPair {
+            input: Input::new(b"foo").unwrap(),
+            output: Output::from_affine_unchecked(common::off_curve_point::<S>()),
+        };
+        let proof = sk.prove_ring(io, b"bar", &prover);
+
+        assert!(proof.verify(io, b"bar", &verifier).is_err());
+        let mut batch = BatchVerifier::new(&verifier);
+        batch.push(io, b"bar", &proof, &verifier).unwrap();
+        assert!(batch.verify().is_err());
+    }
+
     /// Map `(x, y)` to `(u^2 x, u^3 y)`: off the curve, but the group law of an
     /// `a = 0` curve never reads `b`, so the subgroup test still passes.
     pub trait OffCurveAlias: Sized {
@@ -1879,6 +1906,11 @@ pub(crate) mod testing {
                 #[test]
                 fn exceptional_key_commitment_rejected() {
                     $crate::ring::testing::exceptional_key_commitment_rejected::<$suite>()
+                }
+
+                #[test]
+                fn off_curve_output_rejected() {
+                    $crate::ring::testing::off_curve_output_rejected::<$suite>()
                 }
 
                 #[test]
