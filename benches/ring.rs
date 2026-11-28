@@ -212,9 +212,11 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
             .bench_function(id.clone(), |b| {
                 b.iter_batched(
                     || BatchVerifier::<S>::new(&verifier),
-                    |mut bv| {
+                    |mut batch| {
                         for item in &batch_items[..batch_size] {
-                            bv.push(item.io, &item.ad, &item.proof, &verifier).unwrap();
+                            batch
+                                .push(item.io, &item.ad, &item.proof, &verifier)
+                                .unwrap();
                         }
                     },
                     BatchSize::LargeInput,
@@ -258,12 +260,12 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
                                     .unwrap()
                             })
                             .collect::<Vec<_>>();
-                        let bv = BatchVerifier::<S>::new(&verifier);
-                        (bv, prepared)
+                        let batch = BatchVerifier::<S>::new(&verifier);
+                        (batch, prepared)
                     },
-                    |(mut bv, prepared)| {
+                    |(mut batch, prepared)| {
                         for item in prepared {
-                            bv.push_prepared(item);
+                            batch.push_prepared(item);
                         }
                     },
                     BatchSize::LargeInput,
@@ -272,15 +274,17 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
 
         // batch_verify: verify a fully-populated batch.
         {
-            let mut bv = BatchVerifier::<S>::new(&verifier);
+            let mut batch = BatchVerifier::<S>::new(&verifier);
             for item in &batch_items[..batch_size] {
-                bv.push(item.io, &item.ad, &item.proof, &verifier).unwrap();
+                batch
+                    .push(item.io, &item.ad, &item.proof, &verifier)
+                    .unwrap();
             }
 
             c.benchmark_group(format!("{}/batch_verify", S::SUITE_NAME))
                 .sample_size(10)
                 .bench_function(id, |b| {
-                    b.iter(|| bv.verify().unwrap());
+                    b.iter(|| batch.verify().unwrap());
                 });
         }
     }

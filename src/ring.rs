@@ -235,8 +235,8 @@ impl<S: RingSuite> Proof<S> {
         verifier: &RingVerifier<S>,
     ) -> Result<(), Error> {
         self.pedersen_proof.verify(ios, ad)?;
-        let key_commitment = self.backend_key_commitment()?;
-        if !verifier.verify(self.ring_proof.clone(), key_commitment) {
+        let pk_com = self.backend_key_commitment()?;
+        if !verifier.verify(self.ring_proof.clone(), pk_com) {
             return Err(Error::VerificationFailure);
         }
         Ok(())
@@ -251,7 +251,7 @@ impl<S: RingSuite> Proof<S> {
     /// to `Error::InvalidData`. Single verify then returns
     /// `Error::VerificationFailure`, so update the docs of `verify`.
     fn backend_key_commitment(&self) -> Result<TEAffine<CurveConfig<S>>, Error> {
-        let key_commitment = self
+        let pk_com = self
             .pedersen_proof
             .key_commitment()
             .into_te()
@@ -259,10 +259,10 @@ impl<S: RingSuite> Proof<S> {
         let seed = S::ACCUMULATOR_BASE
             .into_te()
             .expect("ACCUMULATOR_BASE must not be identity");
-        if !(seed + key_commitment).has_affine_form() {
+        if !(seed + pk_com).has_affine_form() {
             return Err(Error::InvalidData);
         }
-        Ok(key_commitment)
+        Ok(pk_com)
     }
 }
 
@@ -815,9 +815,9 @@ impl<S: RingSuite> BatchItem<S> {
         proof: &Proof<S>,
         verifier: &RingVerifier<S>,
     ) -> Result<Self, Error> {
-        let key_commitment = proof.backend_key_commitment()?;
+        let pk_com = proof.backend_key_commitment()?;
         let pedersen = pedersen::BatchItem::new(ios, ad, &proof.pedersen_proof);
-        let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), key_commitment);
+        let ring = RingProofBatchItem::<S>::new(verifier, proof.ring_proof.clone(), pk_com);
         Ok(Self { ring, pedersen })
     }
 }
@@ -1285,7 +1285,7 @@ pub(crate) mod testing {
         let (prover_key, verifier_key) = ring_setup.keys(&pks).unwrap();
         let prover = ring_ctx.ring_prover(prover_key, prover_idx);
 
-        let batch: Vec<_> = (0..BATCH_SIZE)
+        let items: Vec<_> = (0..BATCH_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
                 TestItem::<S>::new(&sk, &prover, rng)
@@ -1294,27 +1294,25 @@ pub(crate) mod testing {
 
         let verifier = ring_ctx.ring_verifier(verifier_key);
 
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let res = batch_verifier.verify();
+        let mut batch = BatchVerifier::<S>::new(&verifier);
+        let res = batch.verify();
         assert!(res.is_ok());
 
-        for item in batch.iter() {
-            batch_verifier
+        for item in items.iter() {
+            batch
                 .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
-            let res = batch_verifier.verify();
+            let res = batch.verify();
             assert!(res.is_ok());
         }
 
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let prepared: Vec<_> = batch
+        let mut batch = BatchVerifier::<S>::new(&verifier);
+        let prepared: Vec<_> = items
             .par_iter()
             .map(|item| BatchItem::<S>::new(item.io, &item.ad, &item.proof, &verifier).unwrap())
             .collect();
-        prepared
-            .into_iter()
-            .for_each(|p| batch_verifier.push_prepared(p));
-        assert!(batch_verifier.verify().is_ok());
+        prepared.into_iter().for_each(|p| batch.push_prepared(p));
+        assert!(batch.verify().is_ok());
 
         // A second ring with the same SRS, in the same batch.
         let mut pks_b = random_ring::<S>(TEST_RING_SIZE, rng);
@@ -1324,34 +1322,34 @@ pub(crate) mod testing {
         let prover_b = ring_ctx.ring_prover(prover_key_b, prover_idx_b);
         let verifier_b = ring_ctx.ring_verifier(verifier_key_b);
 
-        let batch_b: Vec<_> = (0..TEST_RING_SIZE)
+        let items_b: Vec<_> = (0..TEST_RING_SIZE)
             .into_par_iter()
             .map_init(ark_std::test_rng, |rng, _| {
                 TestItem::<S>::new(&sk, &prover_b, rng)
             })
             .collect();
 
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        for item in batch.iter() {
-            batch_verifier
+        let mut batch = BatchVerifier::<S>::new(&verifier);
+        for item in items.iter() {
+            batch
                 .push(item.io, &item.ad, &item.proof, &verifier)
                 .unwrap();
         }
-        for item in batch_b.iter() {
-            batch_verifier
+        for item in items_b.iter() {
+            batch
                 .push(item.io, &item.ad, &item.proof, &verifier_b)
                 .unwrap();
         }
-        batch_verifier.verify().expect("multi-ring batch verifies");
+        batch.verify().expect("multi-ring batch verifies");
 
         // The batch must use the verifier of each item.
-        let mut batch_verifier = BatchVerifier::<S>::new(&verifier);
-        let item_b = &batch_b[0];
-        batch_verifier
+        let mut batch = BatchVerifier::<S>::new(&verifier);
+        let item_b = &items_b[0];
+        batch
             .push(item_b.io, &item_b.ad, &item_b.proof, &verifier)
             .unwrap();
         assert!(
-            batch_verifier.verify().is_err(),
+            batch.verify().is_err(),
             "ring-B proof must not verify against verifier_a"
         );
     }
@@ -1432,7 +1430,7 @@ pub(crate) mod testing {
     /// The ring backend adds the key commitment to the accumulator seed with
     /// an incomplete formula, and panics if the sum has no affine form. A proof
     /// with such a key commitment must give an error.
-    pub fn batch_rejects_key_commitment<S: RingSuite>(key_commitment: AffinePoint<S>) {
+    pub fn batch_rejects_key_commitment<S: RingSuite>(pk_com: AffinePoint<S>) {
         let rng = &mut ark_std::test_rng();
         let ring_setup = RingSetup::<S>::from_rand_insecure(TEST_RING_SIZE, rng);
         let sk = SecretKey::<S>::from_seed(TEST_SEED);
@@ -1446,15 +1444,15 @@ pub(crate) mod testing {
 
         let ios: [IoPair<S>; 0] = [];
         let mut proof = sk.prove_ring(ios, b"foo", &prover);
-        proof.pedersen_proof.pk_com = key_commitment;
+        proof.pedersen_proof.pk_com = pk_com;
 
         assert!(matches!(
             BatchItem::new(ios, b"foo", &proof, &verifier),
             Err(Error::InvalidData)
         ));
-        let mut batch_verifier = BatchVerifier::new(&verifier);
+        let mut batch = BatchVerifier::new(&verifier);
         assert_eq!(
-            batch_verifier.push(ios, b"foo", &proof, &verifier),
+            batch.push(ios, b"foo", &proof, &verifier),
             Err(Error::InvalidData)
         );
         assert!(proof.verify(ios, b"foo", &verifier).is_err());

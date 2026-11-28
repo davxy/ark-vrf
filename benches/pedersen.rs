@@ -67,15 +67,15 @@ fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
             });
 
         {
-            let mut bv = BatchVerifier::<S>::new();
+            let mut batch = BatchVerifier::<S>::new();
             for (io, ad, proof) in &batch_items[..batch_size] {
-                bv.push(*io, ad, proof);
+                batch.push(*io, ad, proof);
             }
 
             c.benchmark_group(&verify_group)
                 .sample_size(10)
                 .bench_function(id, |b| {
-                    b.iter(|| bv.verify().unwrap());
+                    b.iter(|| batch.verify().unwrap());
                 });
         }
     }

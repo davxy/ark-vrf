@@ -65,20 +65,20 @@ fn vrf_transcript<S: PedersenSuite>(ios: &[IoPair<S>], ad: &[u8]) -> S::Transcri
 /// after the scalars and prove pairs that the key did not produce.
 fn merge_with_key_commitment<S: PedersenSuite>(
     t: &mut S::Transcript,
-    key_commitment: &AffinePoint<S>,
+    pk_com: &AffinePoint<S>,
     ios: &[IoPair<S>],
 ) -> IoPair<S> {
-    t.absorb_serialize(key_commitment);
+    t.absorb_serialize(pk_com);
     utils::delinearize_pairs(t, ios)
 }
 
 /// Same as [`merge_with_key_commitment`], but merges the inputs only.
 fn merge_inputs_with_key_commitment<S: PedersenSuite>(
     t: &mut S::Transcript,
-    key_commitment: &AffinePoint<S>,
+    pk_com: &AffinePoint<S>,
     ios: &[IoPair<S>],
 ) -> Input<S> {
-    t.absorb_serialize(key_commitment);
+    t.absorb_serialize(pk_com);
     utils::delinearize_inputs(t, ios)
 }
 
