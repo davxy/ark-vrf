@@ -12,13 +12,13 @@
 //! use ark_vrf::pedersen::{PedersenSuite, Proof};
 //! use ark_vrf::suites::bandersnatch::*;
 //!
-//! let secret = SecretKey::from_seed([0; 32]);
-//! let pk = secret.public_key();
+//! let sk = SecretKey::from_seed([0; 32]);
+//! let pk = sk.public_key();
 //! let input = Input::new(b"example input").unwrap();
-//! let io = secret.io_pair(input);
+//! let io = sk.io_pair(input);
 //!
-//! // Proving (`secret.prove_pedersen(io, b"aux data")` is the same)
-//! let (proof, blinding) = Proof::prove(io, b"aux data", &secret);
+//! // Proving (`sk.prove_pedersen(io, b"aux data")` is the same)
+//! let (proof, blinding) = Proof::prove(io, b"aux data", &sk);
 //!
 //! // Verification
 //! let res = proof.verify(io, b"aux data");
@@ -47,12 +47,9 @@ pub trait PedersenSuite: Suite {
 
     /// Blinding factor from the secret key and the transcript. The default
     /// derives it with [`Suite::nonce`].
-    fn blinding(
-        secret: &SecretScalar<Self>,
-        mut transcript: Self::Transcript,
-    ) -> SecretScalar<Self> {
+    fn blinding(sk: &SecretScalar<Self>, mut transcript: Self::Transcript) -> SecretScalar<Self> {
         transcript.absorb_raw(&[DomSep::PedersenBlinding as u8]);
-        Self::nonce(secret, transcript)
+        Self::nonce(sk, transcript)
     }
 }
 
@@ -154,16 +151,16 @@ impl<S: PedersenSuite> Proof<S> {
     pub fn prove(
         ios: impl AsRef<[IoPair<S>]>,
         ad: impl AsRef<[u8]>,
-        secret: &SecretKey<S>,
+        sk: &SecretKey<S>,
     ) -> (Self, SecretScalar<S>) {
         let ios = ios.as_ref();
         let mut t = vrf_transcript::<S>(ios, ad.as_ref());
 
         // `k` and `kb` absorb `Yb`, so a hedged `b` also hedges them.
-        let blinding = S::blinding(secret.scalar(), secret.nonce_transcript(&t));
+        let blinding = S::blinding(sk.scalar(), sk.nonce_transcript(&t));
 
         let bb = blinding.mul_point(S::BLINDING_BASE);
-        let pk_com = (secret.public_key().0.into_group() + bb).into_affine();
+        let pk_com = (sk.public_key().0.into_group() + bb).into_affine();
 
         let input = merge_inputs_with_key_commitment::<S>(&mut t, &pk_com, ios);
 
@@ -174,7 +171,7 @@ impl<S: PedersenSuite> Proof<S> {
         if ios.len() > 1 {
             nonce_transcript.absorb_raw(&[0xff]);
         }
-        let k = S::nonce(secret.scalar(), nonce_transcript.clone());
+        let k = S::nonce(sk.scalar(), nonce_transcript.clone());
         let kb = S::nonce(&blinding, nonce_transcript);
 
         let r = k.mul_point(S::GENERATOR) + kb.mul_point(S::BLINDING_BASE);
@@ -185,7 +182,7 @@ impl<S: PedersenSuite> Proof<S> {
 
         let c = S::challenge(&[&r, &ok], t);
 
-        let s = k.response(c, secret.scalar());
+        let s = k.response(c, sk.scalar());
         let sb = kb.response(c, &blinding);
 
         let proof = Proof {
@@ -409,29 +406,29 @@ pub(crate) mod testing {
     use crate::testing::{self as common, CheckPoint, SuiteExt, TEST_SEED, random_val};
 
     pub fn prove_verify<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.io_pair(input);
+        let io = sk.io_pair(input);
 
-        let (proof, blinding) = secret.prove_pedersen(io, b"foo");
+        let (proof, blinding) = sk.prove_pedersen(io, b"foo");
         let res = proof.verify(io, b"foo");
         assert!(res.is_ok());
 
         assert_eq!(
             proof.key_commitment(),
-            (secret.public_key().0 + S::BLINDING_BASE * *blinding.expose_secret()).into()
+            (sk.public_key().0 + S::BLINDING_BASE * *blinding.expose_secret()).into()
         );
     }
 
     pub fn batch_verify<S: PedersenSuite>() {
         use pedersen::{BatchItem, BatchVerifier};
 
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.io_pair(input);
+        let io = sk.io_pair(input);
 
-        let (proof1, _) = secret.prove_pedersen(io, b"foo");
-        let (proof2, _) = secret.prove_pedersen(io, b"bar");
+        let (proof1, _) = sk.prove_pedersen(io, b"foo");
+        let (proof2, _) = sk.prove_pedersen(io, b"bar");
 
         assert!(proof1.verify(io, b"foo").is_ok());
         assert!(proof2.verify(io, b"bar").is_ok());
@@ -459,12 +456,12 @@ pub(crate) mod testing {
 
     /// N=1 slice produces same proof as passing a single `IoPair`.
     pub fn prove_verify_multi_single<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(None));
-        let io = secret.io_pair(input);
+        let io = sk.io_pair(input);
 
-        let (proof_single, blinding_single) = secret.prove_pedersen(io, b"foo");
-        let (proof_slice, blinding_slice) = secret.prove_pedersen([io], b"foo");
+        let (proof_single, blinding_single) = sk.prove_pedersen(io, b"foo");
+        let (proof_slice, blinding_slice) = sk.prove_pedersen([io], b"foo");
 
         let encode = |p: &pedersen::Proof<S>| {
             let mut buf = Vec::new();
@@ -482,24 +479,24 @@ pub(crate) mod testing {
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
 
         let mut ios: Vec<IoPair<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                secret.io_pair(input)
+                sk.io_pair(input)
             })
             .collect();
         ios.push(IoPair {
             input: Input::from_affine_unchecked(S::Affine::generator()),
-            output: Output::from_affine_unchecked(secret.public_key().0),
+            output: Output::from_affine_unchecked(sk.public_key().0),
         });
 
-        let (proof, _) = secret.prove_pedersen(&ios[..], b"bar");
+        let (proof, _) = sk.prove_pedersen(&ios[..], b"bar");
         assert!(proof.verify(&ios[..], b"bar").is_ok());
 
         let mut bad_ios = ios.clone();
-        bad_ios[1].output = secret.output(ios[0].input);
+        bad_ios[1].output = sk.output(ios[0].input);
         assert!(proof.verify(&bad_ios[..], b"bar").is_err());
 
         let mut bad_ios = ios.clone();
@@ -511,10 +508,10 @@ pub(crate) mod testing {
 
     /// With no VRF pairs, the proof is a Schnorr signature over `ad`.
     pub fn prove_verify_multi_empty<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
 
         let ios: [IoPair<S>; 0] = [];
-        let (proof, _) = secret.prove_pedersen(ios, b"bar");
+        let (proof, _) = sk.prove_pedersen(ios, b"bar");
 
         assert!(proof.verify(ios, b"bar").is_ok());
 
@@ -526,9 +523,9 @@ pub(crate) mod testing {
     pub fn proof_encoding_is_canonical<S: PedersenSuite>() {
         use ark_serialize::Compress;
 
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
         let ios: [IoPair<S>; 0] = [];
-        let (proof, _) = secret.prove_pedersen(ios, b"foo");
+        let (proof, _) = sk.prove_pedersen(ios, b"foo");
         assert!(proof.ok.is_zero());
 
         let mut bytes = Vec::new();
@@ -559,12 +556,12 @@ pub(crate) mod testing {
         use crate::utils::common::MSM_THRESHOLD;
         use pedersen::BatchVerifier;
 
-        let secret = SecretKey::<S>::from_seed(TEST_SEED);
+        let sk = SecretKey::<S>::from_seed(TEST_SEED);
         let ios: Vec<IoPair<S>> = (0..MSM_THRESHOLD as u8)
-            .map(|i| secret.io_pair(Input::new(&[i]).unwrap()))
+            .map(|i| sk.io_pair(Input::new(&[i]).unwrap()))
             .collect();
 
-        let (proof, _) = secret.prove_pedersen(&ios[..], b"msm");
+        let (proof, _) = sk.prove_pedersen(&ios[..], b"msm");
         assert!(proof.verify(&ios[..], b"msm").is_ok());
         let mut batch = BatchVerifier::new();
         batch.push(&ios[..], b"msm", &proof);
@@ -590,18 +587,18 @@ pub(crate) mod testing {
         };
 
         for seed in [TEST_SEED, [0x11; 32]] {
-            let secret = SecretKey::<S>::from_seed(seed);
+            let sk = SecretKey::<S>::from_seed(seed);
 
-            let (proof, _) = secret.prove_pedersen([identity_io], b"forgery");
+            let (proof, _) = sk.prove_pedersen([identity_io], b"forgery");
             assert!(proof.verify([identity_io], b"forgery").is_err());
 
             let mut batch = BatchVerifier::new();
             batch.push([identity_io], b"forgery", &proof);
             assert!(batch.verify().is_err());
 
-            let good_io = secret.io_pair(Input::new(b"good").unwrap());
+            let good_io = sk.io_pair(Input::new(b"good").unwrap());
             let ios = [good_io, identity_io];
-            let (proof, _) = secret.prove_pedersen(ios, b"forgery");
+            let (proof, _) = sk.prove_pedersen(ios, b"forgery");
             assert!(proof.verify(ios, b"forgery").is_err());
 
             let mut batch = BatchVerifier::new();
@@ -680,10 +677,10 @@ pub(crate) mod testing {
     /// and names the signer of two such ring proofs in two different rings.
     #[cfg(feature = "hedged-nonce")]
     pub fn key_commitment_unlinkable<S: PedersenSuite>() {
-        let secret = SecretKey::<S>::from_seed(TEST_SEED).with_hedged_nonce();
+        let sk = SecretKey::<S>::from_seed(TEST_SEED).with_hedged_nonce();
         let ios: [IoPair<S>; 0] = [];
-        let (first, _) = secret.prove_pedersen(ios, b"ad");
-        let (second, _) = secret.prove_pedersen(ios, b"ad");
+        let (first, _) = sk.prove_pedersen(ios, b"ad");
+        let (second, _) = sk.prove_pedersen(ios, b"ad");
         assert!(first.verify(ios, b"ad").is_ok());
         assert!(second.verify(ios, b"ad").is_ok());
         assert_ne!(first.key_commitment(), second.key_commitment());
@@ -806,8 +803,8 @@ pub(crate) mod testing {
                 input: Input::<S>::from_affine_unchecked(base.h),
                 output: Output::from_affine_unchecked(base.gamma),
             };
-            let secret = SecretKey::from_scalar(base.sk);
-            let (proof, blind) = secret.prove_pedersen(io, ad);
+            let sk = SecretKey::from_scalar(base.sk);
+            let (proof, blind) = sk.prove_pedersen(io, ad);
             let blind = *blind.expose_secret();
             Self { base, blind, proof }
         }

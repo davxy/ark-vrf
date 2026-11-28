@@ -513,10 +513,10 @@ mod tests {
     #[cfg(feature = "hedged-nonce")]
     #[test]
     fn hedge_changes_the_nonce_on_each_call() {
-        let secret = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
+        let sk = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
         let transcript = <TestSuite as Suite>::Transcript::new(b"test");
-        let first = nonce::<TestSuite>(&secret, hedge(transcript.clone()));
-        let second = nonce::<TestSuite>(&secret, hedge(transcript));
+        let first = nonce::<TestSuite>(&sk, hedge(transcript.clone()));
+        let second = nonce::<TestSuite>(&sk, hedge(transcript));
         assert_ne!(first.expose_secret(), second.expose_secret());
     }
 

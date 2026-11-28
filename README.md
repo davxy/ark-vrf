@@ -41,16 +41,16 @@ vectors are in `data/`; see [`data/README.md`](data/README.md).
 use ark_vrf::suites::bandersnatch::*;
 
 // Create a secret key from a seed
-let secret = SecretKey::from_seed([0; 32]);
+let sk = SecretKey::from_seed([0; 32]);
 
 // Derive the corresponding public key
-let pk = secret.public_key();
+let pk = sk.public_key();
 
 // Create an input by hashing data to a curve point
 let input = Input::new(b"example input").unwrap();
 
 // Compute the VRF output (gamma point)
-let output = secret.output(input);
+let output = sk.output(input);
 
 // Get a deterministic hash from the VRF output point
 let hash_bytes: [u8; 32] = output.hash();
@@ -62,10 +62,10 @@ Compact VRF-AD producing a short `(c, s)` proof.
 
 _Prove_
 ```rust,ignore
-let io = secret.io_pair(input);
+let io = sk.io_pair(input);
 
 // Generate a proof that binds the input-output pair and auxiliary data
-let proof = TinyProof::prove(io, b"aux data", &secret);
+let proof = TinyProof::prove(io, b"aux data", &sk);
 ```
 
 _Verify_
@@ -75,7 +75,7 @@ let res = proof.verify(io, b"aux data", &pk);
 assert!(res.is_ok());
 ```
 
-The keys have the same operations as methods: `secret.prove_tiny(io, ad)` and
+The keys have the same operations as methods: `sk.prove_tiny(io, ad)` and
 `pk.verify_tiny(io, ad, &proof)`.
 
 ### Thin-VRF
@@ -84,8 +84,8 @@ VRF-AD with an `(R, s)` proof, which supports batch verification.
 
 _Prove_
 ```rust,ignore
-let io = secret.io_pair(input);
-let proof = ThinProof::prove(io, b"aux data", &secret);
+let io = sk.io_pair(input);
+let proof = ThinProof::prove(io, b"aux data", &sk);
 ```
 
 _Verify_
@@ -94,13 +94,13 @@ let res = proof.verify(io, b"aux data", &pk);
 assert!(res.is_ok());
 ```
 
-As for Tiny, the keys have the same operations as methods: `secret.prove_thin`
+As for Tiny, the keys have the same operations as methods: `sk.prove_thin`
 and `pk.verify_thin`.
 
 _Batch verify_
 ```rust,ignore
-let proof1 = ThinProof::prove(io, b"data1", &secret);
-let proof2 = ThinProof::prove(io, b"data2", &secret);
+let proof1 = ThinProof::prove(io, b"data1", &sk);
+let proof2 = ThinProof::prove(io, b"data2", &sk);
 
 let mut batch = ThinBatchVerifier::new();
 batch.push(io, b"data1", &proof1, &pk);
@@ -114,10 +114,10 @@ The proof holds a Pedersen commitment to the secret key instead of the public ke
 
 _Prove_
 ```rust,ignore
-let io = secret.io_pair(input);
+let io = sk.io_pair(input);
 
 // Generate a proof with a blinding factor
-let (proof, blinding) = PedersenProof::prove(io, b"aux data", &secret);
+let (proof, blinding) = PedersenProof::prove(io, b"aux data", &sk);
 
 // The proof includes a commitment to the public key
 let key_commitment = proof.key_commitment();
@@ -140,7 +140,7 @@ let expected = (pk.into_affine() + blinding.mul_point(BandersnatchSha512Ell2::BL
 assert_eq!(proof.key_commitment(), expected);
 ```
 
-The secret key has the same operation as a method: `secret.prove_pedersen`.
+The secret key has the same operation as a method: `sk.prove_pedersen`.
 Verification needs no public key, so `PublicKey` has no Pedersen method.
 
 ### Ring-VRF
@@ -200,12 +200,12 @@ let ring_ctx = ring_setup.ring_context();
 // Create a prover instance for the specific position in the ring
 let prover = ring_ctx.ring_prover(prover_key, prover_key_index);
 
-let io = secret.io_pair(input);
+let io = sk.io_pair(input);
 
 // Generate a zero-knowledge proof that:
 // 1. The prover knows a secret key for one of the public keys in the ring
 // 2. That secret key was used to generate the VRF output
-let proof = RingProof::prove(io, b"aux data", &secret, &prover);
+let proof = RingProof::prove(io, b"aux data", &sk, &prover);
 ```
 
 _Verify_
@@ -224,7 +224,7 @@ let verifier = ring_ctx.ring_verifier(verifier_key);
 let res = proof.verify(io, b"aux data", &verifier);
 ```
 
-The secret key has the same operation as a method: `secret.prove_ring`.
+The secret key has the same operation as a method: `sk.prove_ring`.
 
 _Both keys_
 ```rust,ignore

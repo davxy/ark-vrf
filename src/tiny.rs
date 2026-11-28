@@ -10,19 +10,19 @@
 //! use ark_vrf::suites::bandersnatch::*;
 //! use ark_vrf::tiny::Proof;
 //!
-//! let secret = SecretKey::from_seed([0; 32]);
-//! let pk = secret.public_key();
+//! let sk = SecretKey::from_seed([0; 32]);
+//! let pk = sk.public_key();
 //! let input = Input::new(b"example input").unwrap();
-//! let io = secret.io_pair(input);
+//! let io = sk.io_pair(input);
 //!
 //! // Proving
-//! let proof = Proof::prove(io, b"aux data", &secret);
+//! let proof = Proof::prove(io, b"aux data", &sk);
 //!
 //! // Verification
 //! let res = proof.verify(io, b"aux data", &pk);
 //!
 //! // The same, as methods of the keys
-//! let proof = secret.prove_tiny(io, b"aux data");
+//! let proof = sk.prove_tiny(io, b"aux data");
 //! let res = pk.verify_tiny(io, b"aux data", &proof);
 //! ```
 
@@ -132,18 +132,14 @@ impl<S: TinySuite> ark_serialize::Valid for Proof<S> {
 
 impl<S: TinySuite> Proof<S> {
     /// Prove the VRF I/O pairs `ios` with the additional data `ad`.
-    pub fn prove(
-        ios: impl AsRef<[IoPair<S>]>,
-        ad: impl AsRef<[u8]>,
-        secret: &SecretKey<S>,
-    ) -> Self {
-        let (t, input) = vrf_transcript_input::<S>(secret.public_key(), ios, ad);
+    pub fn prove(ios: impl AsRef<[IoPair<S>]>, ad: impl AsRef<[u8]>, sk: &SecretKey<S>) -> Self {
+        let (t, input) = vrf_transcript_input::<S>(sk.public_key(), ios, ad);
 
-        let k = S::nonce(secret.scalar(), secret.nonce_transcript(&t));
+        let k = S::nonce(sk.scalar(), sk.nonce_transcript(&t));
         let r = k.mul_point(input.0).into_affine();
 
         let c = S::challenge(&[&r], t);
-        let s = k.response(c, secret.scalar());
+        let s = k.response(c, sk.scalar());
         Proof { c, s }
     }
 
@@ -205,22 +201,22 @@ pub mod testing {
     use crate::testing::{self as common, SuiteExt};
 
     pub fn prove_verify<S: TinySuite>() {
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
         let input = Input::from_affine_unchecked(common::random_val(None));
-        let io = secret.io_pair(input);
+        let io = sk.io_pair(input);
 
-        let proof = secret.prove_tiny(io, b"foo");
+        let proof = sk.prove_tiny(io, b"foo");
         let res = pk.verify_tiny(io, b"foo", &proof);
         assert!(res.is_ok());
     }
 
     pub fn prove_verify_multi_empty<S: TinySuite>() {
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
 
         let ios: [IoPair<S>; 0] = [];
-        let proof = secret.prove_tiny(ios, b"bar");
+        let proof = sk.prove_tiny(ios, b"bar");
 
         assert!(pk.verify_tiny(ios, b"bar", &proof).is_ok());
         assert!(pk.verify_tiny(ios, b"baz", &proof).is_err());
@@ -228,13 +224,13 @@ pub mod testing {
 
     /// N=1 slice produces same proof as passing a single `IoPair`.
     pub fn prove_verify_multi_single<S: TinySuite>() {
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
         let input = Input::from_affine_unchecked(common::random_val(None));
-        let io = secret.io_pair(input);
+        let io = sk.io_pair(input);
 
-        let proof_single = secret.prove_tiny(io, b"foo");
-        let proof_slice = secret.prove_tiny([io], b"foo");
+        let proof_single = sk.prove_tiny(io, b"foo");
+        let proof_slice = sk.prove_tiny([io], b"foo");
 
         let encode = |p: &tiny::Proof<S>| {
             let mut buf = Vec::new();
@@ -250,9 +246,9 @@ pub mod testing {
     /// verifier must reject it also for a key that skipped the checked decoder.
     pub fn identity_public_key_rejected<S: TinySuite>() {
         let identity = PublicKey::<S>::from_affine_unchecked(AffinePoint::<S>::zero());
-        let zero_secret = SecretKey::<S>::from_scalar(ScalarField::<S>::zero());
+        let zero_sk = SecretKey::<S>::from_scalar(ScalarField::<S>::zero());
 
-        let proof = zero_secret.prove_tiny([], b"forgery");
+        let proof = zero_sk.prove_tiny([], b"forgery");
         assert!(identity.verify_tiny([], b"forgery", &proof).is_err());
     }
 
@@ -266,15 +262,15 @@ pub mod testing {
         };
 
         for seed in [common::TEST_SEED, [0x11; 32]] {
-            let secret = SecretKey::<S>::from_seed(seed);
-            let pk = secret.public_key();
+            let sk = SecretKey::<S>::from_seed(seed);
+            let pk = sk.public_key();
 
-            let proof = secret.prove_tiny([identity_io], b"forgery");
+            let proof = sk.prove_tiny([identity_io], b"forgery");
             assert!(pk.verify_tiny([identity_io], b"forgery", &proof).is_err());
 
-            let good_io = secret.io_pair(Input::new(b"good").unwrap());
+            let good_io = sk.io_pair(Input::new(b"good").unwrap());
             let ios = [good_io, identity_io];
-            let proof = secret.prove_tiny(ios, b"forgery");
+            let proof = sk.prove_tiny(ios, b"forgery");
             assert!(pk.verify_tiny(ios, b"forgery", &proof).is_err());
         }
     }
@@ -283,9 +279,9 @@ pub mod testing {
     /// gives `R = (0, 0, 0, 0)`, which has no affine form. Verify must return an
     /// error and not panic.
     pub fn off_curve_point_rejected<S: TinySuite>() {
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let io = secret.io_pair(Input::new(b"foo").unwrap());
-        let proof = secret.prove_tiny(io, b"bar");
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let io = sk.io_pair(Input::new(b"foo").unwrap());
+        let proof = sk.prove_tiny(io, b"bar");
         let off_curve = common::off_curve_point::<S>();
 
         let pk = PublicKey::<S>::from_affine_unchecked(off_curve);
@@ -293,18 +289,18 @@ pub mod testing {
 
         let input = Input::from_affine_unchecked(off_curve);
         let io = IoPair { input, ..io };
-        assert!(secret.public_key().verify_tiny(io, b"bar", &proof).is_err());
+        assert!(sk.public_key().verify_tiny(io, b"bar", &proof).is_err());
     }
 
     /// N=3 multi proof: verify succeeds; tampered output/input/ad fails.
     pub fn prove_verify_multi<S: TinySuite>() {
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
 
         let mut ios: Vec<IoPair<S>> = (0..3u8)
             .map(|i| {
                 let input = Input::new(&[i + 1]).unwrap();
-                secret.io_pair(input)
+                sk.io_pair(input)
             })
             .collect();
         ios.push(IoPair {
@@ -312,11 +308,11 @@ pub mod testing {
             output: Output::from_affine_unchecked(pk.0),
         });
 
-        let proof = secret.prove_tiny(&ios[..], b"bar");
+        let proof = sk.prove_tiny(&ios[..], b"bar");
         assert!(pk.verify_tiny(&ios[..], b"bar", &proof).is_ok());
 
         let mut bad_ios = ios.clone();
-        bad_ios[1].output = secret.output(ios[0].input);
+        bad_ios[1].output = sk.output(ios[0].input);
         assert!(pk.verify_tiny(&bad_ios[..], b"bar", &proof).is_err());
 
         let mut bad_ios = ios.clone();
@@ -331,13 +327,13 @@ pub mod testing {
     pub fn prove_verify_multi_msm<S: TinySuite>() {
         use crate::utils::common::MSM_THRESHOLD;
 
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
         let ios: Vec<IoPair<S>> = (0..MSM_THRESHOLD as u8)
-            .map(|i| secret.io_pair(Input::new(&[i]).unwrap()))
+            .map(|i| sk.io_pair(Input::new(&[i]).unwrap()))
             .collect();
 
-        let proof = secret.prove_tiny(&ios[..], b"msm");
+        let proof = sk.prove_tiny(&ios[..], b"msm");
         assert!(pk.verify_tiny(&ios[..], b"msm", &proof).is_ok());
 
         let mut bad_ios = ios.clone();
@@ -352,11 +348,11 @@ pub mod testing {
     fn hedged_key_uses_new_nonces() {
         use crate::suites::testing::TestSuite as S;
 
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED).with_hedged_nonce();
-        let pk = secret.public_key();
-        let io = secret.io_pair(Input::new(b"input").unwrap());
-        let first = secret.prove_tiny(io, b"ad");
-        let second = secret.prove_tiny(io, b"ad");
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED).with_hedged_nonce();
+        let pk = sk.public_key();
+        let io = sk.io_pair(Input::new(b"input").unwrap());
+        let first = sk.prove_tiny(io, b"ad");
+        let second = sk.prove_tiny(io, b"ad");
         assert!(pk.verify_tiny(io, b"ad", &first).is_ok());
         assert!(pk.verify_tiny(io, b"ad", &second).is_ok());
         assert_ne!(first.s, second.s);
@@ -498,10 +494,10 @@ pub mod testing {
         use crate::suites::testing::TestSuite256 as S;
 
         assert_eq!(S::CHALLENGE_LEN, 32);
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
-        let io = secret.io_pair(Input::new(b"wide").unwrap());
-        let proof = secret.prove_tiny(io, b"ad");
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
+        let io = sk.io_pair(Input::new(b"wide").unwrap());
+        let proof = sk.prove_tiny(io, b"ad");
         let c_bytes = common::scalar_encode::<S>(&proof.c);
         assert!(c_bytes[16..].iter().any(|byte| *byte != 0));
 
@@ -522,10 +518,10 @@ pub mod testing {
 
         assert_eq!(S::SECURITY_PARAMETER, 128);
         assert_eq!(S::CHALLENGE_LEN, 32);
-        let secret = SecretKey::<S>::from_seed(common::TEST_SEED);
-        let pk = secret.public_key();
-        let io = secret.io_pair(Input::new(b"wide").unwrap());
-        let proof = secret.prove_tiny(io, b"ad");
+        let sk = SecretKey::<S>::from_seed(common::TEST_SEED);
+        let pk = sk.public_key();
+        let io = sk.io_pair(Input::new(b"wide").unwrap());
+        let proof = sk.prove_tiny(io, b"ad");
         let c_bytes = common::scalar_encode::<S>(&proof.c);
         assert!(c_bytes[16..].iter().any(|byte| *byte != 0));
 

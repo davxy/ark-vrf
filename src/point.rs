@@ -282,10 +282,10 @@ mod tests {
         type S = TestSuite;
         type Sc = ScalarField<S>;
 
-        let secret = crate::SecretKey::<S>::from_seed(TEST_SEED);
-        let pk = secret.public_key();
+        let sk = crate::SecretKey::<S>::from_seed(TEST_SEED);
+        let pk = sk.public_key();
         let input = Input::new(b"uniqueness attack").unwrap();
-        let honest_output = secret.output(input);
+        let honest_output = sk.output(input);
 
         // (0, -1) has order 2 on Ed25519.
         let low_order_pt =
@@ -334,7 +334,7 @@ mod tests {
             let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
-                let s = k + c * secret.scalar().expose_secret();
+                let s = k + c * sk.scalar().expose_secret();
                 break crate::tiny::Proof { c, s };
             }
             ctr += 1;
@@ -347,7 +347,7 @@ mod tests {
             input,
             output: honest_output,
         };
-        let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
+        let honest_proof = sk.prove_tiny(honest_io, ad.as_bytes());
         assert!(
             pk.verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
                 .is_ok()

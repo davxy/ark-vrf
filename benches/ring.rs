@@ -12,7 +12,7 @@ use rayon::prelude::*;
 const RING_SIZES: [usize; 3] = [255, 1023, 2047];
 
 struct BenchSetup<S: RingSuite> {
-    secret: SecretKey<S>,
+    sk: SecretKey<S>,
     io: IoPair<S>,
     ring: Vec<PublicKey<S>>,
     prover_idx: usize,
@@ -21,10 +21,10 @@ struct BenchSetup<S: RingSuite> {
 
 fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let mut rng = ark_std::test_rng();
-    let secret = SecretKey::<S>::from_seed([0; 32]);
-    let pk = secret.public_key();
+    let sk = SecretKey::<S>::from_seed([0; 32]);
+    let pk = sk.public_key();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.io_pair(input);
+    let io = sk.io_pair(input);
 
     let prover_idx = 3;
     let mut ring: Vec<PublicKey<S>> = (0..ring_size)
@@ -35,7 +35,7 @@ fn make_ring_setup<S: RingSuite>(ring_size: usize) -> BenchSetup<S> {
     let ring_setup = ring::RingSetup::<S>::from_rand_insecure(ring_size, &mut rng);
 
     BenchSetup {
-        secret,
+        sk,
         io,
         ring,
         prover_idx,
@@ -96,10 +96,10 @@ fn ring_benches<S: RingSuite>(c: &mut Criterion) {
         c.benchmark_group(format!("{}/ring_prove", S::SUITE_NAME))
             .sample_size(10)
             .bench_function(id.clone(), |b| {
-                b.iter(|| Proof::prove(setup.io, b"ad", &setup.secret, black_box(&prover)));
+                b.iter(|| Proof::prove(setup.io, b"ad", &setup.sk, black_box(&prover)));
             });
 
-        let proof = Proof::prove(setup.io, b"ad", &setup.secret, &prover);
+        let proof = Proof::prove(setup.io, b"ad", &setup.sk, &prover);
         let commitment = verifier_key.commitment();
         let verifier = ring_ctx.ring_verifier(verifier_key.clone());
 
@@ -181,9 +181,9 @@ fn batch_benches<S: RingSuite>(c: &mut Criterion) {
         .into_par_iter()
         .map(|i| {
             let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
-            let io = setup.secret.io_pair(input);
+            let io = setup.sk.io_pair(input);
             let ad = format!("ad-{i}").into_bytes();
-            let proof = Proof::prove(io, &ad, &setup.secret, &prover);
+            let proof = Proof::prove(io, &ad, &setup.sk, &prover);
             let prev = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let prev_pct = prev * 10 / max_batch_size;
             let curr_pct = (prev + 1) * 10 / max_batch_size;

@@ -7,11 +7,11 @@ use bench_utils::SuiteExt;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_vrf_output<S: Suite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
     let name = format!("{}/vrf_output", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| secret.output(black_box(input)));
+        b.iter(|| sk.output(black_box(input)));
     });
 }
 
@@ -45,10 +45,10 @@ where
 }
 
 fn bench_challenge<S: Suite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
-    let pk = secret.public_key().into_affine();
+    let sk = SecretKey::<S>::from_seed([0; 32]);
+    let pk = sk.public_key().into_affine();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let output = secret.output(input).into_affine();
+    let output = sk.output(input).into_affine();
     let input = input.into_affine();
     let generator = S::GENERATOR;
 
@@ -74,11 +74,11 @@ fn bench_point_to_hash<S: Suite>(c: &mut Criterion) {
 }
 
 fn bench_nonce<S: Suite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
 
     let name = format!("{}/nonce", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| S::nonce(black_box(secret.scalar()), S::Transcript::new(S::SUITE_ID)));
+        b.iter(|| S::nonce(black_box(sk.scalar()), S::Transcript::new(S::SUITE_ID)));
     });
 }
 

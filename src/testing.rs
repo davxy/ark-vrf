@@ -493,11 +493,11 @@ where
     let Some(torsion) = AffinePoint::<S>::torsion_point() else {
         return;
     };
-    let secret = SecretKey::<S>::from_seed(TEST_SEED);
+    let sk = SecretKey::<S>::from_seed(TEST_SEED);
     let input = Input::<S>::new(b"low order").unwrap();
-    let output = secret.output(input);
+    let output = sk.output(input);
 
-    assert_torsion_rejected(secret.public_key(), torsion);
+    assert_torsion_rejected(sk.public_key(), torsion);
     let bad_output = assert_torsion_rejected(output, torsion);
     assert_ne!(output.hash::<32>(), bad_output.hash::<32>());
 }
