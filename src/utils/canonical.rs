@@ -201,9 +201,9 @@ mod tests {
         type Proof = crate::thin::Proof<TestSuite>;
         type Decode = fn(&[u8]) -> Result<Proof, SerializationError>;
 
-        let secret = SecretKey::<TestSuite>::from_seed(TEST_SEED);
-        let io = secret.io_pair(Input::from_affine_unchecked(random_val(None)));
-        let proof = secret.prove_thin(io, b"ad");
+        let sk = SecretKey::<TestSuite>::from_seed(TEST_SEED);
+        let io = sk.io_pair(Input::from_affine_unchecked(random_val(None)));
+        let proof = sk.prove_thin(io, b"ad");
         let mut compressed = Vec::new();
         proof.serialize_compressed(&mut compressed).unwrap();
         let mut uncompressed = Vec::new();
@@ -216,7 +216,7 @@ mod tests {
         assert!(Proof::deserialize_with_mode_exact(&longer, Compress::Yes, Validate::Yes).is_err());
 
         let exact = Proof::deserialize_compressed_exact(&compressed).unwrap();
-        assert!(secret.public().verify_thin(io, b"ad", &exact).is_ok());
+        assert!(sk.public_key().verify_thin(io, b"ad", &exact).is_ok());
 
         let decoders: [(&[u8], Decode); 4] = [
             (&compressed, Proof::deserialize_compressed_exact),

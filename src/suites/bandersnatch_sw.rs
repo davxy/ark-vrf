@@ -167,8 +167,8 @@ mod tests {
             .map(|x| EdwardsAffine::new_unchecked(x, k / x))
             .find(|p| p.is_on_curve() && p.is_in_correct_subgroup_assuming_on_curve())
             .unwrap();
-        let key_commitment = te_to_sw::<BandersnatchConfig>(&point).unwrap();
-        assert!(key_commitment.check().is_ok());
-        crate::ring::testing::batch_rejects_key_commitment::<ThisSuite>(key_commitment);
+        let pk_com = te_to_sw::<BandersnatchConfig>(&point).unwrap();
+        assert!(pk_com.check().is_ok());
+        crate::ring::testing::batch_rejects_key_commitment::<ThisSuite>(pk_com);
     }
 }

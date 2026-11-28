@@ -230,8 +230,8 @@ mod tests {
     /// the only way to read the point.
     #[test]
     fn point_wrapper_point_accessor() {
-        let public = SecretKey::from_seed(TEST_SEED).public();
-        assert_eq!(public.into_affine(), public.0);
+        let pk = SecretKey::from_seed(TEST_SEED).public_key();
+        assert_eq!(pk.into_affine(), pk.0);
     }
 
     /// The subgroup check accepts the identity. Its secret key is zero, so the
@@ -282,10 +282,10 @@ mod tests {
         type S = TestSuite;
         type Sc = ScalarField<S>;
 
-        let secret = crate::SecretKey::<S>::from_seed(TEST_SEED);
-        let public = secret.public();
+        let sk = crate::SecretKey::<S>::from_seed(TEST_SEED);
+        let pk = sk.public_key();
         let input = Input::new(b"uniqueness attack").unwrap();
-        let honest_output = secret.output(input);
+        let honest_output = sk.output(input);
 
         // (0, -1) has order 2 on Ed25519.
         let low_order_pt =
@@ -311,7 +311,7 @@ mod tests {
             let ad = format!("ad-{ad_ctr}");
             let (t, zs) = utils::vrf_transcript_scalars_with_schnorr(
                 DomSep::TinyVrf,
-                public.0,
+                pk,
                 mal_ios,
                 ad.as_bytes(),
             );
@@ -334,27 +334,22 @@ mod tests {
             let c = S::challenge(&[&r], t.clone());
 
             if !c.into_bigint().is_even() {
-                let s = k + c * secret.scalar().expose_secret();
+                let s = k + c * sk.scalar().expose_secret();
                 break crate::tiny::Proof { c, s };
             }
             ctr += 1;
             assert!(ctr <= 1000, "Grinding failed");
         };
 
-        assert!(
-            public
-                .verify_tiny(malicious_io, ad.as_bytes(), &proof)
-                .is_ok()
-        );
+        assert!(pk.verify_tiny(malicious_io, ad.as_bytes(), &proof).is_ok());
 
         let honest_io = IoPair {
             input,
             output: honest_output,
         };
-        let honest_proof = secret.prove_tiny(honest_io, ad.as_bytes());
+        let honest_proof = sk.prove_tiny(honest_io, ad.as_bytes());
         assert!(
-            public
-                .verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
+            pk.verify_tiny(honest_io, ad.as_bytes(), &honest_proof)
                 .is_ok()
         );
 

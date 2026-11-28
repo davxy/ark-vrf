@@ -202,9 +202,9 @@ impl<S: Suite> SecretKey<S> {
     pub fn from_rand(rng: &mut impl ark_std::rand::RngCore) -> Self {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
-        let secret = Self::from_seed(seed);
+        let sk = Self::from_seed(seed);
         seed.zeroize();
-        secret
+        sk
     }
 
     /// Get the secret scalar.
@@ -213,7 +213,7 @@ impl<S: Suite> SecretKey<S> {
     }
 
     /// Get the associated public key.
-    pub fn public(&self) -> PublicKey<S> {
+    pub fn public_key(&self) -> PublicKey<S> {
         self.public
     }
 
@@ -241,9 +241,9 @@ mod tests {
     fn vrf_output_check() {
         use ark_std::rand::SeedableRng;
         let mut rng = ark_std::rand::rngs::StdRng::from_seed([42; 32]);
-        let secret = SecretKey::from_seed(TEST_SEED);
+        let sk = SecretKey::from_seed(TEST_SEED);
         let input = Input::from_affine_unchecked(random_val(Some(&mut rng)));
-        let output = secret.output(input);
+        let output = sk.output(input);
 
         let expected = "4af9bf572a107a8f61faa380667efe27eaf399cc8e718d57ef328924eb51d450";
         assert_eq!(expected, hex::encode(output.hash::<32>()));
@@ -252,9 +252,9 @@ mod tests {
     /// One `{:?}` on a secret in a downstream log must not leak the key.
     #[test]
     fn secret_debug_redacts_scalar() {
-        let secret = SecretKey::from_seed(TEST_SEED);
-        let out = std::format!("{:?}", secret);
-        let scalar_str = std::format!("{:?}", secret.scalar().expose_secret());
+        let sk = SecretKey::from_seed(TEST_SEED);
+        let out = std::format!("{:?}", sk);
+        let scalar_str = std::format!("{:?}", sk.scalar().expose_secret());
         assert!(!out.contains(&scalar_str));
     }
 
@@ -270,28 +270,28 @@ mod tests {
     /// Equality semantics must survive the switch to the constant-time impl.
     #[test]
     fn secret_partial_eq() {
-        let secret = SecretKey::from_seed(TEST_SEED);
-        assert_eq!(secret, SecretKey::from_seed(TEST_SEED));
-        assert_ne!(secret, SecretKey::from_seed([0xff; 32]));
+        let sk = SecretKey::from_seed(TEST_SEED);
+        assert_eq!(sk, SecretKey::from_seed(TEST_SEED));
+        assert_ne!(sk, SecretKey::from_seed([0xff; 32]));
     }
 
     /// A stored secret key or blinding factor must decode after an update.
     /// Both use the plain scalar bytes, as the blinding factor before 0.7.0.
     #[test]
     fn secret_encodings_are_scalar_encoding() {
-        let secret = SecretKey::from_seed(TEST_SEED);
-        let scalar = *secret.scalar().expose_secret();
+        let sk = SecretKey::from_seed(TEST_SEED);
+        let scalar = *sk.scalar().expose_secret();
         let expected = scalar_encode::<TestSuite>(&scalar);
 
         let mut buf = Vec::new();
-        secret.scalar().serialize_compressed(&mut buf).unwrap();
+        sk.scalar().serialize_compressed(&mut buf).unwrap();
         assert_eq!(buf, expected);
         let decoded = SecretScalar::deserialize_compressed(&buf[..]).unwrap();
         assert_eq!(decoded.expose_secret(), &scalar);
 
         buf.clear();
-        secret.serialize_compressed(&mut buf).unwrap();
+        sk.serialize_compressed(&mut buf).unwrap();
         assert_eq!(buf, expected);
-        assert_eq!(SecretKey::deserialize_compressed(&buf[..]).unwrap(), secret);
+        assert_eq!(SecretKey::deserialize_compressed(&buf[..]).unwrap(), sk);
     }
 }

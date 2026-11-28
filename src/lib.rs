@@ -48,10 +48,10 @@
 //! ```rust,ignore
 //! use ark_vrf::suites::bandersnatch::*;
 //!
-//! let secret = SecretKey::from_seed([0; 32]);
-//! let public = secret.public();
+//! let sk = SecretKey::from_seed([0; 32]);
+//! let pk = sk.public_key();
 //! let input = Input::new(b"example input").unwrap();
-//! let output = secret.output(input);
+//! let output = sk.output(input);
 //! let hash_bytes: [u8; 32] = output.hash();
 //! ```
 //!

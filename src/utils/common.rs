@@ -117,10 +117,10 @@ impl<'a, S: Suite> Ios<'a, S> {
         }
     }
 
-    fn with_schnorr(public: AffinePoint<S>, user: &'a [IoPair<S>]) -> Self {
+    fn with_schnorr(pk: PublicKey<S>, user: &'a [IoPair<S>]) -> Self {
         let schnorr = IoPair {
             input: Input::from_affine_unchecked(S::GENERATOR),
-            output: Output::from_affine_unchecked(public),
+            output: Output::from_affine_unchecked(pk.0),
         };
         Self {
             schnorr: Some(schnorr),
@@ -234,22 +234,22 @@ pub(crate) fn delinearize_inputs<S: Suite>(t: &S::Transcript, ios: &[IoPair<S>])
 /// transcript and the merged input.
 pub(crate) fn vrf_transcript_input_with_schnorr<S: Suite>(
     scheme: DomSep,
-    public: AffinePoint<S>,
+    pk: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Input<S>) {
-    vrf_transcript_merged_input(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
+    vrf_transcript_merged_input(scheme, Ios::with_schnorr(pk, ios.as_ref()), ad.as_ref())
 }
 
 /// Same as [`vrf_transcript_input_with_schnorr`] but returns the raw
 /// delinearization scalars instead of the merged input.
 pub(crate) fn vrf_transcript_scalars_with_schnorr<S: Suite>(
     scheme: DomSep,
-    public: AffinePoint<S>,
+    pk: PublicKey<S>,
     ios: impl AsRef<[IoPair<S>]>,
     ad: impl AsRef<[u8]>,
 ) -> (S::Transcript, Vec<ScalarField<S>>) {
-    vrf_transcript_scalars(scheme, Ios::with_schnorr(public, ios.as_ref()), ad.as_ref())
+    vrf_transcript_scalars(scheme, Ios::with_schnorr(pk, ios.as_ref()), ad.as_ref())
 }
 
 /// Transcript of the batch verification weights: the scheme tag keeps the
@@ -277,13 +277,13 @@ const EXPANDED_MAX_POINTS: usize = 5;
 /// With few pairs the merge is skipped: `sum_i (s * z_i) * I_i - (c * z_i) * O_i`
 /// runs as one Straus pass over the raw points.
 pub(crate) fn schnorr_lhs<S: Suite>(
-    public: AffinePoint<S>,
+    pk: PublicKey<S>,
     ios: &[IoPair<S>],
     zs: &[ScalarField<S>],
     s: ScalarField<S>,
     c: ScalarField<S>,
 ) -> <AffinePoint<S> as AffineRepr>::Group {
-    let ios = Ios::with_schnorr(public, ios);
+    let ios = Ios::with_schnorr(pk, ios);
     let points = 2 * ios.len();
     if points <= EXPANDED_MAX_POINTS {
         let mut bases = Vec::with_capacity(points);
@@ -513,10 +513,10 @@ mod tests {
     #[cfg(feature = "hedged-nonce")]
     #[test]
     fn hedge_changes_the_nonce_on_each_call() {
-        let secret = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
+        let sk = SecretScalar::<TestSuite>::new(ScalarField::<TestSuite>::from(42u64));
         let transcript = <TestSuite as Suite>::Transcript::new(b"test");
-        let first = nonce::<TestSuite>(&secret, hedge(transcript.clone()));
-        let second = nonce::<TestSuite>(&secret, hedge(transcript));
+        let first = nonce::<TestSuite>(&sk, hedge(transcript.clone()));
+        let second = nonce::<TestSuite>(&sk, hedge(transcript));
         assert_ne!(first.expose_secret(), second.expose_secret());
     }
 
@@ -524,26 +524,24 @@ mod tests {
     /// plain sum, on each side of the threshold.
     #[test]
     fn schnorr_lhs_matches_the_plain_sum() {
-        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let pk = PublicKey::from_affine_unchecked(
+            (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine(),
+        );
         let s = ScalarField::<TestSuite>::from(12345u64);
         let c = ScalarField::<TestSuite>::from(678u64);
         for n in 0..=3 {
             let ios = sample_ios(n);
-            let (_, zs) = vrf_transcript_scalars_with_schnorr::<TestSuite>(
-                DomSep::TinyVrf,
-                public,
-                &ios,
-                b"ad",
-            );
+            let (_, zs) =
+                vrf_transcript_scalars_with_schnorr::<TestSuite>(DomSep::TinyVrf, pk, &ios, b"ad");
             let zero = AffinePoint::<TestSuite>::zero().into_group();
-            let (input, output) = Ios::with_schnorr(public, &ios)
+            let (input, output) = Ios::with_schnorr(pk, &ios)
                 .iter()
                 .zip(&zs)
                 .fold((zero, zero), |(i, o), (io, z)| {
                     (i + io.input.0 * z, o + io.output.0 * z)
                 });
             let expected = input * s - output * c;
-            assert_eq!(schnorr_lhs::<TestSuite>(public, &ios, &zs, s, c), expected);
+            assert_eq!(schnorr_lhs::<TestSuite>(pk, &ios, &zs, s, c), expected);
         }
     }
 
@@ -554,7 +552,9 @@ mod tests {
     fn merged_input_matches_the_plain_sum() {
         type Group = <AffinePoint<TestSuite> as AffineRepr>::Group;
 
-        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let pk = PublicKey::from_affine_unchecked(
+            (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine(),
+        );
         let plain_sum = |ios: Ios<'_, TestSuite>, zs: &[ScalarField<TestSuite>]| {
             ios.iter()
                 .zip(zs)
@@ -571,14 +571,10 @@ mod tests {
             let zs = DelinearizeScalars::<TestSuite>::new(t).take(n);
             assert_eq!(input.0, plain_sum(Ios::plain(&ios), &zs), "plain, n={n}");
 
-            let schnorr = Ios::with_schnorr(public, &ios);
+            let schnorr = Ios::with_schnorr(pk, &ios);
             let (_, zs) = vrf_transcript_scalars::<TestSuite>(DomSep::TinyVrf, schnorr, b"ad");
-            let (_, input) = vrf_transcript_input_with_schnorr::<TestSuite>(
-                DomSep::TinyVrf,
-                public,
-                &ios,
-                b"ad",
-            );
+            let (_, input) =
+                vrf_transcript_input_with_schnorr::<TestSuite>(DomSep::TinyVrf, pk, &ios, b"ad");
             assert_eq!(input.0, plain_sum(schnorr, &zs), "schnorr, n={n}");
         }
     }
@@ -589,10 +585,12 @@ mod tests {
     fn schnorr_pair_scalar_is_one() {
         use ark_ff::One;
 
-        let public = (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine();
+        let pk = PublicKey::from_affine_unchecked(
+            (TestSuite::GENERATOR * ScalarField::<TestSuite>::from(7u64)).into_affine(),
+        );
         let ios = sample_ios(2);
         let (_, zs) =
-            vrf_transcript_scalars_with_schnorr::<TestSuite>(DomSep::ThinVrf, public, &ios, b"ad");
+            vrf_transcript_scalars_with_schnorr::<TestSuite>(DomSep::ThinVrf, pk, &ios, b"ad");
 
         assert_eq!(zs.len(), 3);
         assert_eq!(zs[0], ScalarField::<TestSuite>::one());

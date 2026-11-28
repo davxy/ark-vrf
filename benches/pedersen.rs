@@ -9,21 +9,21 @@ use bench_utils::SuiteExt;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_pedersen_prove<S: PedersenSuite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.io_pair(input);
+    let io = sk.io_pair(input);
 
     let name = format!("{}/pedersen_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| Proof::prove(black_box(io), b"ad", &secret));
+        b.iter(|| Proof::prove(black_box(io), b"ad", &sk));
     });
 }
 
 fn bench_pedersen_verify<S: PedersenSuite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.io_pair(input);
-    let (proof, _blinding) = Proof::prove(io, b"ad", &secret);
+    let io = sk.io_pair(input);
+    let (proof, _blinding) = Proof::prove(io, b"ad", &sk);
 
     let name = format!("{}/pedersen_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
@@ -36,15 +36,15 @@ const BATCH_SIZES: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256];
 fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
     use ark_vrf::pedersen::BatchVerifier;
 
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
     let max_batch_size = BATCH_SIZES[BATCH_SIZES.len() - 1];
 
     let batch_items: Vec<_> = (0..max_batch_size)
         .map(|i| {
             let input = Input::<S>::new(format!("input-{i}").as_bytes()).unwrap();
-            let io = secret.io_pair(input);
+            let io = sk.io_pair(input);
             let ad = format!("ad-{i}").into_bytes();
-            let (proof, _) = Proof::prove(io, &ad, &secret);
+            let (proof, _) = Proof::prove(io, &ad, &sk);
             (io, ad, proof)
         })
         .collect();
@@ -67,15 +67,15 @@ fn bench_pedersen_batch<S: PedersenSuite>(c: &mut Criterion) {
             });
 
         {
-            let mut bv = BatchVerifier::<S>::new();
+            let mut batch = BatchVerifier::<S>::new();
             for (io, ad, proof) in &batch_items[..batch_size] {
-                bv.push(*io, ad, proof);
+                batch.push(*io, ad, proof);
             }
 
             c.benchmark_group(&verify_group)
                 .sample_size(10)
                 .bench_function(id, |b| {
-                    b.iter(|| bv.verify().unwrap());
+                    b.iter(|| batch.verify().unwrap());
                 });
         }
     }

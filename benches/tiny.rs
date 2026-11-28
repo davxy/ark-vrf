@@ -6,30 +6,26 @@ use bench_utils::SuiteExt;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 fn bench_tiny_prove<S: Suite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
+    let sk = SecretKey::<S>::from_seed([0; 32]);
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.io_pair(input);
+    let io = sk.io_pair(input);
 
     let name = format!("{}/tiny_prove", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| Proof::prove(black_box(io), b"ad", &secret));
+        b.iter(|| Proof::prove(black_box(io), b"ad", &sk));
     });
 }
 
 fn bench_tiny_verify<S: Suite>(c: &mut Criterion) {
-    let secret = SecretKey::<S>::from_seed([0; 32]);
-    let public = secret.public();
+    let sk = SecretKey::<S>::from_seed([0; 32]);
+    let pk = sk.public_key();
     let input = Input::<S>::new(b"bench input data").unwrap();
-    let io = secret.io_pair(input);
-    let proof = Proof::prove(io, b"ad", &secret);
+    let io = sk.io_pair(input);
+    let proof = Proof::prove(io, b"ad", &sk);
 
     let name = format!("{}/tiny_verify", S::SUITE_NAME);
     c.bench_function(&name, |b| {
-        b.iter(|| {
-            black_box(&proof)
-                .verify(black_box(io), b"ad", &public)
-                .unwrap()
-        });
+        b.iter(|| black_box(&proof).verify(black_box(io), b"ad", &pk).unwrap());
     });
 }
 
